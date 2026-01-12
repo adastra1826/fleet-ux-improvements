@@ -9,8 +9,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @run-at       document-idle
-// @downloadURL  https://cdn.jsdelivr.net/gh/adastra1826/fleet-ux-improvements@v1/fleet.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/adastra1826/fleet-ux-improvements@v1/fleet.user.js
+// @downloadURL  
+// @updateURL    
 // ==/UserScript==
 
 (function() {
