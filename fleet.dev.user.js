@@ -802,7 +802,7 @@
         disableAutocorrectOnTextareas();
         initObserver();
 
-        console.log('✓ Initialization complete');
+        console.log('[WF Enhancer] ✓ Initialization complete');
     }
 
     // Only run once, when document is idle (specified by @run-at)
