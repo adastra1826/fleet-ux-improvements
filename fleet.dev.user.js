@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [DEV] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.2.0
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/work/problems/create*
@@ -18,9 +18,10 @@
 
     // ============= CONFIGURATION =============
     const CONFIG = {
-        DEBUG: false, // Set to true for console logging
-        DEBUG_NOTES: false, // Set to true for detailed notes logging
-        VERSION: '1.1.0',
+        DEBUG: true, // Set to true for console logging
+        DEBUG_NOTES: true, // Set to true for detailed notes logging
+        AUTO_CONFIRM_REEXECUTE: true, // Automatically confirm re-execute dialogs
+        VERSION: '1.2.0',
     };
     
     // ============= STATE TRACKING =============
@@ -124,7 +125,8 @@
         toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
         promptTextareaContainer: '#\\:r7\\: > div.flex-shrink-0 > div > div.space-y-2.relative > div.relative > div',
         promptSectionParent: '#\\:r7\\: > div.flex-shrink-0 > div.p-3.border-b',
-        workflowToolsIndicator: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)'
+        workflowToolsIndicator: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)',
+        workflowToolsArea: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3'
     };
 
     // Storage keys
@@ -311,6 +313,443 @@
         }
 
         return false;
+    }
+
+    // ============= MINI EXECUTE BUTTONS FOR COLLAPSED TOOLS =============
+    function executeTool(card, header) {
+        log('executeTool called');
+        
+        const collapsibleRoot = card.querySelector('div[data-state]');
+        if (!collapsibleRoot) {
+            log('No collapsible root found');
+            return;
+        }
+
+        const isCollapsed = collapsibleRoot.getAttribute('data-state') === 'closed';
+        log('Tool state: ' + (isCollapsed ? 'collapsed' : 'expanded'));
+        
+        if (isCollapsed) {
+            // Expand the tool first
+            log('Expanding tool...');
+            header.click();
+            
+            // Wait for the collapsible content to become visible and find the execute button
+            const buttonObserver = new MutationObserver((mutations, obs) => {
+                // Look for the collapsible content div with radix ID
+                const collapsibleContent = card.querySelector('div[data-state="open"] > div[id^="radix-"][data-state="open"]');
+                
+                if (!collapsibleContent) {
+                    log('Waiting for collapsible content to appear...');
+                    return;
+                }
+                
+                log('Found collapsible content: ' + collapsibleContent.id);
+                
+                // Find the execute/re-execute button - it's a direct child of the content div
+                const buttons = collapsibleContent.querySelectorAll('div.px-3.pb-3.space-y-3 > button');
+                log('Found ' + buttons.length + ' button(s) in content');
+                
+                let executeBtn = null;
+                buttons.forEach(btn => {
+                    const btnText = btn.textContent.trim();
+                    log('  - Button text: "' + btnText + '"');
+                    if (btnText === 'Execute' || btnText === 'Re-execute') {
+                        executeBtn = btn;
+                    }
+                });
+                
+                if (executeBtn) {
+                    obs.disconnect();
+                    
+                    const buttonText = executeBtn.textContent.trim();
+                    log('Found ' + buttonText + ' button, clicking...');
+                    
+                    // Click the execute button
+                    executeBtn.click();
+                    log('Clicked ' + buttonText + ' button for collapsed tool');
+                    
+                    // Watch for the tool state to change (success/error)
+                    watchForToolCompletion(card, header);
+                }
+            });
+            
+            buttonObserver.observe(card, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['hidden', 'data-state']
+            });
+            
+            // Timeout fallback
+            setTimeout(() => {
+                buttonObserver.disconnect();
+                log('Timeout waiting for execute button to appear');
+            }, 5000);
+        } else {
+            // Tool is already open, find and click the execute button
+            log('Tool already open, looking for execute button...');
+            
+            const collapsibleContent = card.querySelector('div[data-state="open"] > div[id^="radix-"][data-state="open"]');
+            if (collapsibleContent) {
+                const buttons = collapsibleContent.querySelectorAll('div.px-3.pb-3.space-y-3 > button');
+                
+                let executeBtn = null;
+                buttons.forEach(btn => {
+                    const btnText = btn.textContent.trim();
+                    if (btnText === 'Execute' || btnText === 'Re-execute') {
+                        executeBtn = btn;
+                    }
+                });
+                
+                if (executeBtn) {
+                    const buttonText = executeBtn.textContent.trim();
+                    executeBtn.click();
+                    log('Clicked ' + buttonText + ' button for open tool');
+                    // Don't watch for completion since tool is already open - user can see results
+                } else {
+                    log('No execute button found in open tool');
+                }
+            }
+        }
+    }
+
+    function watchForToolCompletion(card, header) {
+        log('Starting to watch for tool completion...');
+        
+        const originalBorderClass = Array.from(card.classList).find(cls => cls.startsWith('border-'));
+        log('Original border class: ' + (originalBorderClass || 'none'));
+        
+        // Watch for the card's border color to change (indicating success/error)
+        const completionObserver = new MutationObserver((mutations, obs) => {
+            const hasSuccess = card.classList.contains('border-emerald-500/50');
+            const hasError = card.classList.contains('border-red-500/50');
+            
+            if (hasSuccess || hasError) {
+                obs.disconnect();
+                log('Tool execution completed with ' + (hasSuccess ? 'SUCCESS' : 'ERROR'));
+                
+                // Collapse the tool immediately after completion
+                const collapsibleRoot = card.querySelector('div[data-state]');
+                if (collapsibleRoot && collapsibleRoot.getAttribute('data-state') === 'open') {
+                    log('Collapsing tool...');
+                    header.click();
+                    log('Collapsed tool after ' + (hasSuccess ? 'success' : 'error'));
+                }
+            }
+        });
+        
+        completionObserver.observe(card, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+        
+        // Timeout fallback - stop watching after 30 seconds
+        setTimeout(() => {
+            completionObserver.disconnect();
+            log('Stopped watching for completion (5s timeout)');
+        }, 5000);
+    }
+
+    // ============= DUPLICATE TO END BUTTON =============
+    function duplicateToolToEnd(card, duplicateBtn) {
+        log('duplicateToolToEnd called');
+        
+        const toolsContainer = document.querySelector(SELECTORS.workflowToolsArea);
+        if (!toolsContainer) {
+            log('Tools container not found');
+            return;
+        }
+        
+        // Get current tool count before duplication
+        const toolCardsBefore = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
+        const countBefore = toolCardsBefore.length;
+        log('Tool count before duplication: ' + countBefore);
+        
+        // Get the current tool's position (index)
+        const toolCardsArray = Array.from(toolCardsBefore);
+        const currentIndex = toolCardsArray.indexOf(card.closest('div.rounded-lg.border.transition-colors') || card);
+        log('Current tool index: ' + currentIndex);
+        
+        // Click the duplicate button
+        duplicateBtn.click();
+        log('Clicked duplicate button');
+        
+        // Watch for the new tool to appear
+        const dupeObserver = new MutationObserver((mutations, obs) => {
+            const toolCardsAfter = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
+            
+            if (toolCardsAfter.length > countBefore) {
+                obs.disconnect();
+                log('New tool detected, count: ' + toolCardsAfter.length);
+                
+                // The duplicated tool should be right after the original (currentIndex + 1)
+                const duplicatedToolIndex = currentIndex + 1;
+                const duplicatedTool = toolCardsAfter[duplicatedToolIndex];
+                
+                if (!duplicatedTool) {
+                    log('Could not find duplicated tool at index ' + duplicatedToolIndex);
+                    return;
+                }
+                
+                // If it's already at the end, no need to move
+                if (duplicatedToolIndex === toolCardsAfter.length - 1) {
+                    log('Tool already at end, no move needed');
+                    return;
+                }
+                
+                // Calculate how many positions to move down
+                const movesNeeded = (toolCardsAfter.length - 1) - duplicatedToolIndex;
+                log('Moves needed to reach end: ' + movesNeeded);
+                
+                // Use keyboard simulation to move the tool
+                moveToolToEndViaKeyboard(duplicatedTool, movesNeeded);
+            }
+        });
+        
+        dupeObserver.observe(toolsContainer, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Timeout fallback
+        setTimeout(() => {
+            dupeObserver.disconnect();
+            log('Timeout waiting for duplicated tool to appear');
+        }, 3000);
+    }
+    
+    function moveToolToEndViaKeyboard(toolCard, movesNeeded) {
+        log('moveToolToEndViaKeyboard: ' + movesNeeded + ' moves');
+        
+        // Find the drag handle within the tool
+        const dragHandle = toolCard.querySelector('div[role="button"][aria-roledescription="sortable"]');
+        if (!dragHandle) {
+            log('Drag handle not found');
+            return;
+        }
+        
+        log('Found drag handle');
+        
+        // Focus the drag handle
+        dragHandle.focus();
+        
+        // Small delay to ensure focus is set
+        setTimeout(() => {
+            // Press Space to pick up the item
+            const spaceDownEvent = new KeyboardEvent('keydown', {
+                key: ' ',
+                code: 'Space',
+                keyCode: 32,
+                which: 32,
+                bubbles: true,
+                cancelable: true
+            });
+            dragHandle.dispatchEvent(spaceDownEvent);
+            log('Dispatched Space keydown to pick up');
+            
+            // Press ArrowDown for each move needed
+            let moveCount = 0;
+            const moveInterval = setInterval(() => {
+                if (moveCount >= movesNeeded) {
+                    clearInterval(moveInterval);
+                    
+                    // Press Space again to drop
+                    setTimeout(() => {
+                        const spaceDropEvent = new KeyboardEvent('keydown', {
+                            key: ' ',
+                            code: 'Space',
+                            keyCode: 32,
+                            which: 32,
+                            bubbles: true,
+                            cancelable: true
+                        });
+                        dragHandle.dispatchEvent(spaceDropEvent);
+                        log('Dispatched Space keydown to drop');
+                        
+                        // Blur the handle
+                        dragHandle.blur();
+                        log('Tool moved to end successfully');
+                    }, 50);
+                    return;
+                }
+                
+                const arrowDownEvent = new KeyboardEvent('keydown', {
+                    key: 'ArrowDown',
+                    code: 'ArrowDown',
+                    keyCode: 40,
+                    which: 40,
+                    bubbles: true,
+                    cancelable: true
+                });
+                dragHandle.dispatchEvent(arrowDownEvent);
+                moveCount++;
+                log('Dispatched ArrowDown ' + moveCount + '/' + movesNeeded);
+            }, 50); // Small delay between arrow presses
+            
+        }, 50);
+    }
+    
+    function addDuplicateToEndButtons() {
+        const toolsContainer = document.querySelector(SELECTORS.workflowToolsArea);
+        if (!toolsContainer) return false;
+        
+        const toolCards = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
+        let buttonsAdded = 0;
+        
+        toolCards.forEach(card => {
+            const header = card.querySelector(SELECTORS.toolHeader);
+            if (!header) return;
+            
+            const buttonContainer = header.querySelector('div.flex.items-center.gap-1');
+            if (!buttonContainer) return;
+            
+            // Check if button already exists
+            if (buttonContainer.querySelector('.wf-duplicate-to-end-btn')) return;
+            
+            // Find the original duplicate button (second button after our mini execute, has the copy+ icon)
+            const buttons = buttonContainer.querySelectorAll('button');
+            let duplicateBtn = null;
+            
+            buttons.forEach(btn => {
+                // Look for the duplicate button by its SVG content (has the copy+ icon)
+                const svg = btn.querySelector('svg');
+                if (svg) {
+                    const hasLine15 = svg.querySelector('line[x1="15"][y1="12"][y2="18"]');
+                    const hasRect = svg.querySelector('rect[width="14"][height="14"]');
+                    if (hasLine15 && hasRect) {
+                        duplicateBtn = btn;
+                    }
+                }
+            });
+            
+            if (!duplicateBtn) return;
+            
+            // Find the delete button (after duplicate button)
+            const deleteBtn = duplicateBtn.nextElementSibling;
+            if (!deleteBtn || deleteBtn.tagName !== 'BUTTON') return;
+            
+            // Create the "Duplicate to End" button
+            const dupToEndBtn = document.createElement('button');
+            dupToEndBtn.className = 'wf-duplicate-to-end-btn inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground size-7 h-7 w-7';
+            dupToEndBtn.title = 'Duplicate to End of Workflow';
+            dupToEndBtn.setAttribute('data-state', 'closed');
+            
+            // SVG: Combination of duplicate icon + corner-down-left arrow
+            dupToEndBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 text-muted-foreground hover:text-primary">
+                    <!-- Copy/duplicate icon (scaled and positioned) -->
+                    <rect x="9" y="2" width="10" height="10" rx="1.5" ry="1.5"></rect>
+                    <path d="M5 10c-0.8 0-1.5 0.7-1.5 1.5v7c0 0.8 0.7 1.5 1.5 1.5h7c0.8 0 1.5-0.7 1.5-1.5"></path>
+                    <!-- Plus sign on copy icon -->
+                    <line x1="14" y1="5" x2="14" y2="9"></line>
+                    <line x1="12" y1="7" x2="16" y2="7"></line>
+                    <!-- Corner down-left arrow -->
+                    <polyline points="21 14 21 20 15 20"></polyline>
+                    <path d="M21 20 L17 16"></path>
+                </svg>
+            `;
+            
+            dupToEndBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                duplicateToolToEnd(card, duplicateBtn);
+            });
+            
+            // Insert after the duplicate button (before delete button)
+            buttonContainer.insertBefore(dupToEndBtn, deleteBtn);
+            buttonsAdded++;
+        });
+        
+        if (buttonsAdded > 0) {
+            log('Added ' + buttonsAdded + ' duplicate-to-end button(s)');
+        }
+        
+        return buttonsAdded > 0;
+    }
+
+    // ============= AUTO-CONFIRM RE-EXECUTE DIALOG =============
+    function autoConfirmReexecuteDialog() {
+        if (!CONFIG.AUTO_CONFIRM_REEXECUTE) return false;
+        
+        // Look for the re-execute confirmation dialog
+        const dialog = document.querySelector('div[role="alertdialog"][data-state="open"]');
+        if (!dialog) return false;
+        
+        // Check if this is the re-execute dialog by looking for the specific heading
+        const heading = dialog.querySelector('h2');
+        if (!heading || !heading.textContent.includes('Re-execute this step')) return false;
+        
+        // Find and click the "Re-execute & Invalidate" button
+        const buttons = dialog.querySelectorAll('button');
+        let confirmBtn = null;
+        
+        buttons.forEach(btn => {
+            const btnText = btn.textContent.trim();
+            if (btnText.includes('Re-execute') && btnText.includes('Invalidate')) {
+                confirmBtn = btn;
+            }
+        });
+        
+        if (confirmBtn) {
+            log('Auto-confirming re-execute dialog');
+            confirmBtn.click();
+            log('Clicked "Re-execute & Invalidate" button');
+            return true;
+        }
+        
+        return false;
+    }
+
+    function addMiniExecuteButtons() {
+        const toolsContainer = document.querySelector(SELECTORS.workflowToolsArea);
+        if (!toolsContainer) return false;
+
+        // Select all tool cards - default, success (emerald), and error (red) states
+        const toolCards = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
+        let buttonsAdded = 0;
+
+        toolCards.forEach(card => {
+            const collapsibleRoot = card.querySelector('div[data-state]');
+            if (!collapsibleRoot) return;
+
+            const header = card.querySelector(SELECTORS.toolHeader);
+            if (!header) return;
+
+            const buttonContainer = header.querySelector('div.flex.items-center.gap-1');
+            if (!buttonContainer) return;
+
+            // Check if mini execute button already exists
+            let miniExecBtn = buttonContainer.querySelector('.wf-mini-execute-btn');
+            
+            const isCollapsed = collapsibleRoot.getAttribute('data-state') === 'closed';
+
+            if (!miniExecBtn) {
+                // Create the mini execute button
+                miniExecBtn = document.createElement('button');
+                miniExecBtn.className = 'wf-mini-execute-btn inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-brand !text-white transition-colors hover:brightness-95 border border-brand-accent rounded-sm size-7 h-7 w-7';
+                miniExecBtn.title = 'Execute';
+                miniExecBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="fill-current size-3.5"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM11.03 8.652C10.7217 8.45933 10.3332 8.44913 10.0152 8.62536C9.69728 8.80158 9.5 9.13648 9.5 9.5V14.5C9.5 14.8635 9.69728 15.1984 10.0152 15.3746C10.3332 15.5509 10.7217 15.5407 11.03 15.348L15.03 12.848C15.3224 12.6653 15.5 12.3448 15.5 12C15.5 11.6552 15.3224 11.3347 15.03 11.152L11.03 8.652Z"></path></svg>`;
+                
+                miniExecBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    executeTool(card, header);
+                });
+
+                // Insert as first child of button container
+                buttonContainer.insertBefore(miniExecBtn, buttonContainer.firstChild);
+                buttonsAdded++;
+            }
+
+            // Update visibility based on collapsed state
+            miniExecBtn.style.display = isCollapsed ? 'inline-flex' : 'none';
+        });
+
+        if (buttonsAdded > 0) {
+            log(`✓ Added ${buttonsAdded} mini execute button(s)`);
+        }
+
+        return buttonsAdded > 0;
     }
 
     // ============= THREE COLUMN LAYOUT WITH IMPROVED FIRST COLUMN =============
@@ -852,6 +1291,9 @@
             addFavoriteButtons();
             setupNotesAutoSave();
             setupBugReportExpand();
+            addMiniExecuteButtons();
+            addDuplicateToEndButtons();
+            autoConfirmReexecuteDialog();
         });
 
         observer.observe(document.body, {
