@@ -13,3 +13,4 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 - JSON explorer
 - Putting the starred tools in their own spot
 - UX improvements to the tools in the current workflow
+- Show entire bug report instead of just two lines in the bug report modal
