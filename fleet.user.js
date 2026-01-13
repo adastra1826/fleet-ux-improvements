@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      1.0.5
+// @version      1.1.0
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/work/problems/create*
@@ -12,14 +12,15 @@
 // @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
 // @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
 // ==/UserScript==
+
 (function() {
     'use strict';
 
     // ============= CONFIGURATION =============
     const CONFIG = {
-        DEBUG: true, // Set to true for console logging
-        DEBUG_NOTES: true, // Set to true for detailed notes logging
-        VERSION: '1.0.5',
+        DEBUG: false, // Set to true for console logging
+        DEBUG_NOTES: false, // Set to true for detailed notes logging
+        VERSION: '1.1.0',
     };
     
     // ============= STATE TRACKING =============
@@ -33,6 +34,7 @@
         notesAutoSaveSetup: false,
         favoritesInitialized: false,
         lastStarsCount: 0,
+        bugReportExpandInitialized: false,
         retryCounters: {
             searchInput: 0,
             promptEditor: 0,
@@ -41,7 +43,8 @@
             textareaFade: 0,
             threeColumnLayout: 0,
             notesAutoSave: 0,
-            favoriteButtons: 0
+            favoriteButtons: 0,
+            bugReportExpand: 0
         }
     };
 
@@ -230,6 +233,83 @@
         }
 
         STATE.retryCounters.textareaFade++;
+        return false;
+    }
+
+    // ============= BUG REPORT EXPAND/COLLAPSE =============
+    function setupBugReportExpand() {
+        // Find all bug report cards in the modal
+        const bugReportCards = document.querySelectorAll('div.p-3.bg-muted\\/50.rounded-lg.text-sm');
+        
+        if (bugReportCards.length === 0) {
+            STATE.retryCounters.bugReportExpand++;
+            return false;
+        }
+
+        let modified = 0;
+
+        bugReportCards.forEach(card => {
+            // Check if already processed
+            if (card.hasAttribute('data-wf-expand-enabled')) {
+                return;
+            }
+
+            const contentWrapper = card.querySelector('div.flex.items-start.justify-between.gap-2 > div.flex-1.min-w-0');
+            if (!contentWrapper) return;
+
+            const textParagraph = contentWrapper.querySelector('p.text-muted-foreground.text-xs.line-clamp-2');
+            if (!textParagraph) return;
+
+            // Mark as processed
+            card.setAttribute('data-wf-expand-enabled', 'true');
+
+            // Make the content wrapper clickable
+            contentWrapper.style.cursor = 'pointer';
+            contentWrapper.setAttribute('title', 'Click to expand/collapse');
+
+            // Store original text
+            const originalText = textParagraph.textContent;
+
+            // Track expanded state
+            let isExpanded = false;
+
+            contentWrapper.addEventListener('click', (e) => {
+                // Prevent if clicking on a button or link
+                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') {
+                    return;
+                }
+
+                isExpanded = !isExpanded;
+
+                if (isExpanded) {
+                    // Remove line clamp
+                    textParagraph.classList.remove('line-clamp-2');
+                    
+                    // Preserve and render newlines
+                    textParagraph.style.whiteSpace = 'pre-wrap';
+                    
+                    // Convert markdown-style line breaks to actual newlines if needed
+                    const formattedText = originalText
+                        .replace(/\*\*([^*]+)\*\*/g, '$1')  // Remove markdown bold
+                        .replace(/\n\n/g, '\n');  // Normalize double newlines
+                    
+                    textParagraph.textContent = formattedText;
+                } else {
+                    // Restore line clamp
+                    textParagraph.classList.add('line-clamp-2');
+                    textParagraph.style.whiteSpace = '';
+                    textParagraph.textContent = originalText;
+                }
+            });
+
+            modified++;
+        });
+
+        if (modified > 0) {
+            log(`✓ Bug report expand/collapse enabled for ${modified} report(s)`);
+            return true;
+        }
+
         return false;
     }
 
@@ -680,7 +760,7 @@
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('fill', filled ? '#FFD700' : 'none');
         svg.setAttribute('stroke', filled ? '#FFD700' : 'currentColor');
-        svg.setAttribute('stroke-width', filled ? '2' : '1');
+        svg.setAttribute('stroke-width', '1');
         svg.setAttribute('stroke-linecap', 'round');
         svg.setAttribute('stroke-linejoin', 'round');
         svg.style.cssText = 'display: inline-block; vertical-align: middle;';
@@ -771,6 +851,7 @@
             createThreeColumnLayout();
             addFavoriteButtons();
             setupNotesAutoSave();
+            setupBugReportExpand();
         });
 
         observer.observe(document.body, {
