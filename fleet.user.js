@@ -793,16 +793,15 @@
         }
         initialized = true;
 
-        log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        log('Workflow Builder UX Enhancer v2.0');
-        log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('[WF Enhancer] Version: ' + CONFIG.VERSION);
+        console.log('[WF Enhancer] GitHub: https://github.com/adastra1826/fleet-ux-improvements');
+        console.log('[WF Enhancer] If you have any issues, please report them to the GitHub repository. :)');
 
         disableAutocorrectOnSearchInput();
         disableAutocorrectOnTextareas();
         initObserver();
 
-        log('✓ Initialization complete');
-        log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('✓ Initialization complete');
     }
 
     // Only run once, when document is idle (specified by @run-at)
