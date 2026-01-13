@@ -18,8 +18,8 @@
 
     // ============= CONFIGURATION =============
     const CONFIG = {
-        DEBUG: true, // Set to true for console logging
-        DEBUG_NOTES: true, // Set to true for detailed notes logging
+        DEBUG: false, // Set to true for console logging
+        DEBUG_NOTES: false, // Set to true for detailed notes logging
         VERSION: '1.0.4',
     };
     
