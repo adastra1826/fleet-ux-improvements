@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Fleet Workflow Builder UX Enhancer
+// @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.0.2
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/work/problems/*
@@ -9,8 +9,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @run-at       document-idle
-// @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
-// @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
+// @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/dev/fleet.user.js
+// @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/dev/fleet.user.js
 // ==/UserScript==
 
 (function() {
@@ -20,7 +20,7 @@
     const CONFIG = {
         DEBUG: true, // Set to true for console logging
         DEBUG_NOTES: true, // Set to true for detailed notes logging
-    };
+        VERSION: '1.0.2',    };
 
     // ============= STATE TRACKING =============
     const STATE = {
