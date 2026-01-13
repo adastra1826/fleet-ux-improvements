@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      1.0.4
+// @version      1.0.5
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/work/problems/create*
@@ -12,15 +12,14 @@
 // @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
 // @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
 // ==/UserScript==
-
 (function() {
     'use strict';
 
     // ============= CONFIGURATION =============
     const CONFIG = {
-        DEBUG: false, // Set to true for console logging
-        DEBUG_NOTES: false, // Set to true for detailed notes logging
-        VERSION: '1.0.4',
+        DEBUG: true, // Set to true for console logging
+        DEBUG_NOTES: true, // Set to true for detailed notes logging
+        VERSION: '1.0.5',
     };
     
     // ============= STATE TRACKING =============
@@ -137,8 +136,6 @@
     };
 
     function addExpandCollapseButtons() {
-        if (STATE.expandCollapseButtonsAdded) return false;
-
         const toolbar = document.querySelector(SELECTORS.toolbar);
         if (!toolbar) {
             STATE.retryCounters.toolbar++;
@@ -186,6 +183,7 @@
             log('✓ Expand/Collapse buttons added to toolbar');
         }
 
+        // Always update display based on whether tools exist
         container.style.display = hasTools ? 'flex' : 'none';
         return true;
     }
