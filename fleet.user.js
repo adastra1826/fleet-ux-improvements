@@ -4,7 +4,7 @@
 // @version      1.0.4
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
 // @author       Nicholas Doherty
-// @match        https://fleetai.com/work/problems/*
+// @match        https://fleetai.com/work/problems/create*
 // @icon         https://fleetai.com/favicon.ico
 // @grant        GM_getValue
 // @grant        GM_setValue
