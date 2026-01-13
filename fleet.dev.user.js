@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Fleet Workflow Builder UX Enhancer
+// @name         [DEV] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
 // @version      1.0.4
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
@@ -9,8 +9,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @run-at       document-idle
-// @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
-// @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
+// @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.dev.user.js
+// @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.dev.user.js
 // ==/UserScript==
 
 (function() {
