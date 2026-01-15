@@ -25,7 +25,6 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 - Repository of all submitted prompts with custom notes area for each one
 
 #### Known Bugs
-- Problem description not being saved or recognized
 - Script does not activate on task page unless the page is refreshed
 - "Duplicate to end" button switches places with "duplicate" button and stops working (under investigation to find cause. Likely needs a mutation observer for the default tool bar.)
 - Duplicate to end button icon makes no sense

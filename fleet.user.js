@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      1.2.0
+// @version      1.3.0
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/work/problems/create*
@@ -21,7 +21,7 @@
         DEBUG: true, // Set to true for console logging
         DEBUG_NOTES: true, // Set to true for detailed notes logging
         AUTO_CONFIRM_REEXECUTE: true, // Automatically confirm re-execute dialogs
-        VERSION: '1.2.0',
+        VERSION: '1.3.0',
     };
     
     // ============= STATE TRACKING =============
@@ -785,6 +785,16 @@
         }
 
         const panelGroupId = mainContainer.getAttribute('data-panel-group-id') || ':r6:';
+        
+        // Store references to preserve DOM elements
+        const preservedElements = {
+            leftColumn: leftColumn.parentNode.removeChild(leftColumn),
+            workflowColumn: workflowColumn.parentNode.removeChild(workflowColumn),
+            topSection: topSection,
+            bottomSection: bottomSection
+        };
+        
+        // Clear container after removing elements
         mainContainer.innerHTML = '';
         mainContainer.id = 'wf-three-col-layout';
 
@@ -805,7 +815,7 @@
         splitWrapper.className = 'flex flex-col h-full';
         splitWrapper.id = 'wf-split-wrapper';
         
-        reorganizeFirstColumnContent(splitWrapper, topSection);
+        reorganizeFirstColumnContentPreserved(splitWrapper, preservedElements.topSection);
         col1.appendChild(splitWrapper);
 
         const divider1 = document.createElement('div');
@@ -832,7 +842,7 @@
         col2.setAttribute('data-panel', '');
         col2.setAttribute('data-panel-id', 'wf-col-tools');
         col2.setAttribute('data-panel-size', '37.5');
-        col2.appendChild(bottomSection);
+        col2.appendChild(preservedElements.bottomSection);
 
         const divider2 = document.createElement('div');
         divider2.className = 'relative w-[2px] h-[98%] my-auto hover:bg-brand transition-all duration-300 ease-in-out mx-[1px] before:absolute before:top-0 before:left-[-3px] before:right-[-3px] before:bottom-0 before:content-[""] before:cursor-col-resize';
@@ -850,17 +860,17 @@
         divider2.setAttribute('aria-valuemin', '20');
         divider2.setAttribute('aria-valuenow', '37.5');
 
-        workflowColumn.style.flex = `${savedCol3} 1 0px`;
-        workflowColumn.setAttribute('data-panel-size', savedCol3.toString());
+        preservedElements.workflowColumn.style.flex = `${savedCol3} 1 0px`;
+        preservedElements.workflowColumn.setAttribute('data-panel-size', savedCol3.toString());
 
         mainContainer.appendChild(col1);
         mainContainer.appendChild(divider1);
         mainContainer.appendChild(col2);
         mainContainer.appendChild(divider2);
-        mainContainer.appendChild(workflowColumn);
+        mainContainer.appendChild(preservedElements.workflowColumn);
 
         setupColumnResize(divider1, col1, col2);
-        setupColumnResize(divider2, col2, workflowColumn);
+        setupColumnResize(divider2, col2, preservedElements.workflowColumn);
 
         STATE.threeColumnLayoutApplied = true;
         log('✓ Three column layout applied');
@@ -870,6 +880,72 @@
         }, 100);
         
         return true;
+    }
+
+    function reorganizeFirstColumnContentPreserved(wrapper, topSection) {
+        const savedRatio = GM_getValue(STORAGE_KEYS.sectionSplitRatio, 60);
+        
+        const existingSection = topSection.querySelector('div.p-3.border-b');
+        if (!existingSection) {
+            log('⚠ Existing section not found for reorganization');
+            return;
+        }
+
+        // Remove the existing section from topSection to preserve it
+        topSection.removeChild(existingSection);
+
+        const topPanel = document.createElement('div');
+        topPanel.id = 'wf-top-panel';
+        topPanel.className = 'flex flex-col overflow-hidden';
+        topPanel.style.flex = `${savedRatio} 1 0%`;
+        topPanel.style.minHeight = '100px';
+        
+        // Modify the existing section instead of cloning
+        existingSection.className = 'p-3 border-b flex flex-col h-full';
+        
+        const textareaWrapper = existingSection.querySelector('div.space-y-2.relative');
+        if (textareaWrapper) {
+            textareaWrapper.className = 'space-y-2 relative flex-1 flex flex-col';
+            
+            const relativeDiv = textareaWrapper.querySelector('div.relative');
+            if (relativeDiv) {
+                relativeDiv.className = 'relative flex-1 flex flex-col';
+                
+                const textareaContainer = relativeDiv.querySelector('div.flex.flex-col');
+                if (textareaContainer) {
+                    textareaContainer.style.height = '100%';
+                }
+            }
+        }
+        
+        // Append the preserved element
+        topPanel.appendChild(existingSection);
+
+        const resizeHandle = document.createElement('div');
+        resizeHandle.id = 'wf-section-resize-handle';
+        resizeHandle.className = 'relative h-[2px] w-full hover:bg-brand transition-all duration-300 ease-in-out my-[1px]';
+        resizeHandle.style.backgroundColor = 'var(--border)';
+        resizeHandle.style.cursor = 'grab';
+        resizeHandle.setAttribute('role', 'separator');
+        resizeHandle.style.touchAction = 'none';
+        
+        const hitArea = document.createElement('div');
+        hitArea.style.cssText = 'position: absolute; top: -6px; bottom: -6px; left: 0; right: 0; cursor: grab;';
+        resizeHandle.appendChild(hitArea);
+
+        const bottomPanel = document.createElement('div');
+        bottomPanel.id = 'wf-bottom-panel';
+        bottomPanel.className = 'p-3 border-b overflow-y-auto';
+        bottomPanel.style.flex = `${100 - savedRatio} 1 0%`;
+        bottomPanel.style.minHeight = '100px';
+
+        createNotesSection(bottomPanel);
+
+        wrapper.appendChild(topPanel);
+        wrapper.appendChild(resizeHandle);
+        wrapper.appendChild(bottomPanel);
+
+        setupSectionResize(resizeHandle, topPanel, bottomPanel);
     }
 
     function reorganizeFirstColumnContent(wrapper, topSection) {
