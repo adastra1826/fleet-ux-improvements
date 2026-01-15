@@ -18,3 +18,7 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 - Putting the starred tools in their own spot
 - UX improvements to the tools in the current workflow
 - Config UI for this extension
+- Save specific notes per environment
+
+#### Known Bugs
+- Script does not activate on task page unless the page is refreshed
