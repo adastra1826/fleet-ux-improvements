@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      1.3.0
+// @version      2.0.0
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/work/problems/create*
@@ -21,7 +21,82 @@
         DEBUG: true, // Set to true for console logging
         DEBUG_NOTES: true, // Set to true for detailed notes logging
         AUTO_CONFIRM_REEXECUTE: true, // Automatically confirm re-execute dialogs
-        VERSION: '1.3.0',
+        VERSION: '2.0.0',
+    };
+
+    // ============= NETWORK INTERCEPTION =============
+    // Must be set up immediately at document-start before any other scripts run
+    // Uses unsafeWindow to access the page's actual context (required when @grant is used)
+    let source = null; // Stores the first intercepted MCP URL
+
+    function setupNetworkInterception() {
+        // When @grant is used, the script runs in a sandbox
+        // We need to use unsafeWindow to access the page's real window object
+        const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+        
+        // Store the original fetch function from the PAGE's context
+        const originalFetch = pageWindow.fetch;
+
+        // Override fetch on the PAGE's window
+        pageWindow.fetch = function(...args) {
+            const [resource, config] = args;
+            
+            // Convert resource to URL object for easier parsing
+            let url;
+            try {
+                url = new URL(resource, pageWindow.location.href);
+            } catch (e) {
+                url = { href: resource, pathname: '' };
+            }
+
+            // Check if this is an MCP POST request
+            if (url.pathname === '/mcp' && config && config.method === 'POST') {
+                console.log('[WF Enhancer] 🎯 Intercepted MCP Request:', url.href);
+                
+                // Store the first one in source variable
+                if (source === null) {
+                    source = url.href;
+                    console.log('[WF Enhancer] ✓ Source URL captured:', source);
+                }
+            }
+
+            // Call the original fetch function
+            return originalFetch.apply(this, args);
+        };
+
+        // Also intercept XMLHttpRequest on the PAGE's context
+        const originalXHROpen = pageWindow.XMLHttpRequest.prototype.open;
+        const originalXHRSend = pageWindow.XMLHttpRequest.prototype.send;
+
+        pageWindow.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+            this._interceptedURL = url;
+            this._interceptedMethod = method;
+            return originalXHROpen.apply(this, [method, url, ...rest]);
+        };
+
+        pageWindow.XMLHttpRequest.prototype.send = function(body) {
+            if (this._interceptedMethod === 'POST' && this._interceptedURL && this._interceptedURL.includes('/mcp')) {
+                console.log('[WF Enhancer] 🎯 Intercepted XHR MCP Request:', this._interceptedURL);
+                
+                // Store the first one in source variable
+                if (source === null) {
+                    source = this._interceptedURL;
+                    console.log('[WF Enhancer] ✓ Source URL captured (XHR):', source);
+                }
+            }
+            return originalXHRSend.apply(this, [body]);
+        };
+
+        console.log('[WF Enhancer] ✓ Network interception installed (using ' + (typeof unsafeWindow !== 'undefined' ? 'unsafeWindow' : 'window') + ')');
+    }
+
+    // Install network interception immediately
+    setupNetworkInterception();
+
+    // Expose source and getter globally for debugging (on page's window)
+    const pageWindowForExport = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+    pageWindowForExport.getWFSource = function() {
+        return source;
     };
     
     // ============= STATE TRACKING =============
@@ -652,7 +727,26 @@
             dupToEndBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                duplicateToolToEnd(card, duplicateBtn);
+                // Find the current duplicate button at click time
+                const currentButtons = buttonContainer.querySelectorAll('button');
+                let currentDuplicateBtn = null;
+                
+                currentButtons.forEach(btn => {
+                    const svg = btn.querySelector('svg');
+                    if (svg) {
+                        const hasLine15 = svg.querySelector('line[x1="15"][y1="12"][y2="18"]');
+                        const hasRect = svg.querySelector('rect[width="14"][height="14"]');
+                        if (hasLine15 && hasRect) {
+                            currentDuplicateBtn = btn;
+                        }
+                    }
+                });
+                
+                if (currentDuplicateBtn) {
+                    duplicateToolToEnd(card, currentDuplicateBtn);
+                } else {
+                    log('⚠ Could not find duplicate button when duplicate-to-end was clicked');
+                }
             });
             
             // Insert after the duplicate button (before delete button)
@@ -665,6 +759,291 @@
         }
         
         return buttonsAdded > 0;
+    }
+    
+    // Add a separate cleanup function for orphaned buttons
+    function cleanupOrphanedDuplicateButtons() {
+        // Find any duplicate-to-end buttons that don't have proper sibling buttons
+        const allDupToEndBtns = document.querySelectorAll('.wf-duplicate-to-end-btn');
+        let removed = 0;
+        
+        allDupToEndBtns.forEach(btn => {
+            const buttonContainer = btn.parentElement;
+            if (!buttonContainer) {
+                btn.remove();
+                removed++;
+                return;
+            }
+            
+            // Check if the original duplicate and delete buttons still exist
+            const prevSibling = btn.previousElementSibling;
+            const nextSibling = btn.nextElementSibling;
+            
+            // If the button is not properly positioned between duplicate and delete, remove it
+            if (!prevSibling || !nextSibling || nextSibling.tagName !== 'BUTTON') {
+                btn.remove();
+                removed++;
+            }
+        });
+        
+        if (removed > 0) {
+            log(`Cleaned up ${removed} orphaned duplicate-to-end button(s)`);
+        }
+        
+        return removed > 0;
+    }
+
+    // ============= SOURCE DATA EXPLORER BUTTON =============
+    function addSourceDataExplorerButton() {
+        // Only add if we have a source URL
+        if (!source) return false;
+        
+        // Find the container with the "Recommend Tools" button
+        const containers = document.querySelectorAll('div.flex.items-center.gap-2.mt-2');
+        let targetContainer = null;
+        
+        for (const container of containers) {
+            const recommendBtn = container.querySelector('button');
+            if (recommendBtn && recommendBtn.textContent.includes('Recommend Tools')) {
+                targetContainer = container;
+                break;
+            }
+        }
+        
+        if (!targetContainer) return false;
+        
+        // Check if button already exists
+        if (targetContainer.querySelector('#wf-source-explorer-btn')) return false;
+        
+        // Extract base URL (remove /mcp part)
+        let baseUrl = source;
+        if (baseUrl.includes('/mcp')) {
+            baseUrl = baseUrl.substring(0, baseUrl.indexOf('/mcp'));
+        }
+        
+        // Create the Source Data Explorer button
+        const sourceBtn = document.createElement('button');
+        sourceBtn.id = 'wf-source-explorer-btn';
+        sourceBtn.className = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-sm pl-3 pr-3 text-xs gap-1.5 relative';
+        sourceBtn.setAttribute('data-state', 'closed');
+        
+        // Database icon SVG
+        sourceBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 text-blue-500">
+                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                <path d="M3 5V19C3 20.6569 7.02944 22 12 22C16.9706 22 21 20.6569 21 19V5"></path>
+                <path d="M3 12C3 13.6569 7.02944 15 12 15C16.9706 15 21 13.6569 21 12"></path>
+            </svg>
+            Source Data Explorer
+        `;
+        
+        sourceBtn.addEventListener('click', () => {
+            window.open(baseUrl, '_blank');
+            log('Opened source URL: ' + baseUrl);
+        });
+        
+        // Insert after the first button (Recommend Tools)
+        const firstButton = targetContainer.querySelector('button');
+        if (firstButton && firstButton.nextSibling) {
+            targetContainer.insertBefore(sourceBtn, firstButton.nextSibling);
+        } else {
+            targetContainer.appendChild(sourceBtn);
+        }
+        
+        log('✓ Source Data Explorer button added');
+        return true;
+    }
+
+    // ============= SETTINGS MODAL =============
+    let settingsModalOpen = false;
+    let settingsChanged = false;
+    
+    function createSettingsModal() {
+        // Remove existing modal if present
+        const existingModal = document.getElementById('wf-settings-modal');
+        if (existingModal) existingModal.remove();
+        
+        const modal = document.createElement('div');
+        modal.id = 'wf-settings-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--background);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            width: 400px;
+            max-height: 70vh;
+            overflow-y: auto;
+            z-index: 10000;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            display: none;
+        `;
+        
+        const modalContent = `
+            <div class="space-y-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 style="font-size: 18px; font-weight: 600;">WF Enhancer Settings</h2>
+                    <button id="wf-settings-close" style="
+                        width: 24px;
+                        height: 24px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        border-radius: 4px;
+                        border: none;
+                        background: transparent;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                    " onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='transparent'">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div style="space-y: 3px;">
+                    ${Object.entries(CONFIG).filter(([key]) => key !== 'VERSION').map(([key, value]) => {
+                        const label = key.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+                        return `
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                                <label style="font-size: 14px; flex: 1;">${label}</label>
+                                <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
+                                    <input type="checkbox" id="wf-setting-${key}" ${value ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;">
+                                    <span style="
+                                        position: absolute;
+                                        cursor: pointer;
+                                        top: 0; left: 0; right: 0; bottom: 0;
+                                        background-color: ${value ? 'var(--brand, #4f46e5)' : '#ccc'};
+                                        transition: 0.3s;
+                                        border-radius: 24px;
+                                    ">
+                                        <span style="
+                                            position: absolute;
+                                            content: '';
+                                            height: 18px;
+                                            width: 18px;
+                                            left: ${value ? '23px' : '3px'};
+                                            bottom: 3px;
+                                            background-color: white;
+                                            transition: 0.3s;
+                                            border-radius: 50%;
+                                        "></span>
+                                    </span>
+                                </label>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                
+                <div id="wf-settings-message" style="
+                    display: none;
+                    padding: 12px;
+                    background: var(--accent);
+                    border-radius: 6px;
+                    font-size: 13px;
+                    text-align: center;
+                    margin-top: 16px;
+                ">
+                    Settings changed. Please refresh the page for changes to take effect.
+                </div>
+                
+                <div style="font-size: 11px; color: var(--muted-foreground); text-align: center; margin-top: 16px;">
+                    WF Enhancer v${CONFIG.VERSION}
+                </div>
+            </div>
+        `;
+        
+        modal.innerHTML = modalContent;
+        document.body.appendChild(modal);
+        
+        // Add event listeners for toggles
+        Object.keys(CONFIG).filter(key => key !== 'VERSION').forEach(key => {
+            const checkbox = modal.querySelector(`#wf-setting-${key}`);
+            if (checkbox) {
+                checkbox.addEventListener('change', (e) => {
+                    const span = e.target.nextElementSibling;
+                    const innerSpan = span.querySelector('span');
+                    
+                    if (e.target.checked) {
+                        span.style.backgroundColor = 'var(--brand, #4f46e5)';
+                        innerSpan.style.left = '23px';
+                    } else {
+                        span.style.backgroundColor = '#ccc';
+                        innerSpan.style.left = '3px';
+                    }
+                    
+                    CONFIG[key] = e.target.checked;
+                    settingsChanged = true;
+                    document.getElementById('wf-settings-message').style.display = 'block';
+                });
+            }
+        });
+        
+        // Close button
+        modal.querySelector('#wf-settings-close').addEventListener('click', () => {
+            modal.style.display = 'none';
+            settingsModalOpen = false;
+        });
+        
+        // Click outside to close
+        document.addEventListener('click', (e) => {
+            if (settingsModalOpen && !modal.contains(e.target) && !e.target.closest('#wf-settings-btn')) {
+                modal.style.display = 'none';
+                settingsModalOpen = false;
+            }
+        });
+        
+        return modal;
+    }
+    
+    function addSettingsButton() {
+        // Check if button already exists
+        if (document.getElementById('wf-settings-btn')) return false;
+        
+        // Find the bug report button
+        const bugReportBtn = document.querySelector('body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > button');
+        if (!bugReportBtn) return false;
+        
+        // Create settings button with same styling as bug report button
+        const settingsBtn = document.createElement('button');
+        settingsBtn.id = 'wf-settings-btn';
+        settingsBtn.className = bugReportBtn.className;
+        
+        // Adjust position to be above the bug report button
+        settingsBtn.style.cssText = bugReportBtn.style.cssText || '';
+        settingsBtn.style.bottom = '136px'; // Position above bug report button (which is at bottom-20 = 80px)
+        
+        // Gear icon SVG
+        settingsBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="stroke-current size-5">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24M21 12h-6m-6 0H3"></path>
+            </svg>
+            <span class="sr-only">WF Enhancer Settings</span>
+        `;
+        
+        // Create modal if it doesn't exist
+        /*
+        let modal = document.getElementById('wf-settings-modal');
+        if (!modal) {
+            modal = createSettingsModal();
+        }
+        */
+        
+        // Add click handler
+        settingsBtn.addEventListener('click', () => {
+            settingsModalOpen = !settingsModalOpen;
+            modal.style.display = settingsModalOpen ? 'block' : 'none';
+        });
+        
+        // Insert into page (same parent as bug report button)
+        bugReportBtn.parentNode.insertBefore(settingsBtn, bugReportBtn);
+        
+        log('✓ Settings button added');
+        return true;
     }
 
     // ============= AUTO-CONFIRM RE-EXECUTE DIALOG =============
@@ -1369,7 +1748,10 @@
             setupBugReportExpand();
             addMiniExecuteButtons();
             addDuplicateToEndButtons();
+            cleanupOrphanedDuplicateButtons();
             autoConfirmReexecuteDialog();
+            addSourceDataExplorerButton();
+            addSettingsButton();
         });
 
         observer.observe(document.body, {
@@ -1396,13 +1778,34 @@
         console.log('[WF Enhancer] If you have any issues, please report them to the GitHub repository. :)');
 
         disableAutocorrectOnSearchInput();
-        disableAutocorrectOnTextareas();
+        //disableAutocorrectOnTextareas();
         initObserver();
 
         console.log('[WF Enhancer] ✓ Initialization complete');
     }
 
-    // Only run once, when document is idle (specified by @run-at)
-    init();
+    // Poll for page readiness since we're running at document-start
+    function waitForPageReady() {
+        const checkInterval = setInterval(() => {
+            // Check if document is ready and body exists
+            if (document.readyState === 'complete' || 
+                (document.readyState === 'interactive' && document.body)) {
+                clearInterval(checkInterval);
+                init();
+            }
+        }, 50); // Check every 50ms
+        
+        // Fallback timeout after 10 seconds
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            if (!initialized) {
+                log('⚠ Page ready timeout reached, initializing anyway');
+                init();
+            }
+        }, 10000);
+    }
+
+    // Start polling for page readiness
+    waitForPageReady();
 
 })();
