@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         [DEV] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0
+// @version      2.0.2
 // @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/work/problems/create*
@@ -21,7 +21,7 @@
         DEBUG: true, // Set to true for console logging
         DEBUG_NOTES: true, // Set to true for detailed notes logging
         AUTO_CONFIRM_REEXECUTE: true, // Automatically confirm re-execute dialogs
-        VERSION: '2.0.0',
+        VERSION: '2.0.2',
     };
 
     // ============= NETWORK INTERCEPTION =============
