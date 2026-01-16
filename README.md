@@ -12,6 +12,7 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 - Auto-confirm "Re-execute steps and invalidate results" modal (this behavior can currently be toggled in the CONFIG section of the userscript)
 - Added "Duplicate to End of Workflow" button (duplicates the current tool and puts it all the way at the end)
 - Added mini tool execution button (allows tool execution while collapsed)
+- Added source data explorer button. Use this to visually explore the source data. (Not guaranteed to work)
 
 #### Planned Features:
 - JSON explorer
@@ -26,5 +27,5 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 
 #### Known Bugs
 - Script does not activate on task page unless the page is refreshed
-- "Duplicate to end" button switches places with "duplicate" button and stops working (under investigation to find cause. Likely needs a mutation observer for the default tool bar.)
 - Duplicate to end button icon makes no sense
+- Autocorrect is disabled in the prompt field, which may not be desirable for all (will add a toggle for this)
