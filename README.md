@@ -29,4 +29,3 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 - Script does not activate on task page unless the page is refreshed
 - Duplicate to end button icon makes no sense
 - Autocorrect is disabled in the prompt field, which may not be desirable for all (will add a toggle for this)
-- Expore source data button does not show up on Chrome
