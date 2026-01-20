@@ -1,299 +1,745 @@
-// ============= favorites.js =============
-// Plugin with its own selectors - completely self-contained
+// ==UserScript==
+// @name         [MODULAR] Fleet Workflow Builder UX Enhancer
+// @namespace    http://tampermonkey.net/
+// @version      x.x.x
+// @description  UX improvements for workflow builder tool with archetype-based plugin loading
+// @author       You
+// @match        https://fleetai.com/work/problems/create*
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
+// @connect      raw.githubusercontent.com
+// @run-at       document-start
+// ==/UserScript==
 
-const plugin = {
-    id: 'favorites',
-    name: 'Tool Favorites',
-    description: 'Add favorite button to tools and sort favorites to top',
-    enabledByDefault: true,
-    phase: 'mutation',
-    initialState: { initialized: false },
+(function() {
+    'use strict';
+
+    // ============= CORE CONFIGURATION =============
+    const VERSION = 'x.x.1';
+    const STORAGE_PREFIX = 'wf-enhancer-';
     
-    // Plugin-specific selectors
-    selectors: {
-        toolsContainer: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
-        toolName: 'span'
-    },
-    
-    // Plugin-specific storage keys
-    storageKeys: {
-        favoriteTools: 'favorite-tools'
-    },
-    
-    init(state, context) {
-        // Add styles for favorites
-        const style = document.createElement('style');
-        style.textContent = `
-            .favorite-star {
-                cursor: pointer;
-                margin-left: auto;
-                transition: all 0.2s;
-                font-size: 18px;
-                opacity: 0.7;
-            }
-            .favorite-star:hover {
-                opacity: 1;
-                transform: scale(1.2);
-            }
-            .favorite-star.favorited {
-                color: gold;
-                opacity: 1;
-            }
-        `;
-        document.head.appendChild(style);
-        Logger.log('✓ Favorites styles injected');
-    },
-    
-    onMutation(state, context) {
-        const toolsContainer = document.querySelector(this.selectors.toolsContainer);
-        if (!toolsContainer) return;
+    // GitHub repository configuration
+    const GITHUB_CONFIG = {
+        owner: 'adastra1826',
+        repo: 'fleet-ux-improvements',
+        branch: 'v1',
+        pluginsPath: 'plugins', // folder containing plugin files
+        archetypesPath: 'archetypes.json' // archetypes configuration file
+    };
+
+    // ============= SHARED CONTEXT =============
+    const Context = {
+        source: null,
+        initialized: false,
+        currentArchetype: null,
+        getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
+    };
+
+    // ============= STORAGE MANAGER =============
+    const Storage = {
+        get(key, defaultValue) {
+            return GM_getValue(STORAGE_PREFIX + key, defaultValue);
+        },
+        set(key, value) {
+            GM_setValue(STORAGE_PREFIX + key, value);
+        },
+        getPluginEnabled(pluginId) {
+            const plugin = PluginManager.get(pluginId);
+            const defaultValue = plugin ? plugin.enabledByDefault : true;
+            return this.get(`plugin-${pluginId}-enabled`, defaultValue);
+        },
+        setPluginEnabled(pluginId, enabled) {
+            this.set(`plugin-${pluginId}-enabled`, enabled);
+        }
+    };
+
+    // ============= LOGGING =============
+    const Logger = {
+        _debugEnabled: null,
+        _verboseEnabled: null,
         
-        const favoriteTools = new Set(Storage.get(this.storageKeys.favoriteTools, []));
-        
-        // Add favorite buttons to all tools
-        const toolHeaders = toolsContainer.querySelectorAll(this.selectors.toolHeader);
-        toolHeaders.forEach(header => {
-            if (header.querySelector('.favorite-star')) return; // Already has star
-            
-            const toolName = header.querySelector(this.selectors.toolName)?.textContent;
-            if (!toolName) return;
-            
-            const star = document.createElement('span');
-            star.className = 'favorite-star';
-            star.innerHTML = favoriteTools.has(toolName) ? '⭐' : '☆';
-            if (favoriteTools.has(toolName)) {
-                star.classList.add('favorited');
+        isDebugEnabled() {
+            if (this._debugEnabled === null) {
+                this._debugEnabled = Storage.get('debug', true);
             }
+            return this._debugEnabled;
+        },
+        
+        isVerboseEnabled() {
+            if (this._verboseEnabled === null) {
+                this._verboseEnabled = Storage.get('verbose', false);
+            }
+            return this._verboseEnabled;
+        },
+        
+        setDebugEnabled(enabled) {
+            this._debugEnabled = enabled;
+            Storage.set('debug', enabled);
+        },
+        
+        setVerboseEnabled(enabled) {
+            this._verboseEnabled = enabled;
+            Storage.set('verbose', enabled);
+        },
+        
+        log(msg, ...args) {
+            if (this.isDebugEnabled()) {
+                console.log(`[Fleet Enhancer] ${msg}`, ...args);
+            }
+        },
+        
+        debug(msg, ...args) {
+            if (this.isVerboseEnabled()) {
+                console.debug(`[Fleet Enhancer] 🔍 ${msg}`, ...args);
+            }
+        },
+        
+        warn(msg, ...args) {
+            console.warn(`[Fleet Enhancer] ⚠️ ${msg}`, ...args);
+        },
+        
+        error(msg, ...args) {
+            console.error(`[Fleet Enhancer] ❌ ${msg}`, ...args);
+        }
+    };
+
+    // ============= ARCHETYPE MANAGER =============
+    const ArchetypeManager = {
+        archetypes: [],
+        currentArchetype: null,
+        
+        async loadArchetypes() {
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.archetypesPath}`;
             
-            star.onclick = (e) => {
-                e.stopPropagation();
-                if (favoriteTools.has(toolName)) {
-                    favoriteTools.delete(toolName);
-                    star.innerHTML = '☆';
-                    star.classList.remove('favorited');
-                } else {
-                    favoriteTools.add(toolName);
-                    star.innerHTML = '⭐';
-                    star.classList.add('favorited');
-                }
-                Storage.set(this.storageKeys.favoriteTools, Array.from(favoriteTools));
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: function(response) {
+                        if (response.status === 200) {
+                            try {
+                                const config = JSON.parse(response.responseText);
+                                ArchetypeManager.archetypes = config.archetypes || [];
+                                Logger.log(`✓ Loaded ${ArchetypeManager.archetypes.length} archetypes`);
+                                resolve(config);
+                            } catch (e) {
+                                Logger.error('Failed to parse archetypes config:', e);
+                                reject(e);
+                            }
+                        } else {
+                            Logger.error(`Failed to load archetypes: ${response.status}`);
+                            reject(new Error(`HTTP ${response.status}`));
+                        }
+                    },
+                    onerror: function(error) {
+                        Logger.error('Network error loading archetypes:', error);
+                        reject(error);
+                    }
+                });
+            });
+        },
+        
+        detectArchetype() {
+            // Wait for a reasonable time for key elements to load
+            return new Promise((resolve) => {
+                let attempts = 0;
+                const maxAttempts = 20;
+                const checkInterval = 500; // Check every 500ms
                 
-                // Re-sort tools
-                this.sortTools(toolsContainer, favoriteTools);
+                const checkForArchetype = () => {
+                    attempts++;
+                    
+                    // Try to match each archetype in order
+                    for (const archetype of this.archetypes) {
+                        Logger.debug(`Checking archetype: ${archetype.id}`);
+                        
+                        // Check if all required selectors are present
+                        const allSelectorsPresent = archetype.requiredSelectors.every(selector => {
+                            const exists = document.querySelector(selector) !== null;
+                            Logger.debug(`  Selector "${selector}": ${exists ? '✓' : '✗'}`);
+                            return exists;
+                        });
+                        
+                        if (allSelectorsPresent) {
+                            Logger.log(`✓ Detected archetype: ${archetype.id} - ${archetype.name}`);
+                            this.currentArchetype = archetype;
+                            Context.currentArchetype = archetype;
+                            resolve(archetype);
+                            return;
+                        }
+                    }
+                    
+                    // If no archetype matched and we haven't exceeded max attempts, try again
+                    if (attempts < maxAttempts) {
+                        Logger.debug(`No archetype matched yet. Attempt ${attempts}/${maxAttempts}`);
+                        setTimeout(checkForArchetype, checkInterval);
+                    } else {
+                        Logger.warn('No matching archetype found after maximum attempts');
+                        resolve(null);
+                    }
+                };
+                
+                // Start checking
+                checkForArchetype();
+            });
+        },
+        
+        getPluginsForCurrentArchetype() {
+            if (!this.currentArchetype) {
+                Logger.warn('No archetype detected, loading no plugins');
+                return [];
+            }
+            
+            return this.currentArchetype.plugins || [];
+        }
+    };
+
+    // ============= PLUGIN LOADER =============
+    const PluginLoader = {
+        async loadPlugin(filename) {
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${filename}`;
+            
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: function(response) {
+                        if (response.status === 200) {
+                            try {
+                                // Create a function that returns the plugin object
+                                const pluginFactory = new Function(
+                                    'PluginManager',
+                                    'Storage',
+                                    'Logger',
+                                    'Context',
+                                    response.responseText + '\n\n// Return the plugin for registration\nreturn plugin;'
+                                );
+                                
+                                // Execute and get the plugin
+                                const plugin = pluginFactory(
+                                    PluginManager,
+                                    Storage,
+                                    Logger,
+                                    Context
+                                );
+                                
+                                resolve(plugin);
+                            } catch (e) {
+                                Logger.error(`Failed to parse plugin ${filename}:`, e);
+                                reject(e);
+                            }
+                        } else {
+                            Logger.error(`Failed to load plugin ${filename}: ${response.status}`);
+                            reject(new Error(`HTTP ${response.status}`));
+                        }
+                    },
+                    onerror: function(error) {
+                        Logger.error(`Network error loading plugin ${filename}:`, error);
+                        reject(error);
+                    }
+                });
+            });
+        },
+        
+        async loadPluginsForArchetype(pluginList) {
+            if (!pluginList || pluginList.length === 0) {
+                Logger.log('No plugins to load for this archetype');
+                return;
+            }
+            
+            Logger.log(`Loading ${pluginList.length} plugins for archetype...`);
+            const loadPromises = [];
+            
+            for (const filename of pluginList) {
+                loadPromises.push(
+                    this.loadPlugin(filename)
+                        .then(plugin => {
+                            PluginManager.register(plugin);
+                            Logger.log(`✓ Loaded plugin: ${filename}`);
+                        })
+                        .catch(err => {
+                            Logger.error(`✗ Failed to load plugin: ${filename}`, err);
+                        })
+                );
+            }
+            
+            await Promise.allSettled(loadPromises);
+            Logger.log('Plugin loading complete');
+        }
+    };
+
+    // ============= SETTINGS UI MANAGER =============
+    const SettingsUI = {
+        modalOpen: false,
+        
+        createModal() {
+            const existingModal = document.getElementById('wf-settings-modal');
+            if (existingModal) existingModal.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'wf-settings-modal';
+            modal.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: var(--background, white);
+                border: 1px solid var(--border, #e5e5e5);
+                border-radius: 12px;
+                padding: 24px;
+                width: 500px;
+                max-height: 70vh;
+                overflow-y: auto;
+                z-index: 10000;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                display: none;
+            `;
+
+            const plugins = PluginManager.getAll();
+            const archetype = Context.currentArchetype;
+            
+            const pluginToggles = plugins.map(plugin => {
+                const isEnabled = PluginManager.isEnabled(plugin.id);
+                return `
+                    <div style="display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                            <label style="font-size: 15px; font-weight: 500; flex: 1; cursor: pointer;" for="wf-plugin-${plugin.id}">
+                                ${plugin.name || plugin.id}
+                            </label>
+                            <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
+                                <input type="checkbox" id="wf-plugin-${plugin.id}" data-plugin-id="${plugin.id}" ${isEnabled ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;">
+                                <span class="wf-toggle-slider" style="
+                                    position: absolute;
+                                    cursor: pointer;
+                                    top: 0; left: 0; right: 0; bottom: 0;
+                                    background-color: ${isEnabled ? 'var(--brand, #4f46e5)' : '#ccc'};
+                                    transition: 0.3s;
+                                    border-radius: 24px;
+                                ">
+                                    <span style="
+                                        position: absolute;
+                                        content: '';
+                                        height: 18px;
+                                        width: 18px;
+                                        left: ${isEnabled ? '23px' : '3px'};
+                                        bottom: 3px;
+                                        background-color: white;
+                                        transition: 0.3s;
+                                        border-radius: 50%;
+                                    "></span>
+                                </span>
+                            </label>
+                        </div>
+                        <div style="font-size: 13px; color: var(--muted-foreground, #666); margin-top: 4px;">
+                            ${plugin.description || 'No description available'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const modalContent = `
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 style="font-size: 18px; font-weight: 600;">WF Enhancer Settings</h2>
+                            <p style="font-size: 13px; color: var(--muted-foreground, #666); margin-top: 4px;">
+                                Archetype: <strong>${archetype ? archetype.name : 'Unknown'}</strong>
+                            </p>
+                        </div>
+                        <button id="wf-settings-close" style="
+                            width: 24px;
+                            height: 24px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            border-radius: 4px;
+                            border: none;
+                            background: transparent;
+                            cursor: pointer;
+                            transition: background 0.2s;
+                        " onmouseover="this.style.background='var(--accent, #f3f4f6)'" onmouseout="this.style.background='transparent'">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 6L6 18M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div style="border-bottom: 1px solid var(--border, #e5e5e5); margin-bottom: 16px; padding-bottom: 16px;">
+                        <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Loaded Plugins (${plugins.length})</h3>
+                        ${pluginToggles}
+                    </div>
+
+                    <div style="border-bottom: 1px solid var(--border, #e5e5e5); margin-bottom: 16px; padding-bottom: 16px;">
+                        <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Debug Options</h3>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="font-size: 14px; flex: 1;">Enable Debug Logging</label>
+                                <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
+                                    <input type="checkbox" id="wf-debug-enabled" ${Logger.isDebugEnabled() ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;">
+                                    <span class="wf-toggle-slider" style="
+                                        position: absolute;
+                                        cursor: pointer;
+                                        top: 0; left: 0; right: 0; bottom: 0;
+                                        background-color: ${Logger.isDebugEnabled() ? 'var(--brand, #4f46e5)' : '#ccc'};
+                                        transition: 0.3s;
+                                        border-radius: 24px;
+                                    ">
+                                        <span style="
+                                            position: absolute;
+                                            content: '';
+                                            height: 18px;
+                                            width: 18px;
+                                            left: ${Logger.isDebugEnabled() ? '23px' : '3px'};
+                                            bottom: 3px;
+                                            background-color: white;
+                                            transition: 0.3s;
+                                            border-radius: 50%;
+                                        "></span>
+                                    </span>
+                                </label>
+                            </div>
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <label style="font-size: 14px; flex: 1;">Enable Verbose Logging</label>
+                                <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
+                                    <input type="checkbox" id="wf-verbose-enabled" ${Logger.isVerboseEnabled() ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;">
+                                    <span class="wf-toggle-slider" style="
+                                        position: absolute;
+                                        cursor: pointer;
+                                        top: 0; left: 0; right: 0; bottom: 0;
+                                        background-color: ${Logger.isVerboseEnabled() ? 'var(--brand, #4f46e5)' : '#ccc'};
+                                        transition: 0.3s;
+                                        border-radius: 24px;
+                                    ">
+                                        <span style="
+                                            position: absolute;
+                                            content: '';
+                                            height: 18px;
+                                            width: 18px;
+                                            left: ${Logger.isVerboseEnabled() ? '23px' : '3px'};
+                                            bottom: 3px;
+                                            background-color: white;
+                                            transition: 0.3s;
+                                            border-radius: 50%;
+                                        "></span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="wf-settings-message" style="
+                        display: none;
+                        padding: 12px;
+                        background: var(--accent, #f3f4f6);
+                        border-radius: 6px;
+                        font-size: 13px;
+                        text-align: center;
+                        margin-top: 16px;
+                    ">
+                        Settings changed. Some changes may require a page refresh to take effect.
+                    </div>
+
+                    <div style="font-size: 11px; color: var(--muted-foreground, #666); text-align: center; margin-top: 16px;">
+                        WF Enhancer v${VERSION}
+                    </div>
+                </div>
+            `;
+
+            modal.innerHTML = modalContent;
+            document.body.appendChild(modal);
+
+            // Add event listeners for plugin toggles
+            plugins.forEach(plugin => {
+                const checkbox = modal.querySelector(`#wf-plugin-${plugin.id}`);
+                if (checkbox) {
+                    checkbox.addEventListener('change', (e) => {
+                        const span = e.target.nextElementSibling;
+                        const innerSpan = span.querySelector('span');
+                        const isChecked = e.target.checked;
+
+                        if (isChecked) {
+                            span.style.backgroundColor = 'var(--brand, #4f46e5)';
+                            innerSpan.style.left = '23px';
+                        } else {
+                            span.style.backgroundColor = '#ccc';
+                            innerSpan.style.left = '3px';
+                        }
+
+                        PluginManager.setEnabled(plugin.id, isChecked);
+                        document.getElementById('wf-settings-message').style.display = 'block';
+                    });
+                }
+            });
+
+            // Add debug toggle listeners
+            const debugToggle = modal.querySelector('#wf-debug-enabled');
+            if (debugToggle) {
+                debugToggle.addEventListener('change', (e) => {
+                    const span = e.target.nextElementSibling;
+                    const innerSpan = span.querySelector('span');
+                    const isChecked = e.target.checked;
+
+                    if (isChecked) {
+                        span.style.backgroundColor = 'var(--brand, #4f46e5)';
+                        innerSpan.style.left = '23px';
+                    } else {
+                        span.style.backgroundColor = '#ccc';
+                        innerSpan.style.left = '3px';
+                    }
+
+                    Logger.setDebugEnabled(isChecked);
+                });
+            }
+
+            const verboseToggle = modal.querySelector('#wf-verbose-enabled');
+            if (verboseToggle) {
+                verboseToggle.addEventListener('change', (e) => {
+                    const span = e.target.nextElementSibling;
+                    const innerSpan = span.querySelector('span');
+                    const isChecked = e.target.checked;
+
+                    if (isChecked) {
+                        span.style.backgroundColor = 'var(--brand, #4f46e5)';
+                        innerSpan.style.left = '23px';
+                    } else {
+                        span.style.backgroundColor = '#ccc';
+                        innerSpan.style.left = '3px';
+                    }
+
+                    Logger.setVerboseEnabled(isChecked);
+                });
+            }
+
+            // Close button
+            modal.querySelector('#wf-settings-close').addEventListener('click', () => {
+                modal.style.display = 'none';
+                this.modalOpen = false;
+            });
+
+            // Click outside to close
+            document.addEventListener('click', (e) => {
+                if (this.modalOpen && !modal.contains(e.target) && !e.target.closest('#wf-settings-btn')) {
+                    modal.style.display = 'none';
+                    this.modalOpen = false;
+                }
+            });
+
+            return modal;
+        },
+
+        addSettingsButton() {
+            if (document.getElementById('wf-settings-btn')) return false;
+
+            const settingsBtn = document.createElement('button');
+            settingsBtn.id = 'wf-settings-btn';
+            settingsBtn.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                width: 48px;
+                height: 48px;
+                border-radius: 50%;
+                background: var(--background, white);
+                border: 1px solid var(--border, #e5e5e5);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                z-index: 9999;
+                transition: all 0.2s;
+            `;
+
+            settingsBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24M21 12h-6m-6 0H3"></path>
+                </svg>
+            `;
+
+            settingsBtn.addEventListener('mouseenter', () => {
+                settingsBtn.style.transform = 'scale(1.1)';
+                settingsBtn.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+            });
+
+            settingsBtn.addEventListener('mouseleave', () => {
+                settingsBtn.style.transform = 'scale(1)';
+                settingsBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+            });
+
+            let modal = document.getElementById('wf-settings-modal');
+            if (!modal) {
+                modal = this.createModal();
+            }
+
+            settingsBtn.addEventListener('click', () => {
+                this.modalOpen = !this.modalOpen;
+                modal.style.display = this.modalOpen ? 'block' : 'none';
+            });
+
+            document.body.appendChild(settingsBtn);
+            Logger.log('✓ Settings button added');
+            return true;
+        }
+    };
+
+    // ============= PLUGIN MANAGER =============
+    const PluginManager = {
+        plugins: {},
+        
+        register(plugin) {
+            if (!plugin.id) {
+                Logger.error('Plugin must have an id');
+                return;
+            }
+            this.plugins[plugin.id] = {
+                ...plugin,
+                state: plugin.initialState ? { ...plugin.initialState } : {},
             };
-            
-            header.appendChild(star);
-        });
+            Logger.log(`Registered plugin: ${plugin.id}`);
+        },
         
-        // Initial sort
-        if (!state.initialized) {
-            this.sortTools(toolsContainer, favoriteTools);
-            state.initialized = true;
+        get(id) {
+            return this.plugins[id];
+        },
+        
+        getAll() {
+            return Object.values(this.plugins);
+        },
+        
+        isEnabled(id) {
+            return Storage.getPluginEnabled(id);
+        },
+        
+        setEnabled(id, enabled) {
+            Storage.setPluginEnabled(id, enabled);
+        },
+        
+        runEarlyPlugins() {
+            this.getAll()
+                .filter(p => p.phase === 'early' && this.isEnabled(p.id))
+                .forEach(plugin => {
+                    try {
+                        if (plugin.init) plugin.init(plugin.state, Context);
+                        Logger.log(`✓ Early plugin initialized: ${plugin.id}`);
+                    } catch (e) {
+                        Logger.error(`Error in early plugin ${plugin.id}:`, e);
+                    }
+                });
+        },
+        
+        runInitPlugins() {
+            this.getAll()
+                .filter(p => p.phase === 'init' && this.isEnabled(p.id))
+                .forEach(plugin => {
+                    try {
+                        if (plugin.init) plugin.init(plugin.state, Context);
+                        Logger.log(`✓ Init plugin initialized: ${plugin.id}`);
+                    } catch (e) {
+                        Logger.error(`Error in init plugin ${plugin.id}:`, e);
+                    }
+                });
+        },
+        
+        runMutationPlugins() {
+            this.getAll()
+                .filter(p => p.phase === 'mutation' && this.isEnabled(p.id))
+                .forEach(plugin => {
+                    try {
+                        if (plugin.onMutation) plugin.onMutation(plugin.state, Context);
+                    } catch (e) {
+                        Logger.error(`Error in mutation plugin ${plugin.id}:`, e);
+                    }
+                });
         }
-    },
-    
-    sortTools(container, favoriteTools) {
-        const tools = Array.from(container.children);
-        tools.sort((a, b) => {
-            const aName = a.querySelector(this.selectors.toolName)?.textContent;
-            const bName = b.querySelector(this.selectors.toolName)?.textContent;
-            const aFavorited = favoriteTools.has(aName);
-            const bFavorited = favoriteTools.has(bName);
-            
-            if (aFavorited && !bFavorited) return -1;
-            if (!aFavorited && bFavorited) return 1;
-            return 0;
-        });
+    };
+
+    // ============= MAIN INITIALIZATION =============
+    async function initialize() {
+        Logger.log(`Fleet Workflow Enhancer v${VERSION} starting...`);
         
-        tools.forEach(tool => container.appendChild(tool));
-        Logger.debug('Tools sorted by favorites');
-    }
-};
-
-// ============= notes.js =============
-// Another self-contained plugin
-
-const plugin = {
-    id: 'notes',
-    name: 'Workflow Notes',
-    description: 'Add a persistent notes section to the workflow builder',
-    enabledByDefault: true,
-    phase: 'init',
-    initialState: {},
-    
-    // Plugin-specific selectors
-    selectors: {
-        leftColumn: '#\\:r7\\:',
-        promptSectionParent: '#\\:r7\\: > div.flex-shrink-0 > div.p-3.border-b'
-    },
-    
-    // Plugin-specific storage keys
-    storageKeys: {
-        notes: 'notes',
-        notesHeight: 'notes-height'
-    },
-    
-    init(state, context) {
-        // Wait for the left column to exist
-        const waitForColumn = setInterval(() => {
-            const leftColumn = document.querySelector(this.selectors.leftColumn);
-            if (leftColumn) {
-                clearInterval(waitForColumn);
-                this.createNotesSection(leftColumn);
+        try {
+            // Step 1: Load archetype definitions
+            await ArchetypeManager.loadArchetypes();
+            
+            // Step 2: Wait for DOM to be ready enough to detect archetype
+            await waitForInitialDOM();
+            
+            // Step 3: Detect which archetype we're on
+            const archetype = await ArchetypeManager.detectArchetype();
+            
+            if (!archetype) {
+                Logger.warn('No matching archetype found. Script will not load plugins.');
+                return;
             }
-        }, 100);
-    },
-    
-    createNotesSection(leftColumn) {
-        const promptSection = document.querySelector(this.selectors.promptSectionParent);
-        if (!promptSection) {
-            Logger.warn('Could not find prompt section parent');
-            return;
-        }
-        
-        // Create notes container
-        const notesContainer = document.createElement('div');
-        notesContainer.className = 'p-3 border-b';
-        notesContainer.innerHTML = `
-            <div class="space-y-2">
-                <label class="text-sm font-medium">Notes</label>
-                <textarea 
-                    id="wf-notes-textarea"
-                    class="w-full min-h-[100px] p-2 text-sm border rounded-md resize-y"
-                    placeholder="Add your workflow notes here..."
-                    style="height: ${Storage.get(this.storageKeys.notesHeight, '150px')}"
-                >${Storage.get(this.storageKeys.notes, '')}</textarea>
-            </div>
-        `;
-        
-        // Insert after prompt section
-        promptSection.parentNode.insertBefore(notesContainer, promptSection.nextSibling);
-        
-        // Set up auto-save
-        const textarea = document.getElementById('wf-notes-textarea');
-        if (textarea) {
-            // Save notes on change
-            textarea.addEventListener('input', () => {
-                Storage.set(this.storageKeys.notes, textarea.value);
+            
+            // Step 4: Load plugins for the detected archetype
+            const pluginsToLoad = ArchetypeManager.getPluginsForCurrentArchetype();
+            await PluginLoader.loadPluginsForArchetype(pluginsToLoad);
+            
+            // Step 5: Run early plugins immediately
+            PluginManager.runEarlyPlugins();
+            
+            // Step 6: Set up DOM observer
+            const observer = new MutationObserver(() => {
+                if (Context.initialized) {
+                    PluginManager.runMutationPlugins();
+                }
             });
             
-            // Save height on resize
-            const resizeObserver = new ResizeObserver(() => {
-                Storage.set(this.storageKeys.notesHeight, textarea.style.height);
-            });
-            resizeObserver.observe(textarea);
-            
-            Logger.log('✓ Notes section created');
-        }
-    }
-};
-
-// ============= source-data-explorer.js =============
-// Plugin that uses context data from other plugins
-
-const plugin = {
-    id: 'sourceDataExplorer',
-    name: 'Source Data Explorer',
-    description: 'Add button to open source data in new tab',
-    enabledByDefault: true,
-    phase: 'mutation',
-    initialState: { buttonAdded: false },
-    
-    // Plugin-specific selectors
-    selectors: {
-        toolbar: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
-        workflowIndicator: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)'
-    },
-    
-    onMutation(state, context) {
-        if (state.buttonAdded) return;
-        
-        const toolbar = document.querySelector(this.selectors.toolbar);
-        const workflowIndicator = document.querySelector(this.selectors.workflowIndicator);
-        
-        if (toolbar && workflowIndicator && workflowIndicator.textContent.includes('Workflow')) {
-            this.addSourceButton(toolbar, context);
-            state.buttonAdded = true;
-        }
-    },
-    
-    addSourceButton(toolbar, context) {
-        const button = document.createElement('button');
-        button.className = 'ml-2 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors';
-        button.textContent = '📊 Source Data';
-        button.title = 'Open source data in new tab';
-        
-        button.onclick = () => {
-            if (context.source) {
-                window.open(context.source, '_blank');
-                Logger.log('Opening source data:', context.source);
+            // Step 7: Wait for full DOM ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', onDOMReady);
             } else {
-                alert('Source data URL not captured yet. Try refreshing the page and creating a workflow.');
-                Logger.warn('Source URL not available');
+                onDOMReady();
             }
-        };
-        
-        toolbar.appendChild(button);
-        Logger.log('✓ Source Data Explorer button added');
-    }
-};
-
-// ============= task-templates.js =============
-// Example plugin for m-taskCreation archetype
-
-const plugin = {
-    id: 'taskTemplates',
-    name: 'Task Templates',
-    description: 'Quick templates for common task types',
-    enabledByDefault: true,
-    phase: 'init',
-    initialState: {},
-    
-    // Plugin-specific selectors
-    selectors: {
-        taskDescription: 'textarea.task-description',
-        createButton: 'button.create-task'
-    },
-    
-    templates: [
-        { name: 'Bug Fix', template: 'Fix bug in [component]\n\nSteps to reproduce:\n1. \n2. \n\nExpected behavior:\n\nActual behavior:' },
-        { name: 'Feature Request', template: 'Implement [feature name]\n\nDescription:\n\nAcceptance Criteria:\n- [ ] \n- [ ] ' },
-        { name: 'Documentation', template: 'Document [component/feature]\n\nSections to cover:\n- Overview\n- Usage\n- Examples\n- API Reference' }
-    ],
-    
-    init(state, context) {
-        const waitForElements = setInterval(() => {
-            const taskDescription = document.querySelector(this.selectors.taskDescription);
-            const createButton = document.querySelector(this.selectors.createButton);
             
-            if (taskDescription && createButton) {
-                clearInterval(waitForElements);
-                this.addTemplateSelector(taskDescription);
+            function onDOMReady() {
+                Logger.log('DOM ready, initializing plugins...');
+                Context.initialized = true;
+                
+                // Run init plugins
+                PluginManager.runInitPlugins();
+                
+                // Start observing
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['style', 'class']
+                });
+                
+                // Run mutation plugins once for initial state
+                PluginManager.runMutationPlugins();
+                
+                // Add settings button after plugins are loaded
+                SettingsUI.addSettingsButton();
+                
+                Logger.log(`✓ Fleet Workflow Enhancer initialized for archetype: ${archetype.name}`);
             }
-        }, 100);
-    },
-    
-    addTemplateSelector(taskDescription) {
-        const selector = document.createElement('select');
-        selector.className = 'mb-2 p-2 border rounded';
-        selector.innerHTML = '<option value="">-- Select Template --</option>';
-        
-        this.templates.forEach(template => {
-            const option = document.createElement('option');
-            option.value = template.template;
-            option.textContent = template.name;
-            selector.appendChild(option);
-        });
-        
-        selector.onchange = () => {
-            if (selector.value) {
-                taskDescription.value = selector.value;
-                selector.value = '';
-            }
-        };
-        
-        taskDescription.parentNode.insertBefore(selector, taskDescription);
-        Logger.log('✓ Task templates selector added');
+        } catch (error) {
+            Logger.error('Failed to initialize:', error);
+        }
     }
-};
+    
+    // Helper function to wait for initial DOM elements
+    function waitForInitialDOM() {
+        return new Promise((resolve) => {
+            if (document.body) {
+                resolve();
+            } else {
+                const observer = new MutationObserver(() => {
+                    if (document.body) {
+                        observer.disconnect();
+                        resolve();
+                    }
+                });
+                observer.observe(document.documentElement, { childList: true, subtree: true });
+            }
+        });
+    }
+    
+    // Start the initialization
+    initialize();
+})();
