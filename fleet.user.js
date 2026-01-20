@@ -23,7 +23,7 @@
     const GITHUB_CONFIG = {
         owner: 'adastra1826',
         repo: 'fleet-ux-improvements',
-        branch: 'dev',
+        branch: 'v1',
         pluginsPath: 'plugins' // folder containing plugin files
     };
     
