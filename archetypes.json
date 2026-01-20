@@ -1,0 +1,73 @@
+{
+  "archetypes": [
+    {
+      "id": "k-taskCreation",
+      "name": "K-Type Task Creation Page",
+      "description": "Page for creating K-type workflow tasks",
+      "requiredSelectors": [
+        "#\\:r7\\:",
+        "#\\:rb\\:",
+        "input[placeholder=\"Search tools, descriptions, parameters...\"]",
+        "div.bg-background.w-full.flex.items-center.justify-between.border-b"
+      ],
+      "plugins": [
+        "network-interception.js",
+        "autocorrect-search.js",
+        "autocorrect-textareas.js",
+        "source-data-explorer.js",
+        "favorites.js",
+        "notes.js",
+        "layout-manager.js",
+        "settings-panel.js"
+      ]
+    },
+    {
+      "id": "m-taskCreation",
+      "name": "M-Type Task Creation Page",
+      "description": "Page for creating M-type workflow tasks",
+      "requiredSelectors": [
+        "div.workflow-container",
+        "button.create-task",
+        "textarea.task-description"
+      ],
+      "plugins": [
+        "network-interception.js",
+        "autocorrect-textareas.js",
+        "task-templates.js",
+        "quick-actions.js",
+        "settings-panel.js"
+      ]
+    },
+    {
+      "id": "dashboard",
+      "name": "Main Dashboard",
+      "description": "Main dashboard page",
+      "requiredSelectors": [
+        "div.dashboard-header",
+        "div.task-list",
+        "button.new-workflow"
+      ],
+      "plugins": [
+        "dashboard-enhancements.js",
+        "quick-filters.js",
+        "settings-panel.js"
+      ]
+    },
+    {
+      "id": "task-review",
+      "name": "Task Review Page",
+      "description": "Page for reviewing and approving tasks",
+      "requiredSelectors": [
+        "div.review-panel",
+        "button.approve-task",
+        "button.reject-task"
+      ],
+      "plugins": [
+        "review-shortcuts.js",
+        "bulk-actions.js",
+        "comment-templates.js",
+        "settings-panel.js"
+      ]
+    }
+  ]
+}

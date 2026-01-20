@@ -2,7 +2,7 @@
 // @name         [MODULAR] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
 // @version      x.x.x
-// @description  UX improvements for workflow builder tool with modular plugin system
+// @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       You
 // @match        https://fleetai.com/work/problems/create*
 // @grant        GM_getValue
@@ -16,7 +16,7 @@
     'use strict';
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = 'x.x.2';
+    const VERSION = 'x.x.1';
     const STORAGE_PREFIX = 'wf-enhancer-';
     
     // GitHub repository configuration
@@ -24,26 +24,15 @@
         owner: 'adastra1826',
         repo: 'fleet-ux-improvements',
         branch: 'v1',
-        pluginsPath: 'plugins' // folder containing plugin files
+        pluginsPath: 'plugins', // folder containing plugin files
+        archetypesPath: 'archetypes.json' // archetypes configuration file
     };
-    
-    // Plugin manifest - just list the filenames
-    const PLUGIN_MANIFEST = [
-        'network-interception.js',
-        'autocorrect-search.js',
-        'autocorrect-textareas.js',
-        'source-data-explorer.js',
-        'favorites.js',
-        'notes.js',
-        'layout-manager.js',
-        'settings-panel.js',
-        // Add more plugin files as needed
-    ];
 
     // ============= SHARED CONTEXT =============
     const Context = {
         source: null,
         initialized: false,
+        currentArchetype: null,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
     };
 
@@ -115,30 +104,95 @@
         }
     };
 
-    // ============= SELECTORS =============
-    const SELECTORS = {
-        toolbar: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
-        toolsContainer: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
-        promptTextareaContainer: '#\\:r7\\: > div.flex-shrink-0 > div > div.space-y-2.relative > div.relative > div',
-        promptSectionParent: '#\\:r7\\: > div.flex-shrink-0 > div.p-3.border-b',
-        workflowToolsIndicator: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)',
-        workflowToolsArea: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        mainContainer: 'body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > div.w-full.h-full.bg-background.rounded-sm.relative.flex.flex-col.min-w-0.overflow-hidden.border-\\[0\\.5px\\].shadow-\\[0_0_15px_rgba\\(0\\,0\\,0\\,0\\.05\\)\\] > div > div.flex-1.flex.overflow-hidden.min-h-0 > div',
-        leftColumn: '#\\:r7\\:',
-        workflowColumn: '#\\:rb\\:',
-        bugReportBtn: 'body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > button',
-    };
-
-    // ============= STORAGE KEYS =============
-    const STORAGE_KEYS = {
-        notes: 'notes',
-        notesHeight: 'notes-height',
-        col1Width: 'col1-width',
-        col2Width: 'col2-width',
-        col3Width: 'col3-width',
-        sectionSplitRatio: 'section-split-ratio',
-        favoriteTools: 'favorite-tools'
+    // ============= ARCHETYPE MANAGER =============
+    const ArchetypeManager = {
+        archetypes: [],
+        currentArchetype: null,
+        
+        async loadArchetypes() {
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.archetypesPath}`;
+            
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: function(response) {
+                        if (response.status === 200) {
+                            try {
+                                const config = JSON.parse(response.responseText);
+                                ArchetypeManager.archetypes = config.archetypes || [];
+                                Logger.log(`✓ Loaded ${ArchetypeManager.archetypes.length} archetypes`);
+                                resolve(config);
+                            } catch (e) {
+                                Logger.error('Failed to parse archetypes config:', e);
+                                reject(e);
+                            }
+                        } else {
+                            Logger.error(`Failed to load archetypes: ${response.status}`);
+                            reject(new Error(`HTTP ${response.status}`));
+                        }
+                    },
+                    onerror: function(error) {
+                        Logger.error('Network error loading archetypes:', error);
+                        reject(error);
+                    }
+                });
+            });
+        },
+        
+        detectArchetype() {
+            // Wait for a reasonable time for key elements to load
+            return new Promise((resolve) => {
+                let attempts = 0;
+                const maxAttempts = 20;
+                const checkInterval = 500; // Check every 500ms
+                
+                const checkForArchetype = () => {
+                    attempts++;
+                    
+                    // Try to match each archetype in order
+                    for (const archetype of this.archetypes) {
+                        Logger.debug(`Checking archetype: ${archetype.id}`);
+                        
+                        // Check if all required selectors are present
+                        const allSelectorsPresent = archetype.requiredSelectors.every(selector => {
+                            const exists = document.querySelector(selector) !== null;
+                            Logger.debug(`  Selector "${selector}": ${exists ? '✓' : '✗'}`);
+                            return exists;
+                        });
+                        
+                        if (allSelectorsPresent) {
+                            Logger.log(`✓ Detected archetype: ${archetype.id} - ${archetype.name}`);
+                            this.currentArchetype = archetype;
+                            Context.currentArchetype = archetype;
+                            resolve(archetype);
+                            return;
+                        }
+                    }
+                    
+                    // If no archetype matched and we haven't exceeded max attempts, try again
+                    if (attempts < maxAttempts) {
+                        Logger.debug(`No archetype matched yet. Attempt ${attempts}/${maxAttempts}`);
+                        setTimeout(checkForArchetype, checkInterval);
+                    } else {
+                        Logger.warn('No matching archetype found after maximum attempts');
+                        resolve(null);
+                    }
+                };
+                
+                // Start checking
+                checkForArchetype();
+            });
+        },
+        
+        getPluginsForCurrentArchetype() {
+            if (!this.currentArchetype) {
+                Logger.warn('No archetype detected, loading no plugins');
+                return [];
+            }
+            
+            return this.currentArchetype.plugins || [];
+        }
     };
 
     // ============= PLUGIN LOADER =============
@@ -159,8 +213,6 @@
                                     'Storage',
                                     'Logger',
                                     'Context',
-                                    'SELECTORS',
-                                    'STORAGE_KEYS',
                                     response.responseText + '\n\n// Return the plugin for registration\nreturn plugin;'
                                 );
                                 
@@ -169,9 +221,7 @@
                                     PluginManager,
                                     Storage,
                                     Logger,
-                                    Context,
-                                    SELECTORS,
-                                    STORAGE_KEYS
+                                    Context
                                 );
                                 
                                 resolve(plugin);
@@ -192,11 +242,16 @@
             });
         },
         
-        async loadAllPlugins() {
-            Logger.log('Loading plugins from GitHub...');
+        async loadPluginsForArchetype(pluginList) {
+            if (!pluginList || pluginList.length === 0) {
+                Logger.log('No plugins to load for this archetype');
+                return;
+            }
+            
+            Logger.log(`Loading ${pluginList.length} plugins for archetype...`);
             const loadPromises = [];
             
-            for (const filename of PLUGIN_MANIFEST) {
+            for (const filename of pluginList) {
                 loadPromises.push(
                     this.loadPlugin(filename)
                         .then(plugin => {
@@ -290,20 +345,35 @@
         Logger.log(`Fleet Workflow Enhancer v${VERSION} starting...`);
         
         try {
-            // Load all plugins from GitHub
-            await PluginLoader.loadAllPlugins();
+            // Step 1: Load archetype definitions
+            await ArchetypeManager.loadArchetypes();
             
-            // Run early plugins immediately
+            // Step 2: Wait for DOM to be ready enough to detect archetype
+            await waitForInitialDOM();
+            
+            // Step 3: Detect which archetype we're on
+            const archetype = await ArchetypeManager.detectArchetype();
+            
+            if (!archetype) {
+                Logger.warn('No matching archetype found. Script will not load plugins.');
+                return;
+            }
+            
+            // Step 4: Load plugins for the detected archetype
+            const pluginsToLoad = ArchetypeManager.getPluginsForCurrentArchetype();
+            await PluginLoader.loadPluginsForArchetype(pluginsToLoad);
+            
+            // Step 5: Run early plugins immediately
             PluginManager.runEarlyPlugins();
             
-            // Set up DOM observer
+            // Step 6: Set up DOM observer
             const observer = new MutationObserver(() => {
                 if (Context.initialized) {
                     PluginManager.runMutationPlugins();
                 }
             });
             
-            // Wait for DOM ready
+            // Step 7: Wait for full DOM ready
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', onDOMReady);
             } else {
@@ -328,11 +398,28 @@
                 // Run mutation plugins once for initial state
                 PluginManager.runMutationPlugins();
                 
-                Logger.log('✓ Fleet Workflow Enhancer initialized');
+                Logger.log(`✓ Fleet Workflow Enhancer initialized for archetype: ${archetype.name}`);
             }
         } catch (error) {
             Logger.error('Failed to initialize:', error);
         }
+    }
+    
+    // Helper function to wait for initial DOM elements
+    function waitForInitialDOM() {
+        return new Promise((resolve) => {
+            if (document.body) {
+                resolve();
+            } else {
+                const observer = new MutationObserver(() => {
+                    if (document.body) {
+                        observer.disconnect();
+                        resolve();
+                    }
+                });
+                observer.observe(document.documentElement, { childList: true, subtree: true });
+            }
+        });
     }
     
     // Start the initialization

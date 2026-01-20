@@ -1,4 +1,6 @@
 // ============= favorites.js =============
+// Plugin with its own selectors - completely self-contained
+
 const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
@@ -6,6 +8,18 @@ const plugin = {
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { initialized: false },
+    
+    // Plugin-specific selectors
+    selectors: {
+        toolsContainer: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
+        toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
+        toolName: 'span'
+    },
+    
+    // Plugin-specific storage keys
+    storageKeys: {
+        favoriteTools: 'favorite-tools'
+    },
     
     init(state, context) {
         // Add styles for favorites
@@ -28,20 +42,21 @@ const plugin = {
             }
         `;
         document.head.appendChild(style);
+        Logger.log('✓ Favorites styles injected');
     },
     
     onMutation(state, context) {
-        const toolsContainer = document.querySelector(SELECTORS.toolsContainer);
+        const toolsContainer = document.querySelector(this.selectors.toolsContainer);
         if (!toolsContainer) return;
         
-        const favoriteTools = new Set(Storage.get(STORAGE_KEYS.favoriteTools, []));
+        const favoriteTools = new Set(Storage.get(this.storageKeys.favoriteTools, []));
         
         // Add favorite buttons to all tools
-        const toolHeaders = toolsContainer.querySelectorAll(SELECTORS.toolHeader);
+        const toolHeaders = toolsContainer.querySelectorAll(this.selectors.toolHeader);
         toolHeaders.forEach(header => {
             if (header.querySelector('.favorite-star')) return; // Already has star
             
-            const toolName = header.querySelector('span')?.textContent;
+            const toolName = header.querySelector(this.selectors.toolName)?.textContent;
             if (!toolName) return;
             
             const star = document.createElement('span');
@@ -62,36 +77,36 @@ const plugin = {
                     star.innerHTML = '⭐';
                     star.classList.add('favorited');
                 }
-                Storage.set(STORAGE_KEYS.favoriteTools, Array.from(favoriteTools));
+                Storage.set(this.storageKeys.favoriteTools, Array.from(favoriteTools));
                 
                 // Re-sort tools
-                sortTools();
+                this.sortTools(toolsContainer, favoriteTools);
             };
             
             header.appendChild(star);
         });
         
-        // Sort tools function
-        function sortTools() {
-            const tools = Array.from(toolsContainer.children);
-            tools.sort((a, b) => {
-                const aName = a.querySelector('span')?.textContent;
-                const bName = b.querySelector('span')?.textContent;
-                const aFavorited = favoriteTools.has(aName);
-                const bFavorited = favoriteTools.has(bName);
-                
-                if (aFavorited && !bFavorited) return -1;
-                if (!aFavorited && bFavorited) return 1;
-                return 0;
-            });
-            
-            tools.forEach(tool => toolsContainer.appendChild(tool));
-        }
-        
         // Initial sort
         if (!state.initialized) {
-            sortTools();
+            this.sortTools(toolsContainer, favoriteTools);
             state.initialized = true;
         }
+    },
+    
+    sortTools(container, favoriteTools) {
+        const tools = Array.from(container.children);
+        tools.sort((a, b) => {
+            const aName = a.querySelector(this.selectors.toolName)?.textContent;
+            const bName = b.querySelector(this.selectors.toolName)?.textContent;
+            const aFavorited = favoriteTools.has(aName);
+            const bFavorited = favoriteTools.has(bName);
+            
+            if (aFavorited && !bFavorited) return -1;
+            if (!aFavorited && bFavorited) return 1;
+            return 0;
+        });
+        
+        tools.forEach(tool => container.appendChild(tool));
+        Logger.debug('Tools sorted by favorites');
     }
 };
