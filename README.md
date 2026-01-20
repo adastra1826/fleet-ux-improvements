@@ -24,6 +24,8 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 - Display current environment name/codename in the task creation page
 - Add "Execute to this step" button (execute all steps up to the current one)
 - Repository of all submitted prompts with custom notes area for each one
+- Collapseable side tray that contains the JSON output of all tool calls with output
+- Add prompt diff viewer for QA
 
 #### Known Bugs
 - Script does not activate on task page unless the page is refreshed
