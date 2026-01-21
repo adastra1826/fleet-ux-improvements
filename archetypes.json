@@ -5,7 +5,7 @@
       "id": "k-taskCreation",
       "name": "K-Type Task Creation Page",
       "description": "Page for creating K-type workflow tasks",
-      "urlPattern": "create-tool-use?*",
+      "urlPattern": "create-tool-use*",
       "disambiguationSelectors": [],
       "plugins": [
         "network-interception.js",
@@ -34,7 +34,7 @@
       "id": "dashboard",
       "name": "Main Dashboard",
       "description": "Main dashboard page",
-      "urlPattern": "create",
+      "urlPattern": "work/create",
       "disambiguationSelectors": [],
       "plugins": [
         "dashboard-enhancements.js",
