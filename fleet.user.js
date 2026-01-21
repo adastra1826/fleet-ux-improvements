@@ -5,7 +5,7 @@
 // @version      x.x.x
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       You
-// @match        https://fleetai.com/*
+// @match        https://website.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
@@ -20,18 +20,20 @@
     const VERSION = 'x.x.1';
     const STORAGE_PREFIX = 'wf-enhancer-';
     
+    // Base URL that matches the @match pattern (without trailing wildcard)
+    const BASE_URL = 'https://website.com/';
+    
     // GitHub repository configuration
     const GITHUB_CONFIG = {
         owner: 'adastra1826',
         repo: 'fleet-ux-improvements',
-        branch: 'v2',
+        branch: 'v1',
         pluginsPath: 'plugins',
-        corePath: 'core',           // folder for core plugins
+        corePath: 'core',
         archetypesPath: 'archetypes.json'
     };
     
-    // Core plugins that load on every page (regardless of archetype)
-    // These persist across navigation and are never cleaned up
+    // Core plugins that load on every page
     const CORE_PLUGINS = [
         'settings-ui.js'
     ];
@@ -42,11 +44,11 @@
         source: null,
         initialized: false,
         currentArchetype: null,
+        currentPath: null,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
     };
 
     // ============= CLEANUP REGISTRY =============
-    // Tracks resources that need cleanup on navigation (NOT used for core plugins)
     const CleanupRegistry = {
         _items: {
             intervals: [],
@@ -106,6 +108,109 @@
             this._items.elements = [];
             
             Logger.debug('Cleanup complete');
+        }
+    };
+
+    // ============= URL PATTERN MATCHER =============
+    const UrlMatcher = {
+        /**
+         * Extract the path portion after the base URL
+         * @param {string} fullUrl - The complete URL
+         * @returns {string} - The path after BASE_URL
+         */
+        getPathFromUrl(fullUrl) {
+            if (fullUrl.startsWith(BASE_URL)) {
+                // Remove base URL and any query string/hash
+                let path = fullUrl.slice(BASE_URL.length);
+                path = path.split('?')[0].split('#')[0];
+                // Remove trailing slash for consistent matching
+                if (path.endsWith('/') && path.length > 1) {
+                    path = path.slice(0, -1);
+                }
+                return path;
+            }
+            return '';
+        },
+        
+        /**
+         * Convert a URL pattern to a regex
+         * Supports:
+         *   - Exact match: "dashboard" matches only "dashboard"
+         *   - Wildcard segment: "tasks/*" matches "tasks/123" but not "tasks/123/edit"
+         *   - Wildcard suffix: "tasks*" matches "tasks", "tasks123", "tasks/anything"
+         *   - Combined: "tasks/*\/review" matches "tasks/123/review"
+         * 
+         * @param {string} pattern - The URL pattern
+         * @returns {RegExp} - Compiled regex
+         */
+        patternToRegex(pattern) {
+            // Escape special regex characters except *
+            let regexStr = pattern
+                .replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+            
+            // Handle wildcards:
+            // /* at segment boundaries = match one segment (no slashes)
+            // * at end or mid-word = match anything including slashes
+            
+            // First, handle /*/  (wildcard segment in middle)
+            regexStr = regexStr.replace(/\/\\\*\//g, '/[^/]+/');
+            
+            // Handle /* at end (wildcard segment at end, must have content)
+            regexStr = regexStr.replace(/\/\\\*$/g, '/[^/]+');
+            
+            // Handle trailing * (match anything including empty)
+            regexStr = regexStr.replace(/\\\*$/g, '.*');
+            
+            // Handle remaining * (mid-pattern wildcards)
+            regexStr = regexStr.replace(/\\\*/g, '.*');
+            
+            // Anchor the pattern
+            return new RegExp(`^${regexStr}$`);
+        },
+        
+        /**
+         * Test if a path matches a pattern
+         * @param {string} path - The current path
+         * @param {string} pattern - The URL pattern to test
+         * @returns {boolean}
+         */
+        matches(path, pattern) {
+            const regex = this.patternToRegex(pattern);
+            const result = regex.test(path);
+            Logger.debug(`URL match test: "${path}" vs "${pattern}" (${regex}) = ${result}`);
+            return result;
+        },
+        
+        /**
+         * Calculate specificity score for a pattern (more specific = higher score)
+         * Used to determine which archetype takes precedence
+         * @param {string} pattern - The URL pattern
+         * @returns {number}
+         */
+        getSpecificity(pattern) {
+            let score = 0;
+            
+            // More segments = more specific
+            const segments = pattern.split('/').filter(s => s.length > 0);
+            score += segments.length * 10;
+            
+            // Literal segments are more specific than wildcards
+            segments.forEach(seg => {
+                if (seg === '*') {
+                    score += 1; // Wildcard segment
+                } else if (seg.includes('*')) {
+                    score += 3; // Partial wildcard
+                } else {
+                    score += 5; // Literal segment
+                }
+            });
+            
+            // Patterns ending in * are less specific
+            if (pattern.endsWith('*')) {
+                score -= 2;
+            }
+            
+            return score;
         }
     };
 
@@ -282,46 +387,130 @@
             });
         },
         
+        /**
+         * Detect archetype based on URL pattern, with optional selector disambiguation
+         */
         detectArchetype() {
             return new Promise((resolve) => {
-                let attempts = 0;
-                const maxAttempts = 20;
-                const checkInterval = 500;
+                const currentUrl = window.location.href;
+                const currentPath = UrlMatcher.getPathFromUrl(currentUrl);
+                Context.currentPath = currentPath;
                 
-                const checkForArchetype = () => {
-                    attempts++;
-                    
-                    for (const archetype of this.archetypes) {
-                        Logger.debug(`Checking archetype: ${archetype.id}`);
-                        
-                        const allSelectorsPresent = archetype.requiredSelectors.every(selector => {
-                            const exists = document.querySelector(selector) !== null;
-                            Logger.debug(`  Selector "${selector}": ${exists ? '✓' : '✗'}`);
-                            return exists;
-                        });
-                        
-                        if (allSelectorsPresent) {
-                            Logger.log(`✓ Detected archetype: ${archetype.id} - ${archetype.name}`);
-                            this.currentArchetype = archetype;
-                            Context.currentArchetype = archetype;
-                            resolve(archetype);
-                            return;
-                        }
-                    }
-                    
-                    if (attempts < maxAttempts) {
-                        Logger.debug(`No archetype matched yet. Attempt ${attempts}/${maxAttempts}`);
-                        setTimeout(checkForArchetype, checkInterval);
-                    } else {
-                        Logger.warn('No matching archetype found after maximum attempts');
-                        this.currentArchetype = null;
-                        Context.currentArchetype = null;
-                        resolve(null);
-                    }
-                };
+                Logger.log(`Detecting archetype for path: "${currentPath}"`);
                 
-                checkForArchetype();
+                // Step 1: Find all archetypes whose URL pattern matches
+                const urlMatches = this.archetypes.filter(archetype => {
+                    if (!archetype.urlPattern) {
+                        Logger.debug(`Archetype ${archetype.id} has no urlPattern, skipping`);
+                        return false;
+                    }
+                    return UrlMatcher.matches(currentPath, archetype.urlPattern);
+                });
+                
+                Logger.debug(`URL pattern matches: ${urlMatches.map(a => a.id).join(', ') || 'none'}`);
+                
+                if (urlMatches.length === 0) {
+                    Logger.warn('No archetype matched the current URL');
+                    this.currentArchetype = null;
+                    Context.currentArchetype = null;
+                    resolve(null);
+                    return;
+                }
+                
+                // Step 2: If only one match, use it (no disambiguation needed)
+                if (urlMatches.length === 1) {
+                    const archetype = urlMatches[0];
+                    Logger.log(`✓ Single URL match: ${archetype.id} - ${archetype.name}`);
+                    this.currentArchetype = archetype;
+                    Context.currentArchetype = archetype;
+                    resolve(archetype);
+                    return;
+                }
+                
+                // Step 3: Multiple matches - sort by specificity first
+                urlMatches.sort((a, b) => {
+                    const specA = UrlMatcher.getSpecificity(a.urlPattern);
+                    const specB = UrlMatcher.getSpecificity(b.urlPattern);
+                    return specB - specA; // Higher specificity first
+                });
+                
+                Logger.debug(`Sorted by specificity: ${urlMatches.map(a => `${a.id}(${UrlMatcher.getSpecificity(a.urlPattern)})`).join(', ')}`);
+                
+                // Step 4: Check if disambiguation is needed
+                // If highest specificity archetype has no disambiguation selectors, use it
+                // Otherwise, try to disambiguate using selectors
+                const needsDisambiguation = urlMatches.some(a => 
+                    a.disambiguationSelectors && a.disambiguationSelectors.length > 0
+                );
+                
+                if (!needsDisambiguation) {
+                    // Use the most specific URL match
+                    const archetype = urlMatches[0];
+                    Logger.log(`✓ Most specific URL match: ${archetype.id} - ${archetype.name}`);
+                    this.currentArchetype = archetype;
+                    Context.currentArchetype = archetype;
+                    resolve(archetype);
+                    return;
+                }
+                
+                // Step 5: Disambiguation needed - wait for DOM and check selectors
+                Logger.debug('Multiple URL matches with disambiguation selectors, waiting for DOM...');
+                this._disambiguateWithSelectors(urlMatches, resolve);
             });
+        },
+        
+        /**
+         * Disambiguate between archetypes using DOM selectors
+         */
+        _disambiguateWithSelectors(candidates, resolve) {
+            let attempts = 0;
+            const maxAttempts = 20;
+            const checkInterval = 250;
+            
+            const checkSelectors = () => {
+                attempts++;
+                
+                // Check each candidate's disambiguation selectors
+                for (const archetype of candidates) {
+                    const selectors = archetype.disambiguationSelectors || [];
+                    
+                    // If no selectors, this archetype can't be confirmed via DOM
+                    if (selectors.length === 0) {
+                        continue;
+                    }
+                    
+                    // Check if ALL disambiguation selectors are present
+                    const allPresent = selectors.every(selector => {
+                        const exists = document.querySelector(selector) !== null;
+                        Logger.debug(`  [${archetype.id}] Selector "${selector}": ${exists ? '✓' : '✗'}`);
+                        return exists;
+                    });
+                    
+                    if (allPresent) {
+                        Logger.log(`✓ Disambiguated to: ${archetype.id} - ${archetype.name}`);
+                        this.currentArchetype = archetype;
+                        Context.currentArchetype = archetype;
+                        resolve(archetype);
+                        return;
+                    }
+                }
+                
+                // No disambiguation match yet
+                if (attempts < maxAttempts) {
+                    Logger.debug(`Disambiguation attempt ${attempts}/${maxAttempts}, retrying...`);
+                    setTimeout(checkSelectors, checkInterval);
+                } else {
+                    // Fallback to most specific URL match
+                    const fallback = candidates[0];
+                    Logger.warn(`Disambiguation failed after ${maxAttempts} attempts, falling back to: ${fallback.id}`);
+                    this.currentArchetype = fallback;
+                    Context.currentArchetype = fallback;
+                    resolve(fallback);
+                }
+            };
+            
+            // Start checking
+            checkSelectors();
         },
         
         getPluginsForCurrentArchetype() {
@@ -488,7 +677,6 @@
             Storage.setPluginEnabled(id, enabled);
         },
         
-        // Clean up archetype plugins only (not core)
         cleanupArchetypePlugins() {
             this.getArchetypePlugins().forEach(plugin => {
                 try {
@@ -503,7 +691,6 @@
             });
         },
         
-        // Remove archetype plugins from registry (for full reload)
         clearArchetypePlugins() {
             this.cleanupArchetypePlugins();
             const archetypePluginIds = this.getArchetypePlugins().map(p => p.id);
@@ -577,7 +764,6 @@
         await PluginLoader.loadCorePlugins();
         corePluginsLoaded = true;
         
-        // Wait for body before initializing core plugins that need DOM
         await waitForBody();
         PluginManager.runCorePlugins();
     }
@@ -592,7 +778,7 @@
             // Wait for DOM
             await waitForBody();
             
-            // Detect archetype
+            // Detect archetype using URL + optional disambiguation
             const archetype = await ArchetypeManager.detectArchetype();
             
             if (!archetype) {
@@ -629,7 +815,7 @@
             // Run mutation plugins once for initial state
             PluginManager.runMutationPlugins();
             
-            Logger.log(`✓ Initialized for archetype: ${archetype.name}`);
+            Logger.log(`✓ Initialized for archetype: ${archetype.name} (path: "${Context.currentPath}")`);
         } catch (error) {
             Logger.error('Failed to initialize:', error);
         }
@@ -643,7 +829,7 @@
         PluginManager.cleanupArchetypePlugins();
         CleanupRegistry.cleanup();
         
-        // Clear archetype plugins so they can be reloaded for new page
+        // Clear archetype plugins
         PluginManager.clearArchetypePlugins();
         
         // Small delay to let SPA finish its DOM updates
@@ -680,10 +866,10 @@
         // Wait for body
         await waitForBody();
         
-        // Load and initialize core plugins (once, persists across navigation)
+        // Load and initialize core plugins
         await initializeCorePlugins();
         
-        // Initialize archetype-specific plugins for current page
+        // Initialize archetype-specific plugins
         await initializeForPage();
     }
     

@@ -1,15 +1,12 @@
+
 {
   "archetypes": [
     {
       "id": "k-taskCreation",
       "name": "K-Type Task Creation Page",
       "description": "Page for creating K-type workflow tasks",
-      "requiredSelectors": [
-        "#\\:r7\\:",
-        "#\\:rb\\:",
-        "input[placeholder=\"Search tools, descriptions, parameters...\"]",
-        "div.bg-background.w-full.flex.items-center.justify-between.border-b"
-      ],
+      "urlPattern": "workflows/k-type/create",
+      "disambiguationSelectors": [],
       "plugins": [
         "network-interception.js",
         "autocorrect-search.js",
@@ -25,11 +22,8 @@
       "id": "m-taskCreation",
       "name": "M-Type Task Creation Page",
       "description": "Page for creating M-type workflow tasks",
-      "requiredSelectors": [
-        "div.workflow-container",
-        "button.create-task",
-        "textarea.task-description"
-      ],
+      "urlPattern": "workflows/m-type/create",
+      "disambiguationSelectors": [],
       "plugins": [
         "network-interception.js",
         "autocorrect-textareas.js",
@@ -42,11 +36,8 @@
       "id": "dashboard",
       "name": "Main Dashboard",
       "description": "Main dashboard page",
-      "requiredSelectors": [
-        "div.dashboard-header",
-        "div.task-list",
-        "button.new-workflow"
-      ],
+      "urlPattern": "dashboard",
+      "disambiguationSelectors": [],
       "plugins": [
         "dashboard-enhancements.js",
         "quick-filters.js",
@@ -57,15 +48,42 @@
       "id": "task-review",
       "name": "Task Review Page",
       "description": "Page for reviewing and approving tasks",
-      "requiredSelectors": [
-        "div.review-panel",
-        "button.approve-task",
-        "button.reject-task"
-      ],
+      "urlPattern": "tasks/*/review",
+      "disambiguationSelectors": [],
       "plugins": [
         "review-shortcuts.js",
         "bulk-actions.js",
         "comment-templates.js",
+        "settings-panel.js"
+      ]
+    },
+    {
+      "id": "task-detail-editing",
+      "name": "Task Detail Page (Editing Mode)",
+      "description": "Task detail page when in editing mode - uses disambiguation",
+      "urlPattern": "tasks/*",
+      "disambiguationSelectors": [
+        "button.save-changes",
+        "form.task-edit-form"
+      ],
+      "plugins": [
+        "task-editor.js",
+        "autosave.js",
+        "settings-panel.js"
+      ]
+    },
+    {
+      "id": "task-detail-viewing",
+      "name": "Task Detail Page (Viewing Mode)",
+      "description": "Task detail page when in viewing mode - uses disambiguation",
+      "urlPattern": "tasks/*",
+      "disambiguationSelectors": [
+        "div.task-readonly",
+        "button.edit-task"
+      ],
+      "plugins": [
+        "task-viewer.js",
+        "export-tools.js",
         "settings-panel.js"
       ]
     }
