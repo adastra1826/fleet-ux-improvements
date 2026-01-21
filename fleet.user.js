@@ -21,7 +21,7 @@
     const STORAGE_PREFIX = 'wf-enhancer-';
     
     // Base URL that matches the @match pattern (without trailing wildcard)
-    const BASE_URL = 'https://website.com/';
+    const BASE_URL = 'https://fleetai.com/';
     
     // GitHub repository configuration
     const GITHUB_CONFIG = {
