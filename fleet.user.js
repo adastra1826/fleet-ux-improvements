@@ -5,7 +5,7 @@
 // @version      x.x.x
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       You
-// @match        https://website.com/*
+// @match        https://fleetai.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
