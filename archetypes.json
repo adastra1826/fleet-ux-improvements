@@ -5,7 +5,7 @@
       "id": "k-taskCreation",
       "name": "K-Type Task Creation Page",
       "description": "Page for creating K-type workflow tasks",
-      "urlPattern": "workflows/k-type/create",
+      "urlPattern": "create-tool-use?*",
       "disambiguationSelectors": [],
       "plugins": [
         "network-interception.js",
@@ -14,8 +14,7 @@
         "source-data-explorer.js",
         "favorites.js",
         "notes.js",
-        "layout-manager.js",
-        "settings-panel.js"
+        "layout-manager.js"
       ]
     },
     {
@@ -28,63 +27,31 @@
         "network-interception.js",
         "autocorrect-textareas.js",
         "task-templates.js",
-        "quick-actions.js",
-        "settings-panel.js"
+        "quick-actions.js"
       ]
     },
     {
       "id": "dashboard",
       "name": "Main Dashboard",
       "description": "Main dashboard page",
-      "urlPattern": "dashboard",
+      "urlPattern": "create",
       "disambiguationSelectors": [],
       "plugins": [
         "dashboard-enhancements.js",
         "quick-filters.js",
-        "settings-panel.js"
+        "dummy-module.js"
       ]
     },
     {
       "id": "task-review",
       "name": "Task Review Page",
       "description": "Page for reviewing and approving tasks",
-      "urlPattern": "tasks/*/review",
+      "urlPattern": "qa-tool-use/*",
       "disambiguationSelectors": [],
       "plugins": [
         "review-shortcuts.js",
         "bulk-actions.js",
-        "comment-templates.js",
-        "settings-panel.js"
-      ]
-    },
-    {
-      "id": "task-detail-editing",
-      "name": "Task Detail Page (Editing Mode)",
-      "description": "Task detail page when in editing mode - uses disambiguation",
-      "urlPattern": "tasks/*",
-      "disambiguationSelectors": [
-        "button.save-changes",
-        "form.task-edit-form"
-      ],
-      "plugins": [
-        "task-editor.js",
-        "autosave.js",
-        "settings-panel.js"
-      ]
-    },
-    {
-      "id": "task-detail-viewing",
-      "name": "Task Detail Page (Viewing Mode)",
-      "description": "Task detail page when in viewing mode - uses disambiguation",
-      "urlPattern": "tasks/*",
-      "disambiguationSelectors": [
-        "div.task-readonly",
-        "button.edit-task"
-      ],
-      "plugins": [
-        "task-viewer.js",
-        "export-tools.js",
-        "settings-panel.js"
+        "comment-templates.js"
       ]
     }
   ]
