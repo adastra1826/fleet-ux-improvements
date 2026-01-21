@@ -5,7 +5,7 @@
       "id": "k-taskCreation",
       "name": "K-Type Task Creation Page",
       "description": "Page for creating K-type workflow tasks",
-      "urlPattern": "create-tool-use*",
+      "urlPattern": "work/problems/create-tool-use*",
       "disambiguationSelectors": [],
       "plugins": [
         "network-interception.js",
@@ -46,7 +46,7 @@
       "id": "task-review",
       "name": "Task Review Page",
       "description": "Page for reviewing and approving tasks",
-      "urlPattern": "qa-tool-use/*",
+      "urlPattern": "work/problems/qa-tool-use/*",
       "disambiguationSelectors": [],
       "plugins": [
         "review-shortcuts.js",
