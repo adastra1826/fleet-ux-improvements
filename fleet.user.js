@@ -26,11 +26,19 @@
         repo: 'fleet-ux-improvements',
         branch: 'v2',
         pluginsPath: 'plugins',
+        corePath: 'core',           // folder for core plugins
         archetypesPath: 'archetypes.json'
     };
+    
+    // Core plugins that load on every page (regardless of archetype)
+    // These persist across navigation and are never cleaned up
+    const CORE_PLUGINS = [
+        'settings-ui.js'
+    ];
 
     // ============= SHARED CONTEXT =============
     const Context = {
+        version: VERSION,
         source: null,
         initialized: false,
         currentArchetype: null,
@@ -38,14 +46,14 @@
     };
 
     // ============= CLEANUP REGISTRY =============
-    // Tracks all resources that need cleanup on navigation
+    // Tracks resources that need cleanup on navigation (NOT used for core plugins)
     const CleanupRegistry = {
         _items: {
             intervals: [],
             timeouts: [],
             observers: [],
-            eventListeners: [],  // { target, event, handler, options }
-            elements: [],        // DOM elements we've added
+            eventListeners: [],
+            elements: [],
         },
         
         registerInterval(id) {
@@ -76,25 +84,20 @@
         cleanup() {
             Logger.debug('Running cleanup...');
             
-            // Clear intervals
             this._items.intervals.forEach(id => clearInterval(id));
             this._items.intervals = [];
             
-            // Clear timeouts
             this._items.timeouts.forEach(id => clearTimeout(id));
             this._items.timeouts = [];
             
-            // Disconnect observers
             this._items.observers.forEach(obs => obs.disconnect());
             this._items.observers = [];
             
-            // Remove event listeners
             this._items.eventListeners.forEach(({ target, event, handler, options }) => {
                 target.removeEventListener(event, handler, options);
             });
             this._items.eventListeners = [];
             
-            // Remove DOM elements
             this._items.elements.forEach(el => {
                 if (el && el.parentNode) {
                     el.parentNode.removeChild(el);
@@ -116,25 +119,21 @@
             if (this._initialized) return;
             this._initialized = true;
             
-            // Store original methods
             const originalPushState = history.pushState;
             const originalReplaceState = history.replaceState;
             const self = this;
             
-            // Override pushState
             history.pushState = function(state, title, url) {
                 originalPushState.apply(this, arguments);
                 self._handleNavigation('pushState', url);
             };
             
-            // Override replaceState
             history.replaceState = function(state, title, url) {
                 originalReplaceState.apply(this, arguments);
                 self._handleNavigation('replaceState', url);
             };
             
-            // Listen for back/forward navigation
-            window.addEventListener('popstate', (event) => {
+            window.addEventListener('popstate', () => {
                 this._handleNavigation('popstate');
             });
             
@@ -144,7 +143,6 @@
         _handleNavigation(method, url) {
             const newUrl = window.location.href;
             
-            // Only trigger if URL actually changed
             if (newUrl === this._lastUrl) {
                 Logger.debug(`Navigation method called (${method}) but URL unchanged`);
                 return;
@@ -155,7 +153,6 @@
             
             Logger.log(`Navigation detected [${method}]: ${previousUrl} → ${newUrl}`);
             
-            // Execute all registered callbacks
             this._onNavigateCallbacks.forEach(callback => {
                 try {
                     callback(newUrl, previousUrl);
@@ -184,7 +181,7 @@
         },
         getPluginEnabled(pluginId) {
             const plugin = PluginManager.get(pluginId);
-            const defaultValue = plugin ? plugin.enabledByDefault : true;
+            const defaultValue = plugin ? (plugin.enabledByDefault !== false) : true;
             return this.get(`plugin-${pluginId}-enabled`, defaultValue);
         },
         setPluginEnabled(pluginId, enabled) {
@@ -249,7 +246,6 @@
         _archetypesLoaded: false,
         
         async loadArchetypes() {
-            // Only load from GitHub once per page lifecycle
             if (this._archetypesLoaded) {
                 Logger.debug('Archetypes already loaded, skipping fetch');
                 return { archetypes: this.archetypes };
@@ -330,7 +326,6 @@
         
         getPluginsForCurrentArchetype() {
             if (!this.currentArchetype) {
-                Logger.warn('No archetype detected, loading no plugins');
                 return [];
             }
             return this.currentArchetype.plugins || [];
@@ -339,11 +334,9 @@
 
     // ============= PLUGIN LOADER =============
     const PluginLoader = {
-        _loadedPluginFiles: new Set(), // Track which files we've already fetched
+        _loadedPluginFiles: new Set(),
         
-        async loadPlugin(filename) {
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${filename}`;
-            
+        async loadPluginFromUrl(url, filename) {
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
@@ -387,18 +380,47 @@
             });
         },
         
+        async loadCorePlugin(filename) {
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/${filename}`;
+            return this.loadPluginFromUrl(url, filename);
+        },
+        
+        async loadArchetypePlugin(filename) {
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${filename}`;
+            return this.loadPluginFromUrl(url, filename);
+        },
+        
+        async loadCorePlugins() {
+            if (CORE_PLUGINS.length === 0) {
+                Logger.debug('No core plugins configured');
+                return;
+            }
+            
+            Logger.log(`Loading ${CORE_PLUGINS.length} core plugin(s)...`);
+            
+            for (const filename of CORE_PLUGINS) {
+                try {
+                    const plugin = await this.loadCorePlugin(filename);
+                    plugin._sourceFile = filename;
+                    plugin._isCore = true;
+                    PluginManager.register(plugin);
+                    Logger.log(`✓ Loaded core plugin: ${filename}`);
+                } catch (err) {
+                    Logger.error(`✗ Failed to load core plugin: ${filename}`, err);
+                }
+            }
+        },
+        
         async loadPluginsForArchetype(pluginList) {
             if (!pluginList || pluginList.length === 0) {
                 Logger.log('No plugins to load for this archetype');
                 return;
             }
             
-            Logger.log(`Loading ${pluginList.length} plugins for archetype...`);
+            Logger.log(`Loading ${pluginList.length} archetype plugin(s)...`);
             const loadPromises = [];
             
             for (const filename of pluginList) {
-                // Check if plugin is already registered (from a previous archetype)
-                // If so, we can reuse it without fetching again
                 const existingPlugins = PluginManager.getAll();
                 const alreadyLoaded = existingPlugins.some(p => p._sourceFile === filename);
                 
@@ -408,9 +430,10 @@
                 }
                 
                 loadPromises.push(
-                    this.loadPlugin(filename)
+                    this.loadArchetypePlugin(filename)
                         .then(plugin => {
-                            plugin._sourceFile = filename; // Track source for deduplication
+                            plugin._sourceFile = filename;
+                            plugin._isCore = false;
                             PluginManager.register(plugin);
                             Logger.log(`✓ Loaded plugin: ${filename}`);
                         })
@@ -421,170 +444,7 @@
             }
             
             await Promise.allSettled(loadPromises);
-            Logger.log('Plugin loading complete');
-        }
-    };
-
-    // ============= SETTINGS UI MANAGER =============
-    const SettingsUI = {
-        modalOpen: false,
-        
-        createModal() {
-            const existingModal = document.getElementById('wf-settings-modal');
-            if (existingModal) existingModal.remove();
-
-            const modal = document.createElement('div');
-            modal.id = 'wf-settings-modal';
-            modal.style.cssText = `
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                background: var(--background, white);
-                border: 1px solid var(--border, #e5e5e5);
-                border-radius: 12px;
-                padding: 24px;
-                width: 500px;
-                max-height: 70vh;
-                overflow-y: auto;
-                z-index: 10000;
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-                display: none;
-            `;
-
-            // Register for cleanup
-            CleanupRegistry.registerElement(modal);
-
-            const plugins = PluginManager.getAll();
-            const archetype = Context.currentArchetype;
-            
-            const pluginToggles = plugins.map(plugin => {
-                const isEnabled = PluginManager.isEnabled(plugin.id);
-                return `
-                    <div style="display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 12px;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                            <label style="font-size: 15px; font-weight: 500; flex: 1; cursor: pointer;" for="wf-plugin-${plugin.id}">
-                                ${plugin.name || plugin.id}
-                            </label>
-                            <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
-                                <input type="checkbox" id="wf-plugin-${plugin.id}" data-plugin-id="${plugin.id}" ${isEnabled ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;">
-                                <span class="wf-toggle-slider" style="
-                                    position: absolute;
-                                    cursor: pointer;
-                                    top: 0; left: 0; right: 0; bottom: 0;
-                                    background-color: ${isEnabled ? 'var(--brand, #4f46e5)' : '#ccc'};
-                                    transition: 0.3s;
-                                    border-radius: 24px;
-                                ">
-                                    <span style="
-                                        position: absolute;
-                                        content: '';
-                                        height: 18px;
-                                        width: 18px;
-                                        left: ${isEnabled ? '23px' : '3px'};
-                                        bottom: 3px;
-                                        background-color: white;
-                                        transition: 0.3s;
-                                        border-radius: 50%;
-                                    "></span>
-                                </span>
-                            </label>
-                        </div>
-                        <div style="font-size: 13px; color: var(--muted-foreground, #666); margin-top: 4px;">
-                            ${plugin.description || 'No description available'}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            modal.innerHTML = `
-                <div class="space-y-4">
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <h2 style="font-size: 18px; font-weight: 600;">WF Enhancer Settings</h2>
-                            <p style="font-size: 13px; color: var(--muted-foreground, #666); margin-top: 4px;">
-                                Archetype: <strong>${archetype ? archetype.name : 'Unknown'}</strong>
-                            </p>
-                        </div>
-                        <button id="wf-settings-close" style="
-                            width: 24px; height: 24px;
-                            display: flex; align-items: center; justify-content: center;
-                            border-radius: 4px; border: none; background: transparent; cursor: pointer;
-                        ">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M18 6L6 18M6 6l12 12"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <div style="border-bottom: 1px solid var(--border, #e5e5e5); margin-bottom: 16px; padding-bottom: 16px;">
-                        <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Loaded Plugins (${plugins.length})</h3>
-                        ${pluginToggles || '<p style="color: #666; font-size: 13px;">No plugins loaded for this page.</p>'}
-                    </div>
-                    <div style="font-size: 11px; color: var(--muted-foreground, #666); text-align: center; margin-top: 16px;">
-                        WF Enhancer v${VERSION}
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-
-            // Event listeners (using CleanupRegistry for document-level ones)
-            modal.querySelector('#wf-settings-close').addEventListener('click', () => {
-                modal.style.display = 'none';
-                this.modalOpen = false;
-            });
-
-            // Close on outside click
-            const outsideClickHandler = (e) => {
-                if (this.modalOpen && !modal.contains(e.target) && !e.target.closest('#wf-settings-btn')) {
-                    modal.style.display = 'none';
-                    this.modalOpen = false;
-                }
-            };
-            CleanupRegistry.registerEventListener(document, 'click', outsideClickHandler);
-
-            return modal;
-        },
-
-        addSettingsButton() {
-            if (document.getElementById('wf-settings-btn')) return false;
-
-            const settingsBtn = document.createElement('button');
-            settingsBtn.id = 'wf-settings-btn';
-            settingsBtn.style.cssText = `
-                position: fixed; bottom: 20px; left: 20px;
-                width: 48px; height: 48px; border-radius: 50%;
-                background: var(--background, white);
-                border: 1px solid var(--border, #e5e5e5);
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-                display: flex; align-items: center; justify-content: center;
-                cursor: pointer; z-index: 9999;
-            `;
-            settingsBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24M21 12h-6m-6 0H3"></path>
-                </svg>
-            `;
-
-            // Register for cleanup
-            CleanupRegistry.registerElement(settingsBtn);
-
-            let modal = this.createModal();
-
-            settingsBtn.addEventListener('click', () => {
-                this.modalOpen = !this.modalOpen;
-                modal.style.display = this.modalOpen ? 'block' : 'none';
-            });
-
-            document.body.appendChild(settingsBtn);
-            Logger.log('✓ Settings button added');
-            return true;
-        },
-        
-        // Reset state on navigation
-        reset() {
-            this.modalOpen = false;
+            Logger.log('Archetype plugin loading complete');
         }
     };
 
@@ -601,7 +461,7 @@
                 ...plugin,
                 state: plugin.initialState ? { ...plugin.initialState } : {},
             };
-            Logger.log(`Registered plugin: ${plugin.id}`);
+            Logger.debug(`Registered plugin: ${plugin.id}`);
         },
         
         get(id) {
@@ -612,6 +472,14 @@
             return Object.values(this.plugins);
         },
         
+        getCorePlugins() {
+            return this.getAll().filter(p => p._isCore === true);
+        },
+        
+        getArchetypePlugins() {
+            return this.getAll().filter(p => p._isCore !== true);
+        },
+        
         isEnabled(id) {
             return Storage.getPluginEnabled(id);
         },
@@ -620,15 +488,14 @@
             Storage.setPluginEnabled(id, enabled);
         },
         
-        // NEW: Run cleanup/destroy on all plugins
-        cleanupAllPlugins() {
-            this.getAll().forEach(plugin => {
+        // Clean up archetype plugins only (not core)
+        cleanupArchetypePlugins() {
+            this.getArchetypePlugins().forEach(plugin => {
                 try {
                     if (plugin.destroy) {
                         plugin.destroy(plugin.state, Context);
                         Logger.debug(`✓ Destroyed plugin: ${plugin.id}`);
                     }
-                    // Reset plugin state
                     plugin.state = plugin.initialState ? { ...plugin.initialState } : {};
                 } catch (e) {
                     Logger.error(`Error destroying plugin ${plugin.id}:`, e);
@@ -636,14 +503,30 @@
             });
         },
         
-        // NEW: Clear all plugins (for complete re-init if needed)
-        clearAllPlugins() {
-            this.cleanupAllPlugins();
-            this.plugins = {};
+        // Remove archetype plugins from registry (for full reload)
+        clearArchetypePlugins() {
+            this.cleanupArchetypePlugins();
+            const archetypePluginIds = this.getArchetypePlugins().map(p => p.id);
+            archetypePluginIds.forEach(id => {
+                delete this.plugins[id];
+            });
+        },
+        
+        runCorePlugins() {
+            this.getCorePlugins()
+                .filter(p => this.isEnabled(p.id))
+                .forEach(plugin => {
+                    try {
+                        if (plugin.init) plugin.init(plugin.state, Context);
+                        Logger.log(`✓ Core plugin initialized: ${plugin.id}`);
+                    } catch (e) {
+                        Logger.error(`Error in core plugin ${plugin.id}:`, e);
+                    }
+                });
         },
         
         runEarlyPlugins() {
-            this.getAll()
+            this.getArchetypePlugins()
                 .filter(p => p.phase === 'early' && this.isEnabled(p.id))
                 .forEach(plugin => {
                     try {
@@ -656,7 +539,7 @@
         },
         
         runInitPlugins() {
-            this.getAll()
+            this.getArchetypePlugins()
                 .filter(p => p.phase === 'init' && this.isEnabled(p.id))
                 .forEach(plugin => {
                     try {
@@ -669,7 +552,7 @@
         },
         
         runMutationPlugins() {
-            this.getAll()
+            this.getArchetypePlugins()
                 .filter(p => p.phase === 'mutation' && this.isEnabled(p.id))
                 .forEach(plugin => {
                     try {
@@ -682,36 +565,49 @@
     };
 
     // ============= MAIN INITIALIZATION =============
-    let mainObserver = null; // Keep reference to disconnect on navigation
+    let mainObserver = null;
+    let corePluginsLoaded = false;
+    
+    async function initializeCorePlugins() {
+        if (corePluginsLoaded) {
+            Logger.debug('Core plugins already loaded');
+            return;
+        }
+        
+        await PluginLoader.loadCorePlugins();
+        corePluginsLoaded = true;
+        
+        // Wait for body before initializing core plugins that need DOM
+        await waitForBody();
+        PluginManager.runCorePlugins();
+    }
     
     async function initializeForPage() {
         Logger.log('Initializing for current page...');
         
         try {
-            // Step 1: Load archetype definitions (cached after first load)
+            // Load archetype definitions (cached after first load)
             await ArchetypeManager.loadArchetypes();
             
-            // Step 2: Wait for DOM to be ready enough to detect archetype
+            // Wait for DOM
             await waitForBody();
             
-            // Step 3: Detect which archetype we're on
+            // Detect archetype
             const archetype = await ArchetypeManager.detectArchetype();
             
             if (!archetype) {
-                Logger.warn('No matching archetype found. Script will not load plugins for this page.');
-                // Still add settings button so user can see status
-                SettingsUI.addSettingsButton();
+                Logger.warn('No matching archetype found. No archetype plugins will load.');
                 return;
             }
             
-            // Step 4: Load plugins for the detected archetype
+            // Load archetype-specific plugins
             const pluginsToLoad = ArchetypeManager.getPluginsForCurrentArchetype();
             await PluginLoader.loadPluginsForArchetype(pluginsToLoad);
             
-            // Step 5: Run early plugins immediately
+            // Run early plugins
             PluginManager.runEarlyPlugins();
             
-            // Step 6: Set up DOM observer
+            // Set up DOM observer
             mainObserver = new MutationObserver(() => {
                 if (Context.initialized) {
                     PluginManager.runMutationPlugins();
@@ -719,7 +615,7 @@
             });
             CleanupRegistry.registerObserver(mainObserver);
             
-            // Step 7: Run init plugins and start observing
+            // Run init plugins and start observing
             Context.initialized = true;
             PluginManager.runInitPlugins();
             
@@ -733,10 +629,7 @@
             // Run mutation plugins once for initial state
             PluginManager.runMutationPlugins();
             
-            // Add settings button
-            SettingsUI.addSettingsButton();
-            
-            Logger.log(`✓ Fleet Workflow Enhancer initialized for archetype: ${archetype.name}`);
+            Logger.log(`✓ Initialized for archetype: ${archetype.name}`);
         } catch (error) {
             Logger.error('Failed to initialize:', error);
         }
@@ -745,22 +638,18 @@
     async function handleNavigation(newUrl, previousUrl) {
         Logger.log('Handling navigation, reinitializing...');
         
-        // Step 1: Clean up everything from previous page
+        // Clean up archetype plugins and resources
         Context.initialized = false;
-        
-        // Run plugin destroy hooks
-        PluginManager.cleanupAllPlugins();
-        
-        // Clean up registered resources (observers, listeners, elements, timers)
+        PluginManager.cleanupArchetypePlugins();
         CleanupRegistry.cleanup();
         
-        // Reset UI state
-        SettingsUI.reset();
+        // Clear archetype plugins so they can be reloaded for new page
+        PluginManager.clearArchetypePlugins();
         
-        // Step 2: Small delay to let SPA finish its DOM updates
+        // Small delay to let SPA finish its DOM updates
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Step 3: Reinitialize for the new page
+        // Reinitialize for the new page
         await initializeForPage();
     }
     
@@ -784,17 +673,17 @@
     async function startup() {
         Logger.log(`Fleet Workflow Enhancer v${VERSION} starting...`);
         
-        // Initialize navigation monitoring FIRST (before anything else)
-        // This ensures we catch all navigations
+        // Initialize navigation monitoring FIRST
         NavigationManager.init();
-        
-        // Register navigation handler
         NavigationManager.onNavigate(handleNavigation);
         
-        // Wait for body to exist
+        // Wait for body
         await waitForBody();
         
-        // Initialize for the current page
+        // Load and initialize core plugins (once, persists across navigation)
+        await initializeCorePlugins();
+        
+        // Initialize archetype-specific plugins for current page
         await initializeForPage();
     }
     
