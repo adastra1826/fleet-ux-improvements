@@ -27,7 +27,7 @@
     const GITHUB_CONFIG = {
         owner: 'adastra1826',
         repo: 'fleet-ux-improvements',
-        branch: 'v1',
+        branch: 'dev',
         pluginsPath: 'plugins',
         corePath: 'core',
         archetypesPath: 'archetypes.json'
@@ -35,7 +35,7 @@
     
     // Core plugins that load on every page
     const CORE_PLUGINS = [
-        'settings-ui.js'
+        { name: 'settings-ui.js', version: '1.0' }
     ];
 
     // ============= SHARED CONTEXT =============
@@ -727,9 +727,22 @@
             }
         },
         
-        async loadCorePlugin(filename) {
+        /**
+         * Load a core plugin with versioning support
+         * @param {string} filename - Plugin filename
+         * @param {string} version - Required version
+         * @returns {Promise<Object>} - Plugin object
+         */
+        async loadCorePlugin(filename, version) {
+            const sourcePath = `core/${filename}`;
             const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/${filename}`;
-            return this.loadPluginFromUrl(url, filename);
+            
+            // Load plugin code with versioning
+            const code = await this.loadPluginCode(filename, sourcePath, version, url);
+            const plugin = this.parsePluginCode(code, filename);
+            this._loadedPluginFiles.add(sourcePath);
+            Logger.debug(`Loaded core plugin ${filename} v${version}`);
+            return plugin;
         },
         
         /**
@@ -794,15 +807,30 @@
             
             Logger.log(`Loading ${CORE_PLUGINS.length} core plugin(s)...`);
             
-            for (const filename of CORE_PLUGINS) {
+            for (const pluginDef of CORE_PLUGINS) {
+                // Support both old format (string) and new format (object with name and version)
+                let filename, version;
+                if (typeof pluginDef === 'string') {
+                    // Backward compatibility: if just a string, default to version 1.0
+                    filename = pluginDef;
+                    version = '1.0';
+                } else if (pluginDef && pluginDef.name && pluginDef.version) {
+                    filename = pluginDef.name;
+                    version = pluginDef.version;
+                } else {
+                    Logger.error('Invalid core plugin definition:', pluginDef);
+                    continue;
+                }
+                
                 try {
-                    const plugin = await this.loadCorePlugin(filename);
+                    const plugin = await this.loadCorePlugin(filename, version);
                     plugin._sourceFile = filename;
+                    plugin._version = version;
                     plugin._isCore = true;
                     PluginManager.register(plugin);
-                    Logger.log(`✓ Loaded core plugin: ${filename}`);
+                    Logger.log(`✓ Loaded core plugin: ${filename} v${version}`);
                 } catch (err) {
-                    Logger.error(`✗ Failed to load core plugin: ${filename}`, err);
+                    Logger.error(`✗ Failed to load core plugin: ${filename} v${version}`, err);
                 }
             }
         },
