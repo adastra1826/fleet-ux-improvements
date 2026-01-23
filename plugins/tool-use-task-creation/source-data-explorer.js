@@ -5,6 +5,7 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button to open source data in new tab',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonAdded: false },

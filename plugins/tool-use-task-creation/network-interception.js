@@ -3,6 +3,7 @@ const plugin = {
     id: 'networkInterception',
     name: 'Network Interception',
     description: 'Captures MCP request URLs for the Source Data Explorer button',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'early',
     initialState: {},

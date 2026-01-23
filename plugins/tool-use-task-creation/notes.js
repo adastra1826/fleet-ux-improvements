@@ -5,6 +5,7 @@ const plugin = {
     id: 'notes',
     name: 'Workflow Notes',
     description: 'Add a persistent notes section to the workflow builder',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'init',
     initialState: {},

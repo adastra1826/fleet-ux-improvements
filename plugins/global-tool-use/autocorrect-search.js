@@ -3,6 +3,7 @@ const plugin = {
     id: 'autocorrectSearch',
     name: 'Disable Search Autocorrect',
     description: 'Disables autocorrect/autocomplete on the search input',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false },

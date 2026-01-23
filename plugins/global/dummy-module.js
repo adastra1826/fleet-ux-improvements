@@ -5,6 +5,7 @@
 const plugin = {
     // ========== REQUIRED ==========
     id: 'dummy-module',
+    _version: '1.0',
     
     // ========== RECOMMENDED ==========
     name: 'Dummy Module',

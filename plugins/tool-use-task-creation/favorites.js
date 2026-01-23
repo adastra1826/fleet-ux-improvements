@@ -5,6 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite button to tools and sort favorites to top',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { initialized: false },

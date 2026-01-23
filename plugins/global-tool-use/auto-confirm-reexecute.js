@@ -3,6 +3,7 @@ const plugin = {
     id: 'autoConfirmReexecute',
     name: 'Auto-Confirm Re-execute',
     description: 'Automatically confirms re-execute dialogs',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: {},

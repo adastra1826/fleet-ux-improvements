@@ -3,6 +3,7 @@ const plugin = {
     id: 'miniExecuteButtons',
     name: 'Mini Execute Buttons',
     description: 'Adds quick execute buttons to collapsed workflow tools',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: {},

@@ -3,6 +3,7 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false },

@@ -3,6 +3,7 @@ const plugin = {
     id: 'layoutManager',
     name: 'Three Column Layout',
     description: 'Transforms the layout into three resizable columns with integrated notes',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false },

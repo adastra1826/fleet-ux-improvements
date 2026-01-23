@@ -3,6 +3,7 @@ const plugin = {
     id: 'duplicateToEnd',
     name: 'Duplicate to End',
     description: 'Adds button to duplicate a tool and move it to the end of the workflow',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: {},

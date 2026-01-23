@@ -3,6 +3,7 @@ const plugin = {
     id: 'removeTextareaGradient',
     name: 'Remove Textarea Gradient',
     description: 'Removes the gradient fade overlay from the prompt textarea',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { removed: false },

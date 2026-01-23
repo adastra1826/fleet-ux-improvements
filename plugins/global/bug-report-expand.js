@@ -3,6 +3,7 @@ const plugin = {
     id: 'bugReportExpand',
     name: 'Bug Report Expand',
     description: 'Makes bug report cards expandable to see full text',
+    _version: '1.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: {},
