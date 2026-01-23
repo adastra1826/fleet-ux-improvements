@@ -18,7 +18,12 @@ const plugin = {
     
     onMutation(state, context) {
         const toolbar = document.querySelector(this.selectors.toolbar);
-        if (!toolbar) return;
+        if (!toolbar) {
+            if (Logger.isVerboseEnabled()) {
+                Logger.debug('expandCollapseButtons: toolbar not found, selector:', this.selectors.toolbar);
+            }
+            return;
+        }
 
         const toolsIndicator = document.querySelector(this.selectors.workflowToolsIndicator);
         const hasTools = toolsIndicator && toolsIndicator.children.length > 0;

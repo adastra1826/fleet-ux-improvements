@@ -28,7 +28,12 @@ const plugin = {
         if (state.applied) return;
 
         const mainContainer = document.querySelector(this.selectors.mainContainer);
-        if (!mainContainer) return;
+        if (!mainContainer) {
+            if (Logger.isVerboseEnabled()) {
+                Logger.debug('layoutManager: mainContainer not found, selector:', this.selectors.mainContainer);
+            }
+            return;
+        }
 
         if (document.getElementById('wf-three-col-layout')) {
             state.applied = true;
@@ -39,7 +44,14 @@ const plugin = {
         const existingDivider = mainContainer.querySelector('div[data-resize-handle]');
         const workflowColumn = document.querySelector(this.selectors.workflowColumn);
 
-        if (!leftColumn || !workflowColumn || !existingDivider) return;
+        if (!leftColumn || !workflowColumn || !existingDivider) {
+            if (Logger.isVerboseEnabled()) {
+                Logger.debug(`layoutManager: Missing elements - leftColumn: ${!!leftColumn}, workflowColumn: ${!!workflowColumn}, divider: ${!!existingDivider}`);
+                if (!leftColumn) Logger.debug('  leftColumn selector:', this.selectors.leftColumn);
+                if (!workflowColumn) Logger.debug('  workflowColumn selector:', this.selectors.workflowColumn);
+            }
+            return;
+        }
 
         const topSection = leftColumn.querySelector('div.flex-shrink-0');
         const bottomSection = leftColumn.querySelector('div.flex-1.min-h-0.overflow-hidden');
