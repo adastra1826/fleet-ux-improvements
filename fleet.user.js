@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [MODULAR] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      x.x.x
+// @version      2.x.x
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       You
 // @match        https://fleetai.com/*
@@ -17,7 +17,7 @@
     'use strict';
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = 'x.x.1';
+    const VERSION = '2.x.x';
     const STORAGE_PREFIX = 'wf-enhancer-';
     
     // Base URL that matches the @match pattern (without trailing wildcard)
