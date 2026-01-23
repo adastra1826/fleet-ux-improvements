@@ -552,11 +552,11 @@
         _loadedPluginFiles: new Set(),
         
         /**
-         * Load plugin code from URL and cache it
+         * Load plugin code from URL (but don't cache yet - version verification happens first)
          * @param {string} url - URL to fetch plugin from
          * @param {string} filename - Plugin filename
          * @param {string} sourcePath - Full path for caching (e.g., "global/plugin.js")
-         * @param {string} version - Expected version
+         * @param {string} version - Expected version (for logging only - actual verification happens later)
          * @returns {Promise<{code: string, version: string}>}
          */
         async loadPluginFromUrl(url, filename, sourcePath, version) {
@@ -567,12 +567,8 @@
                     onload: (response) => {
                         if (response.status === 200) {
                             const code = response.responseText;
-                            const pluginKey = Storage.getPluginKey(filename, sourcePath);
-                            
-                            // Cache the plugin with its version
-                            Storage.setCachedPlugin(pluginKey, code, version);
-                            Logger.debug(`Cached plugin ${filename} v${version}`);
-                            
+                            // Don't cache here - version verification happens in loadPluginCode
+                            // Cache will be set after verification passes
                             resolve({ code, version });
                         } else {
                             Logger.error(`Failed to load plugin ${filename}: ${response.status}`);
@@ -588,7 +584,20 @@
         },
         
         /**
-         * Load plugin code from cache or URL
+         * Cache plugin code with version (called after version verification)
+         * @param {string} filename - Plugin filename
+         * @param {string} sourcePath - Full path for caching
+         * @param {string} code - Plugin code
+         * @param {string} version - Version to cache with
+         */
+        cachePluginCode(filename, sourcePath, code, version) {
+            const pluginKey = Storage.getPluginKey(filename, sourcePath);
+            Storage.setCachedPlugin(pluginKey, code, version);
+            Logger.debug(`Cached plugin ${filename} v${version}`);
+        },
+        
+        /**
+         * Load plugin code from cache or URL, with version verification
          * @param {string} filename - Plugin filename
          * @param {string} sourcePath - Full path for caching
          * @param {string} version - Required version
@@ -610,7 +619,67 @@
             
             try {
                 const result = await this.loadPluginFromUrl(url, filename, sourcePath, version);
-                return result.code;
+                const fetchedCode = result.code;
+                
+                // Verify the fetched version by parsing the plugin
+                // This protects against GitHub CDN cache delays
+                try {
+                    const parsedPlugin = this.parsePluginCode(fetchedCode, filename);
+                    const fetchedVersion = parsedPlugin._version || parsedPlugin.version || null;
+                    
+                    if (fetchedVersion && fetchedVersion !== version) {
+                        // Fetched version doesn't match expected - GitHub CDN might be stale
+                        Logger.warn(`⚠ Fetched ${filename} has version v${fetchedVersion}, expected v${version}. GitHub CDN may be stale.`);
+                        
+                        // Don't cache the wrong version - use old cache if available
+                        if (cached) {
+                            Logger.warn(`Using cached v${cached.version} instead of stale fetched version`);
+                            Context.outdatedPlugins.push({
+                                filename: filename,
+                                sourcePath: sourcePath,
+                                cachedVersion: cached.version,
+                                requiredVersion: version,
+                                fetchedVersion: fetchedVersion
+                            });
+                            return cached.code;
+                        } else {
+                            // No cache available, but version is wrong - use it anyway with warning
+                            Logger.warn(`No cache available, using fetched version v${fetchedVersion} (expected v${version})`);
+                            Context.outdatedPlugins.push({
+                                filename: filename,
+                                sourcePath: sourcePath,
+                                cachedVersion: null,
+                                requiredVersion: version,
+                                fetchedVersion: fetchedVersion
+                            });
+                            // Don't cache the wrong version
+                            return fetchedCode;
+                        }
+                    }
+                    
+                    // Version matches (or plugin doesn't declare version) - cache it
+                    this.cachePluginCode(filename, sourcePath, fetchedCode, version);
+                    Logger.debug(`Verified and cached ${filename} v${version}`);
+                    return fetchedCode;
+                    
+                } catch (parseError) {
+                    // Failed to parse - this shouldn't happen, but if it does, use old cache
+                    Logger.error(`Failed to parse fetched plugin ${filename} for version verification:`, parseError);
+                    if (cached) {
+                        Logger.warn(`Using cached v${cached.version} due to parse error`);
+                        Context.outdatedPlugins.push({
+                            filename: filename,
+                            sourcePath: sourcePath,
+                            cachedVersion: cached.version,
+                            requiredVersion: version,
+                            parseError: true
+                        });
+                        return cached.code;
+                    }
+                    // No cache, but can't parse - rethrow
+                    throw parseError;
+                }
+                
             } catch (error) {
                 // Fetch failed - use cached version if available (with warning)
                 if (cached) {

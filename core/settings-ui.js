@@ -351,9 +351,17 @@ const plugin = {
     },
     
     _createOutdatedPluginsHTML(outdatedPlugins) {
-        const pluginsList = outdatedPlugins.map(p => 
-            `<li style="margin: 4px 0;"><strong>${p.filename}</strong>: cached v${p.cachedVersion}, required v${p.requiredVersion}</li>`
-        ).join('');
+        const pluginsList = outdatedPlugins.map(p => {
+            let versionInfo = '';
+            if (p.fetchedVersion) {
+                versionInfo = `cached v${p.cachedVersion || 'none'}, fetched v${p.fetchedVersion}, required v${p.requiredVersion}`;
+            } else if (p.parseError) {
+                versionInfo = `cached v${p.cachedVersion}, parse error during verification, required v${p.requiredVersion}`;
+            } else {
+                versionInfo = `cached v${p.cachedVersion || 'none'}, required v${p.requiredVersion}`;
+            }
+            return `<li style="margin: 4px 0;"><strong>${p.filename}</strong>: ${versionInfo}</li>`;
+        }).join('');
         
         return `
             <div style="
@@ -374,8 +382,9 @@ const plugin = {
                     </h3>
                 </div>
                 <p style="font-size: 12px; color: #92400e; margin: 8px 0 0 0; line-height: 1.5;">
-                    The following plugins could not be updated and are using cached versions. 
-                    This may happen if you're offline or the server is unavailable.
+                    The following plugins could not be updated to the required version. 
+                    This may happen if you're offline, the server is unavailable, or GitHub's CDN 
+                    hasn't updated yet (can take up to 5 minutes after a change).
                 </p>
                 <ul style="font-size: 12px; color: #92400e; margin: 8px 0 0 0; padding-left: 20px;">
                     ${pluginsList}
