@@ -2,8 +2,8 @@
 {
   "archetypes": [
     {
-      "id": "k-taskCreation",
-      "name": "K-Type Task Creation Page",
+      "id": "tool-use-task-creation",
+      "name": "Tool Use Task Creation Page",
       "description": "Page for creating K-type workflow tasks",
       "urlPattern": "work/problems/create-tool-use*",
       "disambiguationSelectors": [],
@@ -18,8 +18,8 @@
       ]
     },
     {
-      "id": "m-taskCreation",
-      "name": "M-Type Task Creation Page",
+      "id": "comp-use-task-creation",
+      "name": "Computer Use Task Creation Page",
       "description": "Page for creating M-type workflow tasks",
       "urlPattern": "workflows/m-type/create",
       "disambiguationSelectors": [],
@@ -43,7 +43,7 @@
       ]
     },
     {
-      "id": "task-review",
+      "id": "qa-tool-use",
       "name": "Task Review Page",
       "description": "Page for reviewing and approving tasks",
       "urlPattern": "work/problems/qa-tool-use/*",
