@@ -45,6 +45,7 @@
         initialized: false,
         currentArchetype: null,
         currentPath: null,
+        outdatedPlugins: [], // Track plugins that couldn't be updated
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
     };
 
@@ -291,6 +292,31 @@
         },
         setPluginEnabled(pluginId, enabled) {
             this.set(`plugin-${pluginId}-enabled`, enabled);
+        },
+        // Plugin versioning storage
+        getCachedPlugin(pluginKey) {
+            const cached = this.get(`plugin-cache-${pluginKey}`, null);
+            if (cached) {
+                try {
+                    return JSON.parse(cached);
+                } catch (e) {
+                    Logger.error(`Failed to parse cached plugin ${pluginKey}:`, e);
+                    return null;
+                }
+            }
+            return null;
+        },
+        setCachedPlugin(pluginKey, code, version) {
+            const cacheData = {
+                code: code,
+                version: version,
+                cachedAt: Date.now()
+            };
+            this.set(`plugin-cache-${pluginKey}`, JSON.stringify(cacheData));
+        },
+        getPluginKey(filename, sourcePath) {
+            // Create a unique key for the plugin based on its path
+            return sourcePath || filename;
         }
     };
 
@@ -525,39 +551,29 @@
     const PluginLoader = {
         _loadedPluginFiles: new Set(),
         
-        async loadPluginFromUrl(url, filename, sourcePath) {
+        /**
+         * Load plugin code from URL and cache it
+         * @param {string} url - URL to fetch plugin from
+         * @param {string} filename - Plugin filename
+         * @param {string} sourcePath - Full path for caching (e.g., "global/plugin.js")
+         * @param {string} version - Expected version
+         * @returns {Promise<{code: string, version: string}>}
+         */
+        async loadPluginFromUrl(url, filename, sourcePath, version) {
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url: url,
                     onload: (response) => {
                         if (response.status === 200) {
-                            try {
-                                const pluginFactory = new Function(
-                                    'PluginManager',
-                                    'Storage',
-                                    'Logger',
-                                    'Context',
-                                    'CleanupRegistry',
-                                    response.responseText + '\n\n// Return the plugin for registration\nreturn plugin;'
-                                );
-                                
-                                const plugin = pluginFactory(
-                                    PluginManager,
-                                    Storage,
-                                    Logger,
-                                    Context,
-                                    CleanupRegistry
-                                );
-                                
-                                // Track by full path to avoid duplicate loads
-                                const loadKey = sourcePath || filename;
-                                this._loadedPluginFiles.add(loadKey);
-                                resolve(plugin);
-                            } catch (e) {
-                                Logger.error(`Failed to parse plugin ${filename}:`, e);
-                                reject(e);
-                            }
+                            const code = response.responseText;
+                            const pluginKey = Storage.getPluginKey(filename, sourcePath);
+                            
+                            // Cache the plugin with its version
+                            Storage.setCachedPlugin(pluginKey, code, version);
+                            Logger.debug(`Cached plugin ${filename} v${version}`);
+                            
+                            resolve({ code, version });
                         } else {
                             Logger.error(`Failed to load plugin ${filename}: ${response.status}`);
                             reject(new Error(`HTTP ${response.status}`));
@@ -571,103 +587,134 @@
             });
         },
         
+        /**
+         * Load plugin code from cache or URL
+         * @param {string} filename - Plugin filename
+         * @param {string} sourcePath - Full path for caching
+         * @param {string} version - Required version
+         * @param {string} url - URL to fetch from if not cached
+         * @returns {Promise<string>} - Plugin code
+         */
+        async loadPluginCode(filename, sourcePath, version, url) {
+            const pluginKey = Storage.getPluginKey(filename, sourcePath);
+            const cached = Storage.getCachedPlugin(pluginKey);
+            
+            // Check if we have a cached version that matches
+            if (cached && cached.version === version) {
+                Logger.debug(`Using cached plugin ${filename} v${version}`);
+                return cached.code;
+            }
+            
+            // Version mismatch or not cached - try to fetch
+            Logger.log(`Fetching plugin ${filename} v${version}${cached ? ` (cached: v${cached.version})` : ''}`);
+            
+            try {
+                const result = await this.loadPluginFromUrl(url, filename, sourcePath, version);
+                return result.code;
+            } catch (error) {
+                // Fetch failed - use cached version if available (with warning)
+                if (cached) {
+                    Logger.warn(`⚠ Failed to fetch ${filename} v${version}, using cached v${cached.version}`);
+                    Context.outdatedPlugins.push({
+                        filename: filename,
+                        sourcePath: sourcePath,
+                        cachedVersion: cached.version,
+                        requiredVersion: version
+                    });
+                    return cached.code;
+                }
+                // No cache available, rethrow error
+                throw error;
+            }
+        },
+        
+        /**
+         * Parse and execute plugin code
+         * @param {string} code - Plugin code
+         * @param {string} filename - Plugin filename
+         * @returns {Object} - Plugin object
+         */
+        parsePluginCode(code, filename) {
+            try {
+                const pluginFactory = new Function(
+                    'PluginManager',
+                    'Storage',
+                    'Logger',
+                    'Context',
+                    'CleanupRegistry',
+                    code + '\n\n// Return the plugin for registration\nreturn plugin;'
+                );
+                
+                return pluginFactory(
+                    PluginManager,
+                    Storage,
+                    Logger,
+                    Context,
+                    CleanupRegistry
+                );
+            } catch (e) {
+                Logger.error(`Failed to parse plugin ${filename}:`, e);
+                throw e;
+            }
+        },
+        
         async loadCorePlugin(filename) {
             const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/${filename}`;
             return this.loadPluginFromUrl(url, filename);
         },
         
         /**
-         * Load an archetype plugin
-         * @param {string} filename - The plugin filename or path (e.g., "network-interception.js" or "global/network-interception.js" or "shared/some-plugin.js")
+         * Load an archetype plugin with versioning support
+         * @param {string} filename - The plugin filename or path (e.g., "network-interception.js" or "global/network-interception.js")
+         * @param {string} version - Required version (e.g., "1.0")
          * @param {string} archetypeId - The archetype ID (e.g., "k-taskCreation")
          * @returns {Promise} - Resolves with the plugin object
          */
-        async loadArchetypePlugin(filename, archetypeId) {
+        async loadArchetypePlugin(filename, version, archetypeId) {
             // Check if filename contains an explicit folder path (e.g., "global/plugin.js" or "shared/plugin.js")
             const pathParts = filename.split('/');
+            let sourcePath, url;
+            
             if (pathParts.length > 1) {
                 // Explicit folder path specified, use it directly
                 const folderPath = pathParts.slice(0, -1).join('/');
                 const actualFilename = pathParts[pathParts.length - 1];
-                const explicitPath = `${folderPath}/${actualFilename}`;
+                sourcePath = `${folderPath}/${actualFilename}`;
+                url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
                 
-                Logger.debug(`Loading plugin from explicit path: ${explicitPath}`);
-                const explicitUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${explicitPath}`;
+                Logger.debug(`Loading plugin from explicit path: ${sourcePath} v${version}`);
+            } else {
+                // No explicit path, use default resolution: check global first, then archetype folder
+                const globalPath = `global/${filename}`;
+                const globalUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${globalPath}`;
                 
-                return this.loadPluginFromUrl(explicitUrl, actualFilename, explicitPath);
+                // Try to load from global first (with versioning)
+                try {
+                    const code = await this.loadPluginCode(filename, globalPath, version, globalUrl);
+                    const plugin = this.parsePluginCode(code, filename);
+                    this._loadedPluginFiles.add(globalPath);
+                    Logger.debug(`Loaded ${filename} v${version} from global folder`);
+                    return plugin;
+                } catch (error) {
+                    // If global fails (404 or other), try archetype folder
+                    if (error.message && error.message.includes('404')) {
+                        Logger.debug(`Plugin ${filename} not found in global, trying archetype folder: ${archetypeId}`);
+                    } else {
+                        Logger.warn(`Error loading ${filename} from global, trying archetype folder:`, error);
+                    }
+                    
+                    // Fall through to archetype folder
+                    sourcePath = `${archetypeId}/${filename}`;
+                    url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
+                }
             }
             
-            // No explicit path, use default resolution: check global first, then archetype folder
-            const globalUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/global/${filename}`;
-            const globalPath = `global/${filename}`;
-            
-            // Try global first
-            return new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: globalUrl,
-                    onload: (response) => {
-                        if (response.status === 200) {
-                            // Found in global, parse and return
-                            try {
-                                const pluginFactory = new Function(
-                                    'PluginManager',
-                                    'Storage',
-                                    'Logger',
-                                    'Context',
-                                    'CleanupRegistry',
-                                    response.responseText + '\n\n// Return the plugin for registration\nreturn plugin;'
-                                );
-                                
-                                const plugin = pluginFactory(
-                                    PluginManager,
-                                    Storage,
-                                    Logger,
-                                    Context,
-                                    CleanupRegistry
-                                );
-                                
-                                this._loadedPluginFiles.add(globalPath);
-                                Logger.debug(`Loaded ${filename} from global folder`);
-                                resolve(plugin);
-                            } catch (e) {
-                                Logger.error(`Failed to parse plugin ${filename} from global:`, e);
-                                reject(e);
-                            }
-                        } else if (response.status === 404) {
-                            // Not in global, try archetype-specific folder
-                            Logger.debug(`Plugin ${filename} not found in global, trying archetype folder: ${archetypeId}`);
-                            this._loadFromArchetypeFolder(filename, archetypeId)
-                                .then(resolve)
-                                .catch(reject);
-                        } else {
-                            // Other error from global, still try archetype folder
-                            Logger.warn(`Error loading ${filename} from global (${response.status}), trying archetype folder`);
-                            this._loadFromArchetypeFolder(filename, archetypeId)
-                                .then(resolve)
-                                .catch(reject);
-                        }
-                    },
-                    onerror: (error) => {
-                        // Network error, try archetype folder
-                        Logger.debug(`Network error loading ${filename} from global, trying archetype folder`);
-                        this._loadFromArchetypeFolder(filename, archetypeId)
-                            .then(resolve)
-                            .catch(reject);
-                    }
-                });
-            });
-        },
-        
-        /**
-         * Internal method to load plugin from archetype-specific folder
-         * @private
-         */
-        async _loadFromArchetypeFolder(filename, archetypeId) {
-            const archetypeUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${archetypeId}/${filename}`;
-            const archetypePath = `${archetypeId}/${filename}`;
-            
-            return this.loadPluginFromUrl(archetypeUrl, filename, archetypePath);
+            // Load from determined path (explicit or archetype folder)
+            const code = await this.loadPluginCode(filename, sourcePath, version, url);
+            const plugin = this.parsePluginCode(code, filename);
+            this._loadedPluginFiles.add(sourcePath);
+            Logger.debug(`Loaded ${filename} v${version} from ${sourcePath}`);
+            return plugin;
         },
         
         async loadCorePlugins() {
@@ -705,7 +752,21 @@
             Logger.log(`Loading ${pluginList.length} archetype plugin(s) for ${archetypeId}...`);
             const loadPromises = [];
             
-            for (const filename of pluginList) {
+            for (const pluginDef of pluginList) {
+                // Support both old format (string) and new format (object with name and version)
+                let filename, version;
+                if (typeof pluginDef === 'string') {
+                    // Backward compatibility: if just a string, default to version 1.0
+                    filename = pluginDef;
+                    version = '1.0';
+                } else if (pluginDef && pluginDef.name && pluginDef.version) {
+                    filename = pluginDef.name;
+                    version = pluginDef.version;
+                } else {
+                    Logger.error('Invalid plugin definition:', pluginDef);
+                    continue;
+                }
+                
                 // Check if already loaded
                 // First check by source file (handles explicit paths like "global/plugin.js")
                 const existingPlugins = PluginManager.getAll();
@@ -735,20 +796,30 @@
                 }
                 
                 loadPromises.push(
-                    this.loadArchetypePlugin(filename, archetypeId)
+                    this.loadArchetypePlugin(filename, version, archetypeId)
                         .then(plugin => {
                             plugin._sourceFile = filename;
+                            plugin._version = version;
                             plugin._isCore = false;
                             PluginManager.register(plugin);
-                            Logger.log(`✓ Loaded plugin: ${filename}`);
+                            Logger.log(`✓ Loaded plugin: ${filename} v${version}`);
                         })
                         .catch(err => {
-                            Logger.error(`✗ Failed to load plugin: ${filename}`, err);
+                            Logger.error(`✗ Failed to load plugin: ${filename} v${version}`, err);
                         })
                 );
             }
             
             await Promise.allSettled(loadPromises);
+            
+            // Log warnings about outdated plugins
+            if (Context.outdatedPlugins.length > 0) {
+                Logger.warn(`⚠ ${Context.outdatedPlugins.length} plugin(s) are using outdated cached versions:`);
+                Context.outdatedPlugins.forEach(p => {
+                    Logger.warn(`  - ${p.filename}: cached v${p.cachedVersion}, required v${p.requiredVersion}`);
+                });
+            }
+            
             Logger.log('Archetype plugin loading complete');
         }
     };
@@ -942,6 +1013,7 @@
         
         // Clean up archetype plugins and resources
         Context.initialized = false;
+        Context.outdatedPlugins = []; // Clear outdated plugins list on navigation
         PluginManager.cleanupArchetypePlugins();
         CleanupRegistry.cleanup();
         

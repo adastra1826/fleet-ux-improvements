@@ -123,6 +123,11 @@ const plugin = {
             ? archetypePlugins.map(plugin => this._createPluginToggleHTML(plugin)).join('')
             : '<p style="color: #666; font-size: 13px; font-style: italic;">No plugins loaded for this page.</p>';
         
+        // Build outdated plugins warning HTML
+        const outdatedPluginsHTML = Context.outdatedPlugins && Context.outdatedPlugins.length > 0
+            ? this._createOutdatedPluginsHTML(Context.outdatedPlugins)
+            : '';
+        
         modal.innerHTML = `
             <div>
                 <!-- Header -->
@@ -151,6 +156,9 @@ const plugin = {
                         </svg>
                     </button>
                 </div>
+                
+                <!-- Outdated Plugins Warning -->
+                ${outdatedPluginsHTML}
                 
                 <!-- Plugins Section -->
                 <div style="margin-bottom: 20px;">
@@ -340,5 +348,39 @@ const plugin = {
         if (msg) {
             msg.style.display = 'block';
         }
+    },
+    
+    _createOutdatedPluginsHTML(outdatedPlugins) {
+        const pluginsList = outdatedPlugins.map(p => 
+            `<li style="margin: 4px 0;"><strong>${p.filename}</strong>: cached v${p.cachedVersion}, required v${p.requiredVersion}</li>`
+        ).join('');
+        
+        return `
+            <div style="
+                margin-bottom: 20px;
+                padding: 12px;
+                background: #fef3c7;
+                border: 1px solid #f59e0b;
+                border-radius: 6px;
+            ">
+                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; color: #f59e0b;">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <h3 style="font-size: 14px; font-weight: 600; margin: 0; color: #92400e;">
+                        Outdated Plugins (${outdatedPlugins.length})
+                    </h3>
+                </div>
+                <p style="font-size: 12px; color: #92400e; margin: 8px 0 0 0; line-height: 1.5;">
+                    The following plugins could not be updated and are using cached versions. 
+                    This may happen if you're offline or the server is unavailable.
+                </p>
+                <ul style="font-size: 12px; color: #92400e; margin: 8px 0 0 0; padding-left: 20px;">
+                    ${pluginsList}
+                </ul>
+            </div>
+        `;
     }
 };

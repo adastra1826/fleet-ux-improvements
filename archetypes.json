@@ -8,13 +8,13 @@
       "urlPattern": "work/problems/create-tool-use*",
       "disambiguationSelectors": [],
       "plugins": [
-        "network-interception.js",
-        "autocorrect-search.js",
-        "autocorrect-textareas.js",
-        "source-data-explorer.js",
-        "favorites.js",
-        "notes.js",
-        "layout-manager.js"
+        { "name": "network-interception.js", "version": "1.0" },
+        { "name": "autocorrect-search.js", "version": "1.0" },
+        { "name": "autocorrect-textareas.js", "version": "1.0" },
+        { "name": "source-data-explorer.js", "version": "1.0" },
+        { "name": "favorites.js", "version": "1.0" },
+        { "name": "notes.js", "version": "1.0" },
+        { "name": "layout-manager.js", "version": "1.0" }
       ]
     },
     {
@@ -24,10 +24,10 @@
       "urlPattern": "workflows/m-type/create",
       "disambiguationSelectors": [],
       "plugins": [
-        "network-interception.js",
-        "autocorrect-textareas.js",
-        "task-templates.js",
-        "quick-actions.js"
+        { "name": "network-interception.js", "version": "1.0" },
+        { "name": "autocorrect-textareas.js", "version": "1.0" },
+        { "name": "task-templates.js", "version": "1.0" },
+        { "name": "quick-actions.js", "version": "1.0" }
       ]
     },
     {
@@ -37,9 +37,9 @@
       "urlPattern": "work/create",
       "disambiguationSelectors": [],
       "plugins": [
-        "dashboard-enhancements.js",
-        "quick-filters.js",
-        "dummy-module.js"
+        { "name": "dashboard-enhancements.js", "version": "1.0" },
+        { "name": "quick-filters.js", "version": "1.0" },
+        { "name": "dummy-module.js", "version": "1.0" }
       ]
     },
     {
@@ -49,9 +49,9 @@
       "urlPattern": "work/problems/qa-tool-use/*",
       "disambiguationSelectors": [],
       "plugins": [
-        "review-shortcuts.js",
-        "bulk-actions.js",
-        "comment-templates.js"
+        { "name": "review-shortcuts.js", "version": "1.0" },
+        { "name": "bulk-actions.js", "version": "1.0" },
+        { "name": "comment-templates.js", "version": "1.0" }
       ]
     }
   ]
