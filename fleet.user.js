@@ -525,7 +525,7 @@
     const PluginLoader = {
         _loadedPluginFiles: new Set(),
         
-        async loadPluginFromUrl(url, filename) {
+        async loadPluginFromUrl(url, filename, sourcePath) {
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
@@ -550,7 +550,9 @@
                                     CleanupRegistry
                                 );
                                 
-                                this._loadedPluginFiles.add(filename);
+                                // Track by full path to avoid duplicate loads
+                                const loadKey = sourcePath || filename;
+                                this._loadedPluginFiles.add(loadKey);
                                 resolve(plugin);
                             } catch (e) {
                                 Logger.error(`Failed to parse plugin ${filename}:`, e);
@@ -574,9 +576,84 @@
             return this.loadPluginFromUrl(url, filename);
         },
         
-        async loadArchetypePlugin(filename) {
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${filename}`;
-            return this.loadPluginFromUrl(url, filename);
+        /**
+         * Load an archetype plugin, checking global folder first, then archetype-specific folder
+         * @param {string} filename - The plugin filename (e.g., "network-interception.js")
+         * @param {string} archetypeId - The archetype ID (e.g., "k-taskCreation")
+         * @returns {Promise} - Resolves with the plugin object
+         */
+        async loadArchetypePlugin(filename, archetypeId) {
+            // First try to load from global folder
+            const globalUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/global/${filename}`;
+            const globalPath = `global/${filename}`;
+            
+            // Try global first
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: globalUrl,
+                    onload: (response) => {
+                        if (response.status === 200) {
+                            // Found in global, parse and return
+                            try {
+                                const pluginFactory = new Function(
+                                    'PluginManager',
+                                    'Storage',
+                                    'Logger',
+                                    'Context',
+                                    'CleanupRegistry',
+                                    response.responseText + '\n\n// Return the plugin for registration\nreturn plugin;'
+                                );
+                                
+                                const plugin = pluginFactory(
+                                    PluginManager,
+                                    Storage,
+                                    Logger,
+                                    Context,
+                                    CleanupRegistry
+                                );
+                                
+                                this._loadedPluginFiles.add(globalPath);
+                                Logger.debug(`Loaded ${filename} from global folder`);
+                                resolve(plugin);
+                            } catch (e) {
+                                Logger.error(`Failed to parse plugin ${filename} from global:`, e);
+                                reject(e);
+                            }
+                        } else if (response.status === 404) {
+                            // Not in global, try archetype-specific folder
+                            Logger.debug(`Plugin ${filename} not found in global, trying archetype folder: ${archetypeId}`);
+                            this._loadFromArchetypeFolder(filename, archetypeId)
+                                .then(resolve)
+                                .catch(reject);
+                        } else {
+                            // Other error from global, still try archetype folder
+                            Logger.warn(`Error loading ${filename} from global (${response.status}), trying archetype folder`);
+                            this._loadFromArchetypeFolder(filename, archetypeId)
+                                .then(resolve)
+                                .catch(reject);
+                        }
+                    },
+                    onerror: (error) => {
+                        // Network error, try archetype folder
+                        Logger.debug(`Network error loading ${filename} from global, trying archetype folder`);
+                        this._loadFromArchetypeFolder(filename, archetypeId)
+                            .then(resolve)
+                            .catch(reject);
+                    }
+                });
+            });
+        },
+        
+        /**
+         * Internal method to load plugin from archetype-specific folder
+         * @private
+         */
+        async _loadFromArchetypeFolder(filename, archetypeId) {
+            const archetypeUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${archetypeId}/${filename}`;
+            const archetypePath = `${archetypeId}/${filename}`;
+            
+            return this.loadPluginFromUrl(archetypeUrl, filename, archetypePath);
         },
         
         async loadCorePlugins() {
@@ -600,16 +677,22 @@
             }
         },
         
-        async loadPluginsForArchetype(pluginList) {
+        async loadPluginsForArchetype(pluginList, archetypeId) {
             if (!pluginList || pluginList.length === 0) {
                 Logger.log('No plugins to load for this archetype');
                 return;
             }
             
-            Logger.log(`Loading ${pluginList.length} archetype plugin(s)...`);
+            if (!archetypeId) {
+                Logger.error('Archetype ID required to load plugins');
+                return;
+            }
+            
+            Logger.log(`Loading ${pluginList.length} archetype plugin(s) for ${archetypeId}...`);
             const loadPromises = [];
             
             for (const filename of pluginList) {
+                // Check if already loaded (by filename, since same plugin might be in global)
                 const existingPlugins = PluginManager.getAll();
                 const alreadyLoaded = existingPlugins.some(p => p._sourceFile === filename);
                 
@@ -619,7 +702,7 @@
                 }
                 
                 loadPromises.push(
-                    this.loadArchetypePlugin(filename)
+                    this.loadArchetypePlugin(filename, archetypeId)
                         .then(plugin => {
                             plugin._sourceFile = filename;
                             plugin._isCore = false;
@@ -788,7 +871,7 @@
             
             // Load archetype-specific plugins
             const pluginsToLoad = ArchetypeManager.getPluginsForCurrentArchetype();
-            await PluginLoader.loadPluginsForArchetype(pluginsToLoad);
+            await PluginLoader.loadPluginsForArchetype(pluginsToLoad, archetype.id);
             
             // Run early plugins
             PluginManager.runEarlyPlugins();
