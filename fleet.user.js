@@ -577,13 +577,27 @@
         },
         
         /**
-         * Load an archetype plugin, checking global folder first, then archetype-specific folder
-         * @param {string} filename - The plugin filename (e.g., "network-interception.js")
+         * Load an archetype plugin
+         * @param {string} filename - The plugin filename or path (e.g., "network-interception.js" or "global/network-interception.js" or "shared/some-plugin.js")
          * @param {string} archetypeId - The archetype ID (e.g., "k-taskCreation")
          * @returns {Promise} - Resolves with the plugin object
          */
         async loadArchetypePlugin(filename, archetypeId) {
-            // First try to load from global folder
+            // Check if filename contains an explicit folder path (e.g., "global/plugin.js" or "shared/plugin.js")
+            const pathParts = filename.split('/');
+            if (pathParts.length > 1) {
+                // Explicit folder path specified, use it directly
+                const folderPath = pathParts.slice(0, -1).join('/');
+                const actualFilename = pathParts[pathParts.length - 1];
+                const explicitPath = `${folderPath}/${actualFilename}`;
+                
+                Logger.debug(`Loading plugin from explicit path: ${explicitPath}`);
+                const explicitUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${explicitPath}`;
+                
+                return this.loadPluginFromUrl(explicitUrl, actualFilename, explicitPath);
+            }
+            
+            // No explicit path, use default resolution: check global first, then archetype folder
             const globalUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/global/${filename}`;
             const globalPath = `global/${filename}`;
             
@@ -692,11 +706,30 @@
             const loadPromises = [];
             
             for (const filename of pluginList) {
-                // Check if already loaded (by filename, since same plugin might be in global)
+                // Check if already loaded
+                // First check by source file (handles explicit paths like "global/plugin.js")
                 const existingPlugins = PluginManager.getAll();
-                const alreadyLoaded = existingPlugins.some(p => p._sourceFile === filename);
+                const alreadyLoadedByFile = existingPlugins.some(p => p._sourceFile === filename);
                 
-                if (alreadyLoaded) {
+                // Also check if the resolved path is already loaded (for implicit paths that resolved to a location)
+                let alreadyLoadedByPath = false;
+                if (!alreadyLoadedByFile) {
+                    // Determine what path this would resolve to
+                    const pathParts = filename.split('/');
+                    if (pathParts.length > 1) {
+                        // Explicit path - check if this exact path was loaded
+                        const explicitPath = filename;
+                        alreadyLoadedByPath = this._loadedPluginFiles.has(explicitPath);
+                    } else {
+                        // Implicit path - check both global and archetype locations
+                        const globalPath = `global/${filename}`;
+                        const archetypePath = `${archetypeId}/${filename}`;
+                        alreadyLoadedByPath = this._loadedPluginFiles.has(globalPath) || 
+                                            this._loadedPluginFiles.has(archetypePath);
+                    }
+                }
+                
+                if (alreadyLoadedByFile || alreadyLoadedByPath) {
                     Logger.debug(`Plugin ${filename} already loaded, skipping fetch`);
                     continue;
                 }
