@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '2.6',
+    _version: '2.7',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -15,9 +15,10 @@ const plugin = {
         workflowToolsArea: '[id="\:re\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
         workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
         workflowToolName: 'div.flex-1.min-w-0',
-        toolsContainer: '[id="\:r7\:"] > div.flex-1.min-h-0.overflow-hidden > div > div > div.flex-1.overflow-y-auto > div',
+        toolsContainer: '[id^="\:r"] > div.flex-1.min-h-0.overflow-hidden > div > div > div.flex-1.overflow-y-auto > div',
         toolHeader: 'button > span.min-w-0.flex-1.overflow-hidden.flex.gap-2.items-start',
-        toolName: 'span'
+        toolName: 'span',
+        toolTitleSpan: 'div.flex.flex-col.items-start.gap-0\\.5.text-left.min-w-0.flex-1 > span.text-xs.font-medium.text-foreground'
     },
     
     // Plugin-specific storage keys
@@ -100,6 +101,21 @@ const plugin = {
                 this.toggleFavorite(toolName, favoriteTools, toolsContainer);
             };
 
+            // First try to insert before the inner span in the title span
+            const titleSpan = Context.dom.query(this.selectors.toolTitleSpan, {
+                root: header,
+                context: `${this.id}.toolTitleSpan`
+            });
+            
+            if (titleSpan) {
+                const innerSpan = titleSpan.querySelector('span');
+                if (innerSpan) {
+                    titleSpan.insertBefore(star, innerSpan);
+                    return;
+                }
+            }
+            
+            // Fall back to old method if new location not found
             const nameSpan = Context.dom.query('span:not(.favorite-star)', {
                 root: header,
                 context: `${this.id}.toolNameSpan`
