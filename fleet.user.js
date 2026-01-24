@@ -1102,12 +1102,13 @@
         if (DEV_LOG_PANEL_ENABLED) {
             try {
                 const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '0.2');
+                const loadedVersion = plugin._version || plugin.version || '1.0';
                 plugin._sourceFile = 'logger-panel.js';
-                plugin._version = '0.1';
+                plugin._version = loadedVersion;
                 plugin._isCore = true;
                 plugin._isDev = true;
                 PluginManager.register(plugin);
-                Logger.log('✓ Loaded dev logger panel plugin');
+                Logger.log(`✓ Loaded dev logger panel plugin v${loadedVersion}`);
             } catch (err) {
                 Logger.error('✗ Failed to load dev logger panel plugin', err);
             }

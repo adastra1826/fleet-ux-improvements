@@ -5,18 +5,21 @@ const plugin = {
     id: 'dev-logger-panel',
     name: 'Dev Logger Panel',
     description: 'Floating panel to view Fleet UX Enhancer logs without prefix',
-    _version: '0.2',
+    _version: '1.0',
     enabledByDefault: true,
-    phase: 'init',
+    phase: 'core',
 
     initialState: {
         initialized: false,
         logs: [],
         maxLogs: 500,
         isVisible: true,
+        isMinimized: false,
         isDragging: false,
         dragOffsetX: 0,
         dragOffsetY: 0,
+        searchQuery: '',
+        previousHeight: null,
         originalConsole: null,
         unsubscribe: null
     },
@@ -42,7 +45,9 @@ const plugin = {
         root.style.flexDirection = 'column';
         root.style.zIndex = '2147483646';
         root.style.resize = 'both';
-        root.style.overflow = 'hidden';
+        root.style.overflow = 'auto';
+        root.style.minWidth = '240px';
+        root.style.minHeight = '140px';
 
         const header = document.createElement('div');
         header.id = 'wf-dev-log-panel-header';
@@ -76,6 +81,36 @@ const plugin = {
         clearButton.style.color = 'inherit';
         clearButton.style.cursor = 'pointer';
 
+        const minimizeButton = document.createElement('button');
+        minimizeButton.type = 'button';
+        minimizeButton.textContent = 'Minimize';
+        minimizeButton.style.fontSize = '11px';
+        minimizeButton.style.padding = '2px 6px';
+        minimizeButton.style.borderRadius = '6px';
+        minimizeButton.style.border = '1px solid rgba(255,255,255,0.2)';
+        minimizeButton.style.background = 'transparent';
+        minimizeButton.style.color = 'inherit';
+        minimizeButton.style.cursor = 'pointer';
+
+        const searchWrap = document.createElement('div');
+        searchWrap.style.flex = '0 0 auto';
+        searchWrap.style.padding = '6px 10px';
+        searchWrap.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search logs...';
+        searchInput.style.width = '100%';
+        searchInput.style.fontSize = '11px';
+        searchInput.style.padding = '6px 8px';
+        searchInput.style.borderRadius = '6px';
+        searchInput.style.border = '1px solid rgba(255,255,255,0.2)';
+        searchInput.style.background = 'rgba(15, 23, 42, 0.6)';
+        searchInput.style.color = '#e5e7eb';
+        searchInput.style.outline = 'none';
+
+        searchWrap.appendChild(searchInput);
+
         const body = document.createElement('div');
         body.id = 'wf-dev-log-panel-body';
         body.style.flex = '1 1 auto';
@@ -90,8 +125,8 @@ const plugin = {
         toggleButton.type = 'button';
         toggleButton.textContent = 'Hide Logs';
         toggleButton.style.position = 'fixed';
-        toggleButton.style.right = '24px';
-        toggleButton.style.bottom = '24px';
+        toggleButton.style.left = '20px';
+        toggleButton.style.bottom = '78px';
         toggleButton.style.zIndex = '2147483646';
         toggleButton.style.padding = '6px 10px';
         toggleButton.style.fontSize = '12px';
@@ -103,20 +138,38 @@ const plugin = {
         toggleButton.style.boxShadow = '0 6px 18px rgba(0,0,0,0.35)';
 
         headerActions.appendChild(clearButton);
+        headerActions.appendChild(minimizeButton);
         header.appendChild(headerTitle);
         header.appendChild(headerActions);
         root.appendChild(header);
+        root.appendChild(searchWrap);
         root.appendChild(body);
 
         document.body.appendChild(root);
         document.body.appendChild(toggleButton);
-        CleanupRegistry.registerElement(root);
-        CleanupRegistry.registerElement(toggleButton);
 
         const updateVisibility = (visible) => {
             state.isVisible = visible;
             root.style.display = visible ? 'flex' : 'none';
             toggleButton.textContent = visible ? 'Hide Logs' : 'Show Logs';
+        };
+
+        const updateMinimized = (minimized) => {
+            state.isMinimized = minimized;
+            if (minimized) {
+                state.previousHeight = root.style.height || `${root.getBoundingClientRect().height}px`;
+                body.style.display = 'none';
+                searchWrap.style.display = 'none';
+                root.style.height = '36px';
+                root.style.resize = 'none';
+                minimizeButton.textContent = 'Restore';
+            } else {
+                body.style.display = 'block';
+                searchWrap.style.display = 'block';
+                root.style.height = state.previousHeight || '240px';
+                root.style.resize = 'both';
+                minimizeButton.textContent = 'Minimize';
+            }
         };
 
         const addLogEntry = (level, message) => {
@@ -134,10 +187,18 @@ const plugin = {
             body.appendChild(entry);
             body.scrollTop = body.scrollHeight;
 
-            state.logs.push(entry);
+            const logRecord = { node: entry, text: message };
+            state.logs.push(logRecord);
             if (state.logs.length > state.maxLogs) {
                 const old = state.logs.shift();
-                if (old && old.parentNode) old.parentNode.removeChild(old);
+                if (old && old.node && old.node.parentNode) {
+                    old.node.parentNode.removeChild(old.node);
+                }
+            }
+
+            if (state.searchQuery) {
+                const matches = logRecord.text.toLowerCase().includes(state.searchQuery);
+                entry.style.display = matches ? 'block' : 'none';
             }
         };
 
@@ -223,19 +284,31 @@ const plugin = {
         };
 
         const onToggle = () => updateVisibility(!state.isVisible);
+        const onMinimize = () => updateMinimized(!state.isMinimized);
 
         const onClear = () => {
-            state.logs.forEach((node) => node.parentNode && node.parentNode.removeChild(node));
+            state.logs.forEach((log) => log.node && log.node.parentNode && log.node.parentNode.removeChild(log.node));
             state.logs = [];
         };
 
-        CleanupRegistry.registerEventListener(header, 'mousedown', onMouseDown);
-        CleanupRegistry.registerEventListener(document, 'mousemove', onMouseMove);
-        CleanupRegistry.registerEventListener(document, 'mouseup', onMouseUp);
-        CleanupRegistry.registerEventListener(toggleButton, 'click', onToggle);
-        CleanupRegistry.registerEventListener(clearButton, 'click', onClear);
+        const onSearch = (event) => {
+            state.searchQuery = event.target.value.trim().toLowerCase();
+            state.logs.forEach((log) => {
+                const matches = !state.searchQuery || log.text.toLowerCase().includes(state.searchQuery);
+                log.node.style.display = matches ? 'block' : 'none';
+            });
+        };
+
+        header.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        toggleButton.addEventListener('click', onToggle);
+        clearButton.addEventListener('click', onClear);
+        minimizeButton.addEventListener('click', onMinimize);
+        searchInput.addEventListener('input', onSearch);
 
         updateVisibility(true);
+        updateMinimized(false);
         Logger.log('✓ Dev logger panel initialized');
     },
 
