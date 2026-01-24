@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '2.9',
+    _version: '3.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -37,34 +37,34 @@ const plugin = {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 8px;
-                height: 8px;
-                min-width: 8px;
-                min-height: 8px;
-                max-width: 8px;
-                max-height: 8px;
-                flex: 0 0 8px;
+                width: 16px;
+                height: 16px;
+                min-width: 16px;
+                min-height: 16px;
+                max-width: 16px;
+                max-height: 16px;
+                flex: 0 0 16px;
                 opacity: 0.7;
             }
             .favorite-star.inline {
                 margin-right: 4px;
-                width: 8px;
-                height: 8px;
-                min-width: 8px;
-                min-height: 8px;
-                max-width: 8px;
-                max-height: 8px;
-                flex: 0 0 8px;
+                width: 16px;
+                height: 16px;
+                min-width: 16px;
+                min-height: 16px;
+                max-width: 16px;
+                max-height: 16px;
+                flex: 0 0 16px;
                 display: inline-flex;
                 align-items: center;
             }
             .favorite-star svg {
-                width: 8px;
-                height: 8px;
-                min-width: 8px;
-                min-height: 8px;
-                max-width: 8px;
-                max-height: 8px;
+                width: 16px;
+                height: 16px;
+                min-width: 16px;
+                min-height: 16px;
+                max-width: 16px;
+                max-height: 16px;
                 display: block;
             }
             .favorite-star:hover {
@@ -125,6 +125,8 @@ const plugin = {
                 const innerSpan = titleSpan.querySelector('span');
                 if (innerSpan) {
                     titleSpan.insertBefore(star, innerSpan);
+                    titleSpan.style.display = 'inline-flex';
+                    titleSpan.style.alignItems = 'center';
                     return;
                 }
             }
@@ -162,8 +164,8 @@ const plugin = {
     createStarSvg(isFavorite) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
-        svg.setAttribute('width', '8');
-        svg.setAttribute('height', '8');
+        svg.setAttribute('width', '16');
+        svg.setAttribute('height', '16');
         svg.setAttribute('aria-hidden', 'true');
         svg.setAttribute('focusable', 'false');
         svg.classList.add('favorite-star-icon');
