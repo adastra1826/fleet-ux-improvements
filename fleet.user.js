@@ -26,6 +26,7 @@
     const VERSION = '2.x.x';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
+    const DEV_LOG_PANEL_ENABLED = GITHUB_CONFIG.branch !== 'main';
     
     // Base URL that matches the @match pattern (without trailing wildcard)
     const BASE_URL = 'https://fleetai.com/';
@@ -40,8 +41,6 @@
         devPath: 'dev',
         archetypesPath: 'archetypes.json'
     };
-
-    const DEV_LOG_PANEL_ENABLED = GITHUB_CONFIG.branch !== 'main';
     
     // ============= SHARED CONTEXT =============
     const Context = {
