@@ -1,28 +1,290 @@
+
 // ==UserScript==
-// @name         [DETATCHED] Fleet Workflow Builder UX Enhancer
+// @name         [MODULAR] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      x.x.x
-// @description  UX improvements for workflow builder tool with improved layout, favorites, and fixes
+// @version      2.x.x
+// @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       You
-// @match        https://fleetai.com/work/problems/create*
+// @match        https://fleetai.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
+// @connect      raw.githubusercontent.com
 // @run-at       document-start
 // ==/UserScript==
 
 (function() {
     'use strict';
 
+    // Exit immediately if inside an iframe.
+    if (window.top != window.self) {
+        console.warn("[Fleet UX Enhancer] - iframe detected. Terminating duplicate script instance. This is normal.");
+        return;
+    }
+
     // ============= CORE CONFIGURATION =============
-    const VERSION = 'x.x.1';
+    const VERSION = '2.x.x';
     const STORAGE_PREFIX = 'wf-enhancer-';
+    const LOG_PREFIX = '[Fleet UX Enhancer]';
+    const DEV_LOG_PANEL_ENABLED = true;
     
+    // Base URL that matches the @match pattern (without trailing wildcard)
+    const BASE_URL = 'https://fleetai.com/';
+    
+    // GitHub repository configuration
+    const GITHUB_CONFIG = {
+        owner: 'adastra1826',
+        repo: 'fleet-ux-improvements',
+        branch: 'dev',
+        pluginsPath: 'plugins',
+        corePath: 'core',
+        devPath: 'dev',
+        archetypesPath: 'archetypes.json'
+    };
+    
+    // Core plugins that load on every page
+    const CORE_PLUGINS = [
+        { name: 'settings-ui.js', version: '2.0' }
+    ];
+
     // ============= SHARED CONTEXT =============
-    // Shared state accessible by all plugins
     const Context = {
+        version: VERSION,
         source: null,
         initialized: false,
+        currentArchetype: null,
+        currentPath: null,
+        outdatedPlugins: [], // Track plugins that couldn't be updated
+        logPrefix: LOG_PREFIX,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
+    };
+
+    // ============= CLEANUP REGISTRY =============
+    const CleanupRegistry = {
+        _items: {
+            intervals: [],
+            timeouts: [],
+            observers: [],
+            eventListeners: [],
+            elements: [],
+        },
+        
+        registerInterval(id) {
+            this._items.intervals.push(id);
+            return id;
+        },
+        
+        registerTimeout(id) {
+            this._items.timeouts.push(id);
+            return id;
+        },
+        
+        registerObserver(observer) {
+            this._items.observers.push(observer);
+            return observer;
+        },
+        
+        registerEventListener(target, event, handler, options) {
+            this._items.eventListeners.push({ target, event, handler, options });
+            target.addEventListener(event, handler, options);
+        },
+        
+        registerElement(element) {
+            this._items.elements.push(element);
+            return element;
+        },
+        
+        cleanup() {
+            Logger.debug('Running cleanup...');
+            
+            this._items.intervals.forEach(id => clearInterval(id));
+            this._items.intervals = [];
+            
+            this._items.timeouts.forEach(id => clearTimeout(id));
+            this._items.timeouts = [];
+            
+            this._items.observers.forEach(obs => obs.disconnect());
+            this._items.observers = [];
+            
+            this._items.eventListeners.forEach(({ target, event, handler, options }) => {
+                target.removeEventListener(event, handler, options);
+            });
+            this._items.eventListeners = [];
+            
+            this._items.elements.forEach(el => {
+                if (el && el.parentNode) {
+                    el.parentNode.removeChild(el);
+                }
+            });
+            this._items.elements = [];
+            
+            Logger.debug('Cleanup complete');
+        }
+    };
+
+    // ============= URL PATTERN MATCHER =============
+    const UrlMatcher = {
+        /**
+         * Extract the path portion after the base URL
+         * @param {string} fullUrl - The complete URL
+         * @returns {string} - The path after BASE_URL
+         */
+        getPathFromUrl(fullUrl) {
+            if (fullUrl.startsWith(BASE_URL)) {
+                // Remove base URL and any query string/hash
+                let path = fullUrl.slice(BASE_URL.length);
+                path = path.split('?')[0].split('#')[0];
+                // Remove trailing slash for consistent matching
+                if (path.endsWith('/') && path.length > 1) {
+                    path = path.slice(0, -1);
+                }
+                return path;
+            }
+            return '';
+        },
+        
+        /**
+         * Convert a URL pattern to a regex
+         * Supports:
+         *   - Exact match: "dashboard" matches only "dashboard"
+         *   - Wildcard segment: "tasks/*" matches "tasks/123" but not "tasks/123/edit"
+         *   - Wildcard suffix: "tasks*" matches "tasks", "tasks123", "tasks/anything"
+         *   - Combined: "tasks/*\/review" matches "tasks/123/review"
+         * 
+         * @param {string} pattern - The URL pattern
+         * @returns {RegExp} - Compiled regex
+         */
+        patternToRegex(pattern) {
+            // Escape special regex characters except *
+            let regexStr = pattern
+                .replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+            
+            // Handle wildcards:
+            // /* at segment boundaries = match one segment (no slashes)
+            // * at end or mid-word = match anything including slashes
+            
+            // First, handle /*/  (wildcard segment in middle)
+            regexStr = regexStr.replace(/\/\\\*\//g, '/[^/]+/');
+            
+            // Handle /* at end (wildcard segment at end, must have content)
+            regexStr = regexStr.replace(/\/\\\*$/g, '/[^/]+');
+            
+            // Handle trailing * (match anything including empty)
+            regexStr = regexStr.replace(/\\\*$/g, '.*');
+            
+            // Handle remaining * (mid-pattern wildcards)
+            regexStr = regexStr.replace(/\\\*/g, '.*');
+            
+            // Anchor the pattern
+            return new RegExp(`^${regexStr}$`);
+        },
+        
+        /**
+         * Test if a path matches a pattern
+         * @param {string} path - The current path
+         * @param {string} pattern - The URL pattern to test
+         * @returns {boolean}
+         */
+        matches(path, pattern) {
+            const regex = this.patternToRegex(pattern);
+            const result = regex.test(path);
+            Logger.debug(`URL match test: "${path}" vs "${pattern}" (${regex}) = ${result}`);
+            return result;
+        },
+        
+        /**
+         * Calculate specificity score for a pattern (more specific = higher score)
+         * Used to determine which archetype takes precedence
+         * @param {string} pattern - The URL pattern
+         * @returns {number}
+         */
+        getSpecificity(pattern) {
+            let score = 0;
+            
+            // More segments = more specific
+            const segments = pattern.split('/').filter(s => s.length > 0);
+            score += segments.length * 10;
+            
+            // Literal segments are more specific than wildcards
+            segments.forEach(seg => {
+                if (seg === '*') {
+                    score += 1; // Wildcard segment
+                } else if (seg.includes('*')) {
+                    score += 3; // Partial wildcard
+                } else {
+                    score += 5; // Literal segment
+                }
+            });
+            
+            // Patterns ending in * are less specific
+            if (pattern.endsWith('*')) {
+                score -= 2;
+            }
+            
+            return score;
+        }
+    };
+
+    // ============= NAVIGATION MANAGER =============
+    const NavigationManager = {
+        _lastUrl: window.location.href,
+        _initialized: false,
+        _onNavigateCallbacks: [],
+        
+        init() {
+            if (this._initialized) return;
+            this._initialized = true;
+            
+            const originalPushState = history.pushState;
+            const originalReplaceState = history.replaceState;
+            const self = this;
+            
+            history.pushState = function(state, title, url) {
+                originalPushState.apply(this, arguments);
+                self._handleNavigation('pushState', url);
+            };
+            
+            history.replaceState = function(state, title, url) {
+                originalReplaceState.apply(this, arguments);
+                self._handleNavigation('replaceState', url);
+            };
+            
+            window.addEventListener('popstate', () => {
+                this._handleNavigation('popstate');
+            });
+            
+            Logger.log('✓ Navigation monitoring initialized');
+        },
+        
+        _handleNavigation(method, url) {
+            const newUrl = window.location.href;
+            
+            if (newUrl === this._lastUrl) {
+                Logger.debug(`Navigation method called (${method}) but URL unchanged`);
+                return;
+            }
+            
+            const previousUrl = this._lastUrl;
+            this._lastUrl = newUrl;
+            
+            Logger.log(`Navigation detected [${method}]: ${previousUrl} → ${newUrl}`);
+            
+            this._onNavigateCallbacks.forEach(callback => {
+                try {
+                    callback(newUrl, previousUrl);
+                } catch (e) {
+                    Logger.error('Error in navigation callback:', e);
+                }
+            });
+        },
+        
+        onNavigate(callback) {
+            this._onNavigateCallbacks.push(callback);
+        },
+        
+        getCurrentUrl() {
+            return this._lastUrl;
+        }
     };
 
     // ============= STORAGE MANAGER =============
@@ -35,11 +297,63 @@
         },
         getPluginEnabled(pluginId) {
             const plugin = PluginManager.get(pluginId);
-            const defaultValue = plugin ? plugin.enabledByDefault : true;
+            const defaultValue = plugin ? (plugin.enabledByDefault !== false) : true;
             return this.get(`plugin-${pluginId}-enabled`, defaultValue);
         },
         setPluginEnabled(pluginId, enabled) {
             this.set(`plugin-${pluginId}-enabled`, enabled);
+        },
+        // Plugin versioning storage
+        getCachedPlugin(pluginKey) {
+            const cached = this.get(`plugin-cache-${pluginKey}`, null);
+            if (cached) {
+                try {
+                    return JSON.parse(cached);
+                } catch (e) {
+                    Logger.error(`Failed to parse cached plugin ${pluginKey}:`, e);
+                    return null;
+                }
+            }
+            return null;
+        },
+        setCachedPlugin(pluginKey, code, version) {
+            const cacheData = {
+                code: code,
+                version: version,
+                cachedAt: Date.now()
+            };
+            this.set(`plugin-cache-${pluginKey}`, JSON.stringify(cacheData));
+        },
+        getPluginKey(filename, sourcePath) {
+            // Create a unique key for the plugin based on its path
+            return sourcePath || filename;
+        },
+        getSubmoduleLoggingEnabled() {
+            return this.get('submodule-logging', false);
+        },
+        setSubmoduleLoggingEnabled(enabled) {
+            this.set('submodule-logging', enabled);
+        },
+        getModuleLoggingEnabled(moduleId) {
+            return this.get(`module-logging-${moduleId}`, false);
+        },
+        setModuleLoggingEnabled(moduleId, enabled) {
+            this.set(`module-logging-${moduleId}`, enabled);
+        },
+        getPluginOrder(archetypeId) {
+            const key = `plugin-order-${archetypeId || 'global'}`;
+            const stored = this.get(key, null);
+            if (!stored) return null;
+            try {
+                return JSON.parse(stored);
+            } catch (e) {
+                Logger.error(`Failed to parse plugin order for ${key}:`, e);
+                return null;
+            }
+        },
+        setPluginOrder(archetypeId, order) {
+            const key = `plugin-order-${archetypeId || 'global'}`;
+            this.set(key, JSON.stringify(order || []));
         }
     };
 
@@ -47,6 +361,9 @@
     const Logger = {
         _debugEnabled: null,
         _verboseEnabled: null,
+        _submoduleEnabled: null,
+        _moduleLogEnabled: {},
+        _listeners: new Set(),
         
         isDebugEnabled() {
             if (this._debugEnabled === null) {
@@ -61,6 +378,21 @@
             }
             return this._verboseEnabled;
         },
+
+        isSubmoduleLoggingEnabled() {
+            if (this._submoduleEnabled === null) {
+                this._submoduleEnabled = Storage.getSubmoduleLoggingEnabled();
+            }
+            return this._submoduleEnabled;
+        },
+
+        isModuleLoggingEnabled(moduleId) {
+            if (!moduleId) return false;
+            if (typeof this._moduleLogEnabled[moduleId] === 'undefined') {
+                this._moduleLogEnabled[moduleId] = Storage.getModuleLoggingEnabled(moduleId);
+            }
+            return this._moduleLogEnabled[moduleId];
+        },
         
         setDebugEnabled(enabled) {
             this._debugEnabled = enabled;
@@ -71,57 +403,735 @@
             this._verboseEnabled = enabled;
             Storage.set('verbose', enabled);
         },
+
+        setSubmoduleLoggingEnabled(enabled) {
+            this._submoduleEnabled = enabled;
+            Storage.setSubmoduleLoggingEnabled(enabled);
+        },
+
+        setModuleLoggingEnabled(moduleId, enabled) {
+            if (!moduleId) return;
+            this._moduleLogEnabled[moduleId] = enabled;
+            Storage.setModuleLoggingEnabled(moduleId, enabled);
+        },
+
+        onLog(listener) {
+            this._listeners.add(listener);
+            return () => this._listeners.delete(listener);
+        },
+
+        _emit(level, args) {
+            if (!this._listeners.size) return;
+            this._listeners.forEach((listener) => {
+                try {
+                    listener(level, args);
+                } catch (e) {
+                    // Ignore listener errors to keep logging stable
+                }
+            });
+        },
+
+        _getModulePrefix(moduleId) {
+            const safeId = moduleId || 'unknown';
+            return `${LOG_PREFIX} [${safeId}]`;
+        },
+
+        _shouldLogModule(moduleId) {
+            return this.isSubmoduleLoggingEnabled() && this.isModuleLoggingEnabled(moduleId);
+        },
+
+        _logModule(level, msg, moduleId, ...args) {
+            if (!this._shouldLogModule(moduleId)) return;
+            const prefix = this._getModulePrefix(moduleId);
+            let payload;
+            if (level === 'debug') {
+                payload = [`${prefix} 🔍 ${msg}`, ...args];
+            } else if (level === 'warn') {
+                payload = [`${prefix} ⚠️ ${msg}`, ...args];
+            } else if (level === 'error') {
+                payload = [`${prefix} ❌ ${msg}`, ...args];
+            } else {
+                payload = [`${prefix} ${msg}`, ...args];
+            }
+            console[level](...payload);
+            this._emit(level, payload);
+        },
+
+        createModuleLogger(moduleIdSource) {
+            const resolveModuleId = typeof moduleIdSource === 'function'
+                ? moduleIdSource
+                : () => moduleIdSource;
+            return {
+                log: (msg, ...args) => this._logModule('log', msg, resolveModuleId(), ...args),
+                debug: (msg, ...args) => this._logModule('debug', msg, resolveModuleId(), ...args),
+                warn: (msg, ...args) => this._logModule('warn', msg, resolveModuleId(), ...args),
+                error: (msg, ...args) => this._logModule('error', msg, resolveModuleId(), ...args),
+                isVerboseEnabled: () => this._shouldLogModule(resolveModuleId()),
+                isDebugEnabled: () => this._shouldLogModule(resolveModuleId())
+            };
+        },
         
-        // Standard info logging (when debug enabled)
         log(msg, ...args) {
             if (this.isDebugEnabled()) {
-                console.log(`[Fleet Enhancer] ${msg}`, ...args);
+                const payload = [`${LOG_PREFIX} ${msg}`, ...args];
+                console.log(...payload);
+                this._emit('log', payload);
             }
         },
         
-        // Verbose/trace logging (when verbose enabled)
         debug(msg, ...args) {
             if (this.isVerboseEnabled()) {
-                console.debug(`[Fleet Enhancer] 🔍 ${msg}`, ...args);
+                const payload = [`${LOG_PREFIX} 🔍 ${msg}`, ...args];
+                console.debug(...payload);
+                this._emit('debug', payload);
             }
         },
         
-        // Warnings (always shown)
         warn(msg, ...args) {
-            console.warn(`[Fleet Enhancer] ⚠️ ${msg}`, ...args);
+            const payload = [`${LOG_PREFIX} ⚠️ ${msg}`, ...args];
+            console.warn(...payload);
+            this._emit('warn', payload);
         },
         
-        // Errors (always shown)
         error(msg, ...args) {
-            console.error(`[Fleet Enhancer] ❌ ${msg}`, ...args);
+            const payload = [`${LOG_PREFIX} ❌ ${msg}`, ...args];
+            console.error(...payload);
+            this._emit('error', payload);
         }
     };
 
-    // ============= SELECTORS =============
-    // Centralized selector definitions
-    const SELECTORS = {
-        toolbar: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
-        toolsContainer: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
-        promptTextareaContainer: '#\\:r7\\: > div.flex-shrink-0 > div > div.space-y-2.relative > div.relative > div',
-        promptSectionParent: '#\\:r7\\: > div.flex-shrink-0 > div.p-3.border-b',
-        workflowToolsIndicator: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)',
-        workflowToolsArea: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        mainContainer: 'body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > div.w-full.h-full.bg-background.rounded-sm.relative.flex.flex-col.min-w-0.overflow-hidden.border-\\[0\\.5px\\].shadow-\\[0_0_15px_rgba\\(0\\,0\\,0\\,0\\.05\\)\\] > div > div.flex-1.flex.overflow-hidden.min-h-0 > div',
-        leftColumn: '#\\:r7\\:',
-        workflowColumn: '#\\:rb\\:',
-        bugReportBtn: 'body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > button',
+    // ============= DOM SELECTORS (SAFE) =============
+    const DomUtils = {
+        _invalidSelectorLog: new Set(),
+        
+        _resolveRoot(options) {
+            return (options && options.root) ? options.root : document;
+        },
+        
+        _logInvalidSelector(selector, error, contextLabel) {
+            const key = `${contextLabel || 'unknown'}::${selector}`;
+            if (this._invalidSelectorLog.has(key)) return;
+            this._invalidSelectorLog.add(key);
+            const contextSuffix = contextLabel ? ` (${contextLabel})` : '';
+            Logger.error(`Invalid selector${contextSuffix}: "${selector}"`, error);
+        },
+        
+        query(selector, options = {}) {
+            if (!selector) return null;
+            const root = this._resolveRoot(options);
+            if (!root || !root.querySelector) return null;
+            try {
+                return root.querySelector(selector);
+            } catch (error) {
+                this._logInvalidSelector(selector, error, options.context);
+                return null;
+            }
+        },
+        
+        queryAll(selector, options = {}) {
+            if (!selector) return [];
+            const root = this._resolveRoot(options);
+            if (!root || !root.querySelectorAll) return [];
+            try {
+                return Array.from(root.querySelectorAll(selector));
+            } catch (error) {
+                this._logInvalidSelector(selector, error, options.context);
+                return [];
+            }
+        },
+        
+        closest(element, selector, options = {}) {
+            if (!element || !selector || !element.closest) return null;
+            try {
+                return element.closest(selector);
+            } catch (error) {
+                this._logInvalidSelector(selector, error, options.context);
+                return null;
+            }
+        }
+    };
+    
+    Context.dom = DomUtils;
+
+    // ============= ARCHETYPE MANAGER =============
+    const ArchetypeManager = {
+        archetypes: [],
+        currentArchetype: null,
+        _archetypesLoaded: false,
+        
+        async loadArchetypes() {
+            if (this._archetypesLoaded) {
+                Logger.debug('Archetypes already loaded, skipping fetch');
+                return { archetypes: this.archetypes };
+            }
+            
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.archetypesPath}`;
+            
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: (response) => {
+                        if (response.status === 200) {
+                            try {
+                                const config = JSON.parse(response.responseText);
+                                this.archetypes = config.archetypes || [];
+                                this._archetypesLoaded = true;
+                                Logger.log(`✓ Loaded ${this.archetypes.length} archetypes`);
+                                resolve(config);
+                            } catch (e) {
+                                Logger.error('Failed to parse archetypes config:', e);
+                                reject(e);
+                            }
+                        } else {
+                            Logger.error(`Failed to load archetypes: ${response.status}`);
+                            reject(new Error(`HTTP ${response.status}`));
+                        }
+                    },
+                    onerror: (error) => {
+                        Logger.error('Network error loading archetypes:', error);
+                        reject(error);
+                    }
+                });
+            });
+        },
+        
+        /**
+         * Detect archetype based on URL pattern, with optional selector disambiguation
+         */
+        detectArchetype() {
+            return new Promise((resolve) => {
+                const currentUrl = window.location.href;
+                const currentPath = UrlMatcher.getPathFromUrl(currentUrl);
+                Context.currentPath = currentPath;
+                
+                Logger.log(`Detecting archetype for path: "${currentPath}"`);
+                
+                // Step 1: Find all archetypes whose URL pattern matches
+                const urlMatches = this.archetypes.filter(archetype => {
+                    if (!archetype.urlPattern) {
+                        Logger.debug(`Archetype ${archetype.id} has no urlPattern, skipping`);
+                        return false;
+                    }
+                    return UrlMatcher.matches(currentPath, archetype.urlPattern);
+                });
+                
+                Logger.debug(`URL pattern matches: ${urlMatches.map(a => a.id).join(', ') || 'none'}`);
+                
+                if (urlMatches.length === 0) {
+                    Logger.warn('No archetype matched the current URL');
+                    this.currentArchetype = null;
+                    Context.currentArchetype = null;
+                    resolve(null);
+                    return;
+                }
+                
+                // Step 2: If only one match, use it (no disambiguation needed)
+                if (urlMatches.length === 1) {
+                    const archetype = urlMatches[0];
+                    Logger.log(`✓ Single URL match: ${archetype.id} - ${archetype.name}`);
+                    this.currentArchetype = archetype;
+                    Context.currentArchetype = archetype;
+                    resolve(archetype);
+                    return;
+                }
+                
+                // Step 3: Multiple matches - sort by specificity first
+                urlMatches.sort((a, b) => {
+                    const specA = UrlMatcher.getSpecificity(a.urlPattern);
+                    const specB = UrlMatcher.getSpecificity(b.urlPattern);
+                    return specB - specA; // Higher specificity first
+                });
+                
+                Logger.debug(`Sorted by specificity: ${urlMatches.map(a => `${a.id}(${UrlMatcher.getSpecificity(a.urlPattern)})`).join(', ')}`);
+                
+                // Step 4: Check if disambiguation is needed
+                // If highest specificity archetype has no disambiguation selectors, use it
+                // Otherwise, try to disambiguate using selectors
+                const needsDisambiguation = urlMatches.some(a => 
+                    a.disambiguationSelectors && a.disambiguationSelectors.length > 0
+                );
+                
+                if (!needsDisambiguation) {
+                    // Use the most specific URL match
+                    const archetype = urlMatches[0];
+                    Logger.log(`✓ Most specific URL match: ${archetype.id} - ${archetype.name}`);
+                    this.currentArchetype = archetype;
+                    Context.currentArchetype = archetype;
+                    resolve(archetype);
+                    return;
+                }
+                
+                // Step 5: Disambiguation needed - wait for DOM and check selectors
+                Logger.debug('Multiple URL matches with disambiguation selectors, waiting for DOM...');
+                this._disambiguateWithSelectors(urlMatches, resolve);
+            });
+        },
+        
+        /**
+         * Disambiguate between archetypes using DOM selectors
+         */
+        _disambiguateWithSelectors(candidates, resolve) {
+            let attempts = 0;
+            const maxAttempts = 20;
+            const checkInterval = 250;
+            
+            const checkSelectors = () => {
+                attempts++;
+                
+                // Check each candidate's disambiguation selectors
+                for (const archetype of candidates) {
+                    const selectors = archetype.disambiguationSelectors || [];
+                    
+                    // If no selectors, this archetype can't be confirmed via DOM
+                    if (selectors.length === 0) {
+                        continue;
+                    }
+                    
+                    // Check if ALL disambiguation selectors are present
+                    const allPresent = selectors.every(selector => {
+                        const exists = Context.dom.query(selector, {
+                            context: `archetype:${archetype.id}`
+                        }) !== null;
+                        Logger.debug(`  [${archetype.id}] Selector "${selector}": ${exists ? '✓' : '✗'}`);
+                        return exists;
+                    });
+                    
+                    if (allPresent) {
+                        Logger.log(`✓ Disambiguated to: ${archetype.id} - ${archetype.name}`);
+                        this.currentArchetype = archetype;
+                        Context.currentArchetype = archetype;
+                        resolve(archetype);
+                        return;
+                    }
+                }
+                
+                // No disambiguation match yet
+                if (attempts < maxAttempts) {
+                    Logger.debug(`Disambiguation attempt ${attempts}/${maxAttempts}, retrying...`);
+                    setTimeout(checkSelectors, checkInterval);
+                } else {
+                    // Fallback to most specific URL match
+                    const fallback = candidates[0];
+                    Logger.warn(`Disambiguation failed after ${maxAttempts} attempts, falling back to: ${fallback.id}`);
+                    this.currentArchetype = fallback;
+                    Context.currentArchetype = fallback;
+                    resolve(fallback);
+                }
+            };
+            
+            // Start checking
+            checkSelectors();
+        },
+        
+        getPluginsForCurrentArchetype() {
+            if (!this.currentArchetype) {
+                return [];
+            }
+            return this.currentArchetype.plugins || [];
+        }
     };
 
-    // ============= STORAGE KEYS =============
-    const STORAGE_KEYS = {
-        notes: 'notes',
-        notesHeight: 'notes-height',
-        col1Width: 'col1-width',
-        col2Width: 'col2-width',
-        col3Width: 'col3-width',
-        sectionSplitRatio: 'section-split-ratio',
-        favoriteTools: 'favorite-tools'
+    // ============= PLUGIN LOADER =============
+    const PluginLoader = {
+        _loadedPluginFiles: new Set(),
+        
+        /**
+         * Load plugin code from URL (but don't cache yet - version verification happens first)
+         * @param {string} url - URL to fetch plugin from
+         * @param {string} filename - Plugin filename
+         * @param {string} sourcePath - Full path for caching (e.g., "global/plugin.js")
+         * @param {string} version - Expected version (for logging only - actual verification happens later)
+         * @returns {Promise<{code: string, version: string}>}
+         */
+        async loadPluginFromUrl(url, filename, sourcePath, version) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    onload: (response) => {
+                        if (response.status === 200) {
+                            const code = response.responseText;
+                            // Don't cache here - version verification happens in loadPluginCode
+                            // Cache will be set after verification passes
+                            resolve({ code, version });
+                        } else {
+                            Logger.error(`Failed to load plugin ${filename}: ${response.status}`);
+                            reject(new Error(`HTTP ${response.status}`));
+                        }
+                    },
+                    onerror: (error) => {
+                        Logger.error(`Network error loading plugin ${filename}:`, error);
+                        reject(error);
+                    }
+                });
+            });
+        },
+        
+        /**
+         * Cache plugin code with version (called after version verification)
+         * @param {string} filename - Plugin filename
+         * @param {string} sourcePath - Full path for caching
+         * @param {string} code - Plugin code
+         * @param {string} version - Version to cache with
+         */
+        cachePluginCode(filename, sourcePath, code, version) {
+            const pluginKey = Storage.getPluginKey(filename, sourcePath);
+            Storage.setCachedPlugin(pluginKey, code, version);
+            Logger.debug(`Cached plugin ${filename} v${version}`);
+        },
+        
+        /**
+         * Load plugin code from cache or URL, with version verification
+         * @param {string} filename - Plugin filename
+         * @param {string} sourcePath - Full path for caching
+         * @param {string} version - Required version
+         * @param {string} url - URL to fetch from if not cached
+         * @returns {Promise<string>} - Plugin code
+         */
+        async loadPluginCode(filename, sourcePath, version, url) {
+            const pluginKey = Storage.getPluginKey(filename, sourcePath);
+            const cached = Storage.getCachedPlugin(pluginKey);
+            
+            // Check if we have a cached version that matches
+            if (cached && cached.version === version) {
+                Logger.debug(`Using cached plugin ${filename} v${version}`);
+                return cached.code;
+            }
+            
+            // Version mismatch or not cached - try to fetch
+            Logger.log(`Fetching plugin ${filename} v${version}${cached ? ` (cached: v${cached.version})` : ''}`);
+            
+            try {
+                const result = await this.loadPluginFromUrl(url, filename, sourcePath, version);
+                const fetchedCode = result.code;
+                
+                // Verify the fetched version by parsing the plugin
+                // This protects against GitHub CDN cache delays
+                try {
+                    const parsedPlugin = this.parsePluginCode(fetchedCode, filename);
+                    const fetchedVersion = parsedPlugin._version || parsedPlugin.version || null;
+                    
+                    if (fetchedVersion && fetchedVersion !== version) {
+                        // Fetched version doesn't match expected - GitHub CDN might be stale
+                        Logger.warn(`⚠ Fetched ${filename} has version v${fetchedVersion}, expected v${version}. GitHub CDN may be stale.`);
+                        
+                        // Don't cache the wrong version - use old cache if available
+                        if (cached) {
+                            Logger.warn(`Using cached v${cached.version} instead of stale fetched version`);
+                            Context.outdatedPlugins.push({
+                                filename: filename,
+                                sourcePath: sourcePath,
+                                cachedVersion: cached.version,
+                                requiredVersion: version,
+                                fetchedVersion: fetchedVersion
+                            });
+                            return cached.code;
+                        } else {
+                            // No cache available, but version is wrong - use it anyway with warning
+                            Logger.warn(`No cache available, using fetched version v${fetchedVersion} (expected v${version})`);
+                            Context.outdatedPlugins.push({
+                                filename: filename,
+                                sourcePath: sourcePath,
+                                cachedVersion: null,
+                                requiredVersion: version,
+                                fetchedVersion: fetchedVersion
+                            });
+                            // Don't cache the wrong version
+                            return fetchedCode;
+                        }
+                    }
+                    
+                    // Version matches (or plugin doesn't declare version) - cache it
+                    this.cachePluginCode(filename, sourcePath, fetchedCode, version);
+                    Logger.debug(`Verified and cached ${filename} v${version}`);
+                    return fetchedCode;
+                    
+                } catch (parseError) {
+                    // Failed to parse - this shouldn't happen, but if it does, use old cache
+                    Logger.error(`Failed to parse fetched plugin ${filename} for version verification:`, parseError);
+                    if (cached) {
+                        Logger.warn(`Using cached v${cached.version} due to parse error`);
+                        Context.outdatedPlugins.push({
+                            filename: filename,
+                            sourcePath: sourcePath,
+                            cachedVersion: cached.version,
+                            requiredVersion: version,
+                            parseError: true
+                        });
+                        return cached.code;
+                    }
+                    // No cache, but can't parse - rethrow
+                    throw parseError;
+                }
+                
+            } catch (error) {
+                // Fetch failed - use cached version if available (with warning)
+                if (cached) {
+                    Logger.warn(`⚠ Failed to fetch ${filename} v${version}, using cached v${cached.version}`);
+                    Context.outdatedPlugins.push({
+                        filename: filename,
+                        sourcePath: sourcePath,
+                        cachedVersion: cached.version,
+                        requiredVersion: version
+                    });
+                    return cached.code;
+                }
+                // No cache available, rethrow error
+                throw error;
+            }
+        },
+        
+        /**
+         * Parse and execute plugin code
+         * @param {string} code - Plugin code
+         * @param {string} filename - Plugin filename
+         * @returns {Object} - Plugin object
+         */
+        parsePluginCode(code, filename, options = {}) {
+            try {
+                const useModuleLogger = options.useModuleLogger === true;
+                const moduleIdHint = options.moduleIdHint || filename;
+                let resolvedModuleId = moduleIdHint;
+                const moduleLogger = useModuleLogger
+                    ? Logger.createModuleLogger(() => resolvedModuleId)
+                    : Logger;
+                const pluginFactory = new Function(
+                    'PluginManager',
+                    'Storage',
+                    'Logger',
+                    'Context',
+                    'CleanupRegistry',
+                    code + '\n\n// Return the plugin for registration\nreturn plugin;'
+                );
+
+                const plugin = pluginFactory(
+                    PluginManager,
+                    Storage,
+                    moduleLogger,
+                    Context,
+                    CleanupRegistry
+                );
+                if (useModuleLogger && plugin && plugin.id) {
+                    resolvedModuleId = plugin.id;
+                }
+                return plugin;
+            } catch (e) {
+                Logger.error(`Failed to parse plugin ${filename}:`, e);
+                throw e;
+            }
+        },
+        
+        /**
+         * Load a core plugin with versioning support
+         * @param {string} filename - Plugin filename
+         * @param {string} version - Required version
+         * @returns {Promise<Object>} - Plugin object
+         */
+        async loadCorePlugin(filename, version) {
+            const sourcePath = `core/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/${filename}`;
+            
+            // Load plugin code with versioning
+            const code = await this.loadPluginCode(filename, sourcePath, version, url);
+            const plugin = this.parsePluginCode(code, filename, { useModuleLogger: false });
+            this._loadedPluginFiles.add(sourcePath);
+            Logger.debug(`Loaded core plugin ${filename} v${version}`);
+            return plugin;
+        },
+
+        /**
+         * Load a dev plugin with versioning support
+         * @param {string} filename - Plugin filename
+         * @param {string} version - Required version
+         * @returns {Promise<Object>} - Plugin object
+         */
+        async loadDevPlugin(filename, version) {
+            const sourcePath = `dev/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.devPath}/${filename}`;
+
+            const code = await this.loadPluginCode(filename, sourcePath, version, url);
+            const plugin = this.parsePluginCode(code, filename, { useModuleLogger: false });
+            this._loadedPluginFiles.add(sourcePath);
+            Logger.debug(`Loaded dev plugin ${filename} v${version}`);
+            return plugin;
+        },
+        
+        /**
+         * Load an archetype plugin with versioning support
+         * @param {string} filename - The plugin filename or path (e.g., "network-interception.js" or "global/network-interception.js")
+         * @param {string} version - Required version (e.g., "1.0")
+         * @param {string} archetypeId - The archetype ID (e.g., "k-taskCreation")
+         * @returns {Promise} - Resolves with the plugin object
+         */
+        async loadArchetypePlugin(filename, version, archetypeId) {
+            // Check if filename contains an explicit folder path (e.g., "global/plugin.js" or "shared/plugin.js")
+            const pathParts = filename.split('/');
+            let sourcePath, url;
+            
+            if (pathParts.length > 1) {
+                // Explicit folder path specified, use it directly
+                const folderPath = pathParts.slice(0, -1).join('/');
+                const actualFilename = pathParts[pathParts.length - 1];
+                sourcePath = `${folderPath}/${actualFilename}`;
+                url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
+                
+                Logger.debug(`Loading plugin from explicit path: ${sourcePath} v${version}`);
+            } else {
+                // No explicit path, use default resolution: check global first, then archetype folder
+                const globalPath = `global/${filename}`;
+                const globalUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${globalPath}`;
+                
+                // Try to load from global first (with versioning)
+                try {
+                    const code = await this.loadPluginCode(filename, globalPath, version, globalUrl);
+                    const plugin = this.parsePluginCode(code, filename, { useModuleLogger: true });
+                    this._loadedPluginFiles.add(globalPath);
+                    Logger.debug(`Loaded ${filename} v${version} from global folder`);
+                    return plugin;
+                } catch (error) {
+                    // If global fails (404 or other), try archetype folder
+                    if (error.message && error.message.includes('404')) {
+                        Logger.debug(`Plugin ${filename} not found in global, trying archetype folder: ${archetypeId}`);
+                    } else {
+                        Logger.warn(`Error loading ${filename} from global, trying archetype folder:`, error);
+                    }
+                    
+                    // Fall through to archetype folder
+                    sourcePath = `${archetypeId}/${filename}`;
+                    url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
+                }
+            }
+            
+            // Load from determined path (explicit or archetype folder)
+            const code = await this.loadPluginCode(filename, sourcePath, version, url);
+            const plugin = this.parsePluginCode(code, filename, { useModuleLogger: true });
+            this._loadedPluginFiles.add(sourcePath);
+            Logger.debug(`Loaded ${filename} v${version} from ${sourcePath}`);
+            return plugin;
+        },
+        
+        async loadCorePlugins() {
+            if (CORE_PLUGINS.length === 0) {
+                Logger.debug('No core plugins configured');
+                return;
+            }
+            
+            Logger.log(`Loading ${CORE_PLUGINS.length} core plugin(s)...`);
+            
+            for (const pluginDef of CORE_PLUGINS) {
+                // Support both old format (string) and new format (object with name and version)
+                let filename, version;
+                if (typeof pluginDef === 'string') {
+                    // Backward compatibility: if just a string, default to version 1.0
+                    filename = pluginDef;
+                    version = '1.0';
+                } else if (pluginDef && pluginDef.name && pluginDef.version) {
+                    filename = pluginDef.name;
+                    version = pluginDef.version;
+                } else {
+                    Logger.error('Invalid core plugin definition:', pluginDef);
+                    continue;
+                }
+                
+                try {
+                    const plugin = await this.loadCorePlugin(filename, version);
+                    plugin._sourceFile = filename;
+                    plugin._version = version;
+                    plugin._isCore = true;
+                    PluginManager.register(plugin);
+                    Logger.log(`✓ Loaded core plugin: ${filename} v${version}`);
+                } catch (err) {
+                    Logger.error(`✗ Failed to load core plugin: ${filename} v${version}`, err);
+                }
+            }
+        },
+        
+        async loadPluginsForArchetype(pluginList, archetypeId) {
+            if (!pluginList || pluginList.length === 0) {
+                Logger.log('No plugins to load for this archetype');
+                return;
+            }
+            
+            if (!archetypeId) {
+                Logger.error('Archetype ID required to load plugins');
+                return;
+            }
+            
+            Logger.log(`Loading ${pluginList.length} archetype plugin(s) for ${archetypeId}...`);
+            const loadPromises = [];
+            
+            for (const pluginDef of pluginList) {
+                // Support both old format (string) and new format (object with name and version)
+                let filename, version;
+                if (typeof pluginDef === 'string') {
+                    // Backward compatibility: if just a string, default to version 1.0
+                    filename = pluginDef;
+                    version = '1.0';
+                } else if (pluginDef && pluginDef.name && pluginDef.version) {
+                    filename = pluginDef.name;
+                    version = pluginDef.version;
+                } else {
+                    Logger.error('Invalid plugin definition:', pluginDef);
+                    continue;
+                }
+                
+                // Check if already loaded
+                // First check by source file (handles explicit paths like "global/plugin.js")
+                const existingPlugins = PluginManager.getAll();
+                const alreadyLoadedByFile = existingPlugins.some(p => p._sourceFile === filename);
+                
+                // Also check if the resolved path is already loaded (for implicit paths that resolved to a location)
+                let alreadyLoadedByPath = false;
+                if (!alreadyLoadedByFile) {
+                    // Determine what path this would resolve to
+                    const pathParts = filename.split('/');
+                    if (pathParts.length > 1) {
+                        // Explicit path - check if this exact path was loaded
+                        const explicitPath = filename;
+                        alreadyLoadedByPath = this._loadedPluginFiles.has(explicitPath);
+                    } else {
+                        // Implicit path - check both global and archetype locations
+                        const globalPath = `global/${filename}`;
+                        const archetypePath = `${archetypeId}/${filename}`;
+                        alreadyLoadedByPath = this._loadedPluginFiles.has(globalPath) || 
+                                            this._loadedPluginFiles.has(archetypePath);
+                    }
+                }
+                
+                if (alreadyLoadedByFile || alreadyLoadedByPath) {
+                    Logger.debug(`Plugin ${filename} already loaded, skipping fetch`);
+                    continue;
+                }
+                
+                loadPromises.push(
+                    this.loadArchetypePlugin(filename, version, archetypeId)
+                        .then(plugin => {
+                            const loadedVersion = plugin._version || plugin.version || version;
+                            plugin._sourceFile = filename;
+                            plugin._version = loadedVersion;
+                            plugin._isCore = false;
+                            PluginManager.register(plugin);
+                            Logger.log(`✓ Loaded plugin: ${filename} v${loadedVersion}`);
+                        })
+                        .catch(err => {
+                            Logger.error(`✗ Failed to load plugin: ${filename} v${version}`, err);
+                        })
+                );
+            }
+            
+            await Promise.allSettled(loadPromises);
+            
+            // Log warnings about outdated plugins
+            if (Context.outdatedPlugins.length > 0) {
+                Logger.warn(`⚠ ${Context.outdatedPlugins.length} plugin(s) are using outdated cached versions:`);
+                Context.outdatedPlugins.forEach(p => {
+                    Logger.warn(`  - ${p.filename}: cached v${p.cachedVersion}, required v${p.requiredVersion}`);
+                });
+            }
+            
+            Logger.log('Archetype plugin loading complete');
+        }
     };
 
     // ============= PLUGIN MANAGER =============
@@ -137,7 +1147,7 @@
                 ...plugin,
                 state: plugin.initialState ? { ...plugin.initialState } : {},
             };
-            Logger.log(`Registered plugin: ${plugin.id}`);
+            Logger.debug(`Registered plugin: ${plugin.id}`);
         },
         
         get(id) {
@@ -148,6 +1158,14 @@
             return Object.values(this.plugins);
         },
         
+        getCorePlugins() {
+            return this.getAll().filter(p => p._isCore === true);
+        },
+        
+        getArchetypePlugins() {
+            return this.getAll().filter(p => p._isCore !== true);
+        },
+        
         isEnabled(id) {
             return Storage.getPluginEnabled(id);
         },
@@ -156,9 +1174,43 @@
             Storage.setPluginEnabled(id, enabled);
         },
         
-        // Run early plugins (before DOM ready)
+        cleanupArchetypePlugins() {
+            this.getArchetypePlugins().forEach(plugin => {
+                try {
+                    if (plugin.destroy) {
+                        plugin.destroy(plugin.state, Context);
+                        Logger.debug(`✓ Destroyed plugin: ${plugin.id}`);
+                    }
+                    plugin.state = plugin.initialState ? { ...plugin.initialState } : {};
+                } catch (e) {
+                    Logger.error(`Error destroying plugin ${plugin.id}:`, e);
+                }
+            });
+        },
+        
+        clearArchetypePlugins() {
+            this.cleanupArchetypePlugins();
+            const archetypePluginIds = this.getArchetypePlugins().map(p => p.id);
+            archetypePluginIds.forEach(id => {
+                delete this.plugins[id];
+            });
+        },
+        
+        runCorePlugins() {
+            this.getCorePlugins()
+                .filter(p => this.isEnabled(p.id))
+                .forEach(plugin => {
+                    try {
+                        if (plugin.init) plugin.init(plugin.state, Context);
+                        Logger.log(`✓ Core plugin initialized: ${plugin.id}`);
+                    } catch (e) {
+                        Logger.error(`Error in core plugin ${plugin.id}:`, e);
+                    }
+                });
+        },
+        
         runEarlyPlugins() {
-            this.getAll()
+            this.getArchetypePlugins()
                 .filter(p => p.phase === 'early' && this.isEnabled(p.id))
                 .forEach(plugin => {
                     try {
@@ -170,9 +1222,8 @@
                 });
         },
         
-        // Run init plugins (after DOM ready, once)
         runInitPlugins() {
-            this.getAll()
+            this.getArchetypePlugins()
                 .filter(p => p.phase === 'init' && this.isEnabled(p.id))
                 .forEach(plugin => {
                     try {
@@ -184,9 +1235,8 @@
                 });
         },
         
-        // Run mutation plugins (on each DOM mutation)
         runMutationPlugins() {
-            this.getAll()
+            this.getArchetypePlugins()
                 .filter(p => p.phase === 'mutation' && this.isEnabled(p.id))
                 .forEach(plugin => {
                     try {
@@ -198,1508 +1248,165 @@
         }
     };
 
-    // ============= PLUGIN DEFINITIONS =============
-
-    // ---------- Network Interception Plugin ----------
-    PluginManager.register({
-        id: 'networkInterception',
-        name: 'Network Interception',
-        description: 'Captures MCP request URLs for the Source Data Explorer button',
-        enabledByDefault: true,
-        phase: 'early',
-        initialState: {},
-        
-        init(state, context) {
-            const pageWindow = context.getPageWindow();
-            const originalFetch = pageWindow.fetch;
-
-            pageWindow.fetch = function(...args) {
-                const [resource, config] = args;
-                let url;
-                try {
-                    url = new URL(resource, pageWindow.location.href);
-                } catch (e) {
-                    url = { href: resource, pathname: '' };
-                }
-
-                if (url.pathname === '/mcp' && config && config.method === 'POST') {
-                    if (context.source === null) {
-                        context.source = url.href;
-                        console.log('[Fleet Enhancer] ✓ Source URL captured (fetch)');
-                    }
-                }
-                return originalFetch.apply(this, args);
-            };
-
-            const originalXHROpen = pageWindow.XMLHttpRequest.prototype.open;
-            const originalXHRSend = pageWindow.XMLHttpRequest.prototype.send;
-
-            pageWindow.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                this._interceptedURL = url;
-                this._interceptedMethod = method;
-                return originalXHROpen.apply(this, [method, url, ...rest]);
-            };
-
-            pageWindow.XMLHttpRequest.prototype.send = function(body) {
-                if (this._interceptedMethod === 'POST' && this._interceptedURL && this._interceptedURL.includes('/mcp')) {
-                    if (context.source === null) {
-                        context.source = this._interceptedURL;
-                        console.log('[Fleet Enhancer] ✓ Source URL captured (XHR)');
-                    }
-                }
-                return originalXHRSend.apply(this, [body]);
-            };
-
-            // Expose getter globally for debugging
-            pageWindow.getFleetSource = () => context.source;
-            
-            console.log('[Fleet Enhancer] ✓ Network interception installed');
-        }
-    });
-
-    // ---------- Autocorrect Search Plugin ----------
-    PluginManager.register({
-        id: 'autocorrectSearch',
-        name: 'Disable Search Autocorrect',
-        description: 'Disables autocorrect/autocomplete on the search input',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { applied: false },
-        
-        onMutation(state, context) {
-            if (state.applied) return;
-
-            const searchInput = document.querySelector('input[placeholder="Search tools, descriptions, parameters..."]');
-            if (searchInput) {
-                searchInput.setAttribute('autocomplete', 'off');
-                searchInput.setAttribute('autocorrect', 'off');
-                searchInput.setAttribute('autocapitalize', 'off');
-                searchInput.setAttribute('spellcheck', 'false');
-                searchInput.setAttribute('data-form-type', 'other');
-                searchInput.setAttribute('data-lpignore', 'true');
-                searchInput.setAttribute('data-1p-ignore', 'true');
-                state.applied = true;
-                Logger.log('✓ Autocorrect disabled on search input');
-            }
-        }
-    });
-
-    // ---------- Autocorrect Textareas Plugin ----------
-    PluginManager.register({
-        id: 'autocorrectTextareas',
-        name: 'Disable Textarea Autocorrect',
-        description: 'Disables autocorrect on prompt editor and notes',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { promptEditor: false, notesTextarea: false },
-        
-        onMutation(state, context) {
-            if (!state.promptEditor) {
-                const promptEditor = document.getElementById('prompt-editor');
-                if (promptEditor) {
-                    promptEditor.setAttribute('autocomplete', 'off');
-                    promptEditor.setAttribute('autocorrect', 'off');
-                    promptEditor.setAttribute('autocapitalize', 'off');
-                    promptEditor.setAttribute('spellcheck', 'false');
-                    state.promptEditor = true;
-                    Logger.log('✓ Autocorrect disabled on prompt editor');
-                }
-            }
-
-            if (!state.notesTextarea) {
-                const notesTextarea = document.getElementById('wf-notes-textarea');
-                if (notesTextarea) {
-                    notesTextarea.setAttribute('autocomplete', 'off');
-                    notesTextarea.setAttribute('autocorrect', 'off');
-                    notesTextarea.setAttribute('autocapitalize', 'off');
-                    notesTextarea.setAttribute('spellcheck', 'false');
-                    state.notesTextarea = true;
-                    Logger.log('✓ Autocorrect disabled on notes textarea');
-                }
-            }
-        }
-    });
-
-    // ---------- Expand/Collapse Buttons Plugin ----------
-    PluginManager.register({
-        id: 'expandCollapseButtons',
-        name: 'Expand/Collapse All',
-        description: 'Adds buttons to expand or collapse all workflow tools',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { added: false },
-        
-        onMutation(state, context) {
-            const toolbar = document.querySelector(SELECTORS.toolbar);
-            if (!toolbar) return;
-
-            const toolsIndicator = document.querySelector(SELECTORS.workflowToolsIndicator);
-            const hasTools = toolsIndicator && toolsIndicator.children.length > 0;
-
-            let container = document.getElementById('wf-expand-collapse-container');
-            
-            if (!container) {
-                const buttonClass = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 transition-colors hover:bg-accent rounded-sm h-7 px-2 text-xs text-muted-foreground hover:text-foreground';
-
-                container = document.createElement('div');
-                container.id = 'wf-expand-collapse-container';
-                container.className = 'flex items-center gap-2';
-
-                const expandBtn = document.createElement('button');
-                expandBtn.id = 'wf-expand-btn';
-                expandBtn.className = buttonClass;
-                expandBtn.innerHTML = `<span>Expand All</span>`;
-                expandBtn.addEventListener('click', () => this.setAllToolsState('open'));
-
-                const divider = document.createElement('div');
-                divider.className = 'w-px h-5 bg-border mx-1';
-
-                const collapseBtn = document.createElement('button');
-                collapseBtn.id = 'wf-collapse-btn';
-                collapseBtn.className = buttonClass;
-                collapseBtn.innerHTML = `<span>Collapse All</span>`;
-                collapseBtn.addEventListener('click', () => this.setAllToolsState('closed'));
-
-                const trailingDivider = document.createElement('div');
-                trailingDivider.id = 'wf-expand-collapse-trailing-divider';
-                trailingDivider.className = 'w-px h-5 bg-border mx-1';
-
-                container.appendChild(expandBtn);
-                container.appendChild(divider);
-                container.appendChild(collapseBtn);
-                container.appendChild(trailingDivider);
-
-                toolbar.insertBefore(container, toolbar.firstChild);
-                state.added = true;
-                Logger.log('✓ Expand/Collapse buttons added to toolbar');
-            }
-
-            container.style.display = hasTools ? 'flex' : 'none';
-        },
-        
-        setAllToolsState(targetState) {
-            const toolsContainer = document.querySelector(SELECTORS.toolsContainer);
-            if (!toolsContainer) {
-                Logger.log('⚠ Tools container not found for expand/collapse');
-                return;
-            }
-
-            const toolHeaders = toolsContainer.querySelectorAll(SELECTORS.toolHeader);
-            let successCount = 0;
-
-            toolHeaders.forEach((header) => {
-                const currentState = header.getAttribute('data-state');
-                if ((targetState === 'open' && currentState === 'closed') ||
-                    (targetState === 'closed' && currentState === 'open')) {
-                    header.click();
-                    successCount++;
-                }
-            });
-
-            Logger.log(`✓ ${targetState === 'open' ? 'Expanded' : 'Collapsed'} ${successCount} tools`);
-        }
-    });
-
-    // ---------- Remove Textarea Gradient Plugin ----------
-    PluginManager.register({
-        id: 'removeTextareaGradient',
-        name: 'Remove Textarea Gradient',
-        description: 'Removes the gradient fade overlay from the prompt textarea',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { removed: false },
-        
-        onMutation(state, context) {
-            if (state.removed) return;
-
-            const container = document.querySelector(SELECTORS.promptTextareaContainer);
-            if (!container) return;
-
-            const gradientOverlay = container.querySelector('div.bg-gradient-to-b');
-            if (gradientOverlay) {
-                gradientOverlay.style.background = 'none';
-                gradientOverlay.style.pointerEvents = 'none';
-                state.removed = true;
-                Logger.log('✓ Textarea gradient fade removed');
-            }
-        }
-    });
-
-    // ---------- Bug Report Expand Plugin ----------
-    PluginManager.register({
-        id: 'bugReportExpand',
-        name: 'Bug Report Expand',
-        description: 'Makes bug report cards expandable to see full text',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: {},
-        
-        onMutation(state, context) {
-            const bugReportCards = document.querySelectorAll('div.p-3.bg-muted\\/50.rounded-lg.text-sm');
-            if (bugReportCards.length === 0) return;
-
-            let modified = 0;
-
-            bugReportCards.forEach(card => {
-                if (card.hasAttribute('data-wf-expand-enabled')) return;
-
-                const contentWrapper = card.querySelector('div.flex.items-start.justify-between.gap-2 > div.flex-1.min-w-0');
-                if (!contentWrapper) return;
-
-                const textParagraph = contentWrapper.querySelector('p.text-muted-foreground.text-xs.line-clamp-2');
-                if (!textParagraph) return;
-
-                card.setAttribute('data-wf-expand-enabled', 'true');
-                contentWrapper.style.cursor = 'pointer';
-                contentWrapper.setAttribute('title', 'Click to expand/collapse');
-
-                const originalText = textParagraph.textContent;
-                let isExpanded = false;
-
-                contentWrapper.addEventListener('click', (e) => {
-                    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
-
-                    isExpanded = !isExpanded;
-
-                    if (isExpanded) {
-                        textParagraph.classList.remove('line-clamp-2');
-                        textParagraph.style.whiteSpace = 'pre-wrap';
-                        const formattedText = originalText
-                            .replace(/\*\*([^*]+)\*\*/g, '$1')
-                            .replace(/\n\n/g, '\n');
-                        textParagraph.textContent = formattedText;
-                    } else {
-                        textParagraph.classList.add('line-clamp-2');
-                        textParagraph.style.whiteSpace = '';
-                        textParagraph.textContent = originalText;
-                    }
-                });
-
-                modified++;
-            });
-
-            if (modified > 0) {
-                Logger.log(`✓ Bug report expand/collapse enabled for ${modified} report(s)`);
-            }
-        }
-    });
-
-    // ---------- Mini Execute Buttons Plugin ----------
-    PluginManager.register({
-        id: 'miniExecuteButtons',
-        name: 'Mini Execute Buttons',
-        description: 'Adds quick execute buttons to collapsed workflow tools',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: {},
-        
-        onMutation(state, context) {
-            const toolsContainer = document.querySelector(SELECTORS.workflowToolsArea);
-            if (!toolsContainer) return;
-
-            const toolCards = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
-            let buttonsAdded = 0;
-
-            toolCards.forEach(card => {
-                const collapsibleRoot = card.querySelector('div[data-state]');
-                if (!collapsibleRoot) return;
-
-                const header = card.querySelector(SELECTORS.toolHeader);
-                if (!header) return;
-
-                const buttonContainer = header.querySelector('div.flex.items-center.gap-1');
-                if (!buttonContainer) return;
-
-                let miniExecBtn = buttonContainer.querySelector('.wf-mini-execute-btn');
-                const isCollapsed = collapsibleRoot.getAttribute('data-state') === 'closed';
-
-                if (!miniExecBtn) {
-                    miniExecBtn = document.createElement('button');
-                    miniExecBtn.className = 'wf-mini-execute-btn inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-brand !text-white transition-colors hover:brightness-95 border border-brand-accent rounded-sm size-7 h-7 w-7';
-                    miniExecBtn.title = 'Execute';
-                    miniExecBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="fill-current size-3.5"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM11.03 8.652C10.7217 8.45933 10.3332 8.44913 10.0152 8.62536C9.69728 8.80158 9.5 9.13648 9.5 9.5V14.5C9.5 14.8635 9.69728 15.1984 10.0152 15.3746C10.3332 15.5509 10.7217 15.5407 11.03 15.348L15.03 12.848C15.3224 12.6653 15.5 12.3448 15.5 12C15.5 11.6552 15.3224 11.3347 15.03 11.152L11.03 8.652Z"></path></svg>`;
-                    
-                    miniExecBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        this.executeTool(card, header);
-                    });
-
-                    buttonContainer.insertBefore(miniExecBtn, buttonContainer.firstChild);
-                    buttonsAdded++;
-                }
-
-                miniExecBtn.style.display = isCollapsed ? 'inline-flex' : 'none';
-            });
-
-            if (buttonsAdded > 0) {
-                Logger.log(`✓ Added ${buttonsAdded} mini execute button(s)`);
-            }
-        },
-        
-        executeTool(card, header) {
-            Logger.log('executeTool called');
-            
-            const collapsibleRoot = card.querySelector('div[data-state]');
-            if (!collapsibleRoot) {
-                Logger.log('No collapsible root found');
-                return;
-            }
-
-            const isCollapsed = collapsibleRoot.getAttribute('data-state') === 'closed';
-            
-            if (isCollapsed) {
-                header.click();
-                
-                const buttonObserver = new MutationObserver((mutations, obs) => {
-                    const collapsibleContent = card.querySelector('div[data-state="open"] > div[id^="radix-"][data-state="open"]');
-                    if (!collapsibleContent) return;
-                    
-                    const buttons = collapsibleContent.querySelectorAll('div.px-3.pb-3.space-y-3 > button');
-                    let executeBtn = null;
-                    buttons.forEach(btn => {
-                        const btnText = btn.textContent.trim();
-                        if (btnText === 'Execute' || btnText === 'Re-execute') {
-                            executeBtn = btn;
-                        }
-                    });
-                    
-                    if (executeBtn) {
-                        obs.disconnect();
-                        executeBtn.click();
-                        Logger.log('Clicked execute button for collapsed tool');
-                        this.watchForToolCompletion(card, header);
-                    }
-                });
-                
-                buttonObserver.observe(card, {
-                    childList: true,
-                    subtree: true,
-                    attributes: true,
-                    attributeFilter: ['hidden', 'data-state']
-                });
-                
-                setTimeout(() => buttonObserver.disconnect(), 5000);
-            } else {
-                const collapsibleContent = card.querySelector('div[data-state="open"] > div[id^="radix-"][data-state="open"]');
-                if (collapsibleContent) {
-                    const buttons = collapsibleContent.querySelectorAll('div.px-3.pb-3.space-y-3 > button');
-                    let executeBtn = null;
-                    buttons.forEach(btn => {
-                        const btnText = btn.textContent.trim();
-                        if (btnText === 'Execute' || btnText === 'Re-execute') {
-                            executeBtn = btn;
-                        }
-                    });
-                    
-                    if (executeBtn) {
-                        executeBtn.click();
-                        Logger.log('Clicked execute button for open tool');
-                    }
-                }
-            }
-        },
-        
-        watchForToolCompletion(card, header) {
-            const completionObserver = new MutationObserver((mutations, obs) => {
-                const hasSuccess = card.classList.contains('border-emerald-500/50');
-                const hasError = card.classList.contains('border-red-500/50');
-                
-                if (hasSuccess || hasError) {
-                    obs.disconnect();
-                    Logger.log('Tool execution completed with ' + (hasSuccess ? 'SUCCESS' : 'ERROR'));
-                    
-                    const collapsibleRoot = card.querySelector('div[data-state]');
-                    if (collapsibleRoot && collapsibleRoot.getAttribute('data-state') === 'open') {
-                        header.click();
-                        Logger.log('Collapsed tool after completion');
-                    }
-                }
-            });
-            
-            completionObserver.observe(card, { attributes: true, attributeFilter: ['class'] });
-            setTimeout(() => completionObserver.disconnect(), 5000);
-        }
-    });
-
-    // ---------- Duplicate to End Plugin ----------
-    PluginManager.register({
-        id: 'duplicateToEnd',
-        name: 'Duplicate to End',
-        description: 'Adds button to duplicate a tool and move it to the end of the workflow',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: {},
-        
-        onMutation(state, context) {
-            const toolsContainer = document.querySelector(SELECTORS.workflowToolsArea);
-            if (!toolsContainer) return;
-            
-            const toolCards = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
-            let buttonsAdded = 0;
-            
-            toolCards.forEach(card => {
-                const header = card.querySelector(SELECTORS.toolHeader);
-                if (!header) return;
-                
-                const buttonContainer = header.querySelector('div.flex.items-center.gap-1');
-                if (!buttonContainer) return;
-                
-                if (buttonContainer.querySelector('.wf-duplicate-to-end-btn')) return;
-                
-                const buttons = buttonContainer.querySelectorAll('button');
-                let duplicateBtn = null;
-                
-                buttons.forEach(btn => {
-                    const svg = btn.querySelector('svg');
-                    if (svg) {
-                        const hasLine15 = svg.querySelector('line[x1="15"][y1="12"][y2="18"]');
-                        const hasRect = svg.querySelector('rect[width="14"][height="14"]');
-                        if (hasLine15 && hasRect) {
-                            duplicateBtn = btn;
-                        }
-                    }
-                });
-                
-                if (!duplicateBtn) return;
-                
-                const deleteBtn = duplicateBtn.nextElementSibling;
-                if (!deleteBtn || deleteBtn.tagName !== 'BUTTON') return;
-                
-                const dupToEndBtn = document.createElement('button');
-                dupToEndBtn.className = 'wf-duplicate-to-end-btn inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground size-7 h-7 w-7';
-                dupToEndBtn.title = 'Duplicate to End of Workflow';
-                dupToEndBtn.setAttribute('data-state', 'closed');
-                
-                dupToEndBtn.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 text-muted-foreground hover:text-primary">
-                        <rect x="9" y="2" width="10" height="10" rx="1.5" ry="1.5"></rect>
-                        <path d="M5 10c-0.8 0-1.5 0.7-1.5 1.5v7c0 0.8 0.7 1.5 1.5 1.5h7c0.8 0 1.5-0.7 1.5-1.5"></path>
-                        <line x1="14" y1="5" x2="14" y2="9"></line>
-                        <line x1="12" y1="7" x2="16" y2="7"></line>
-                        <polyline points="21 14 21 20 15 20"></polyline>
-                        <path d="M21 20 L17 16"></path>
-                    </svg>
-                `;
-                
-                dupToEndBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    
-                    const currentButtons = buttonContainer.querySelectorAll('button');
-                    let currentDuplicateBtn = null;
-                    
-                    currentButtons.forEach(btn => {
-                        const svg = btn.querySelector('svg');
-                        if (svg) {
-                            const hasLine15 = svg.querySelector('line[x1="15"][y1="12"][y2="18"]');
-                            const hasRect = svg.querySelector('rect[width="14"][height="14"]');
-                            if (hasLine15 && hasRect) {
-                                currentDuplicateBtn = btn;
-                            }
-                        }
-                    });
-                    
-                    if (currentDuplicateBtn) {
-                        this.duplicateToolToEnd(card, currentDuplicateBtn);
-                    }
-                });
-                
-                buttonContainer.insertBefore(dupToEndBtn, deleteBtn);
-                buttonsAdded++;
-            });
-            
-            if (buttonsAdded > 0) {
-                Logger.log('Added ' + buttonsAdded + ' duplicate-to-end button(s)');
-            }
-            
-            // Cleanup orphaned buttons
-            this.cleanupOrphanedButtons();
-        },
-        
-        duplicateToolToEnd(card, duplicateBtn) {
-            const toolsContainer = document.querySelector(SELECTORS.workflowToolsArea);
-            if (!toolsContainer) return;
-            
-            const toolCardsBefore = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
-            const countBefore = toolCardsBefore.length;
-            const toolCardsArray = Array.from(toolCardsBefore);
-            const currentIndex = toolCardsArray.indexOf(card.closest('div.rounded-lg.border.transition-colors') || card);
-            
-            duplicateBtn.click();
-            
-            const dupeObserver = new MutationObserver((mutations, obs) => {
-                const toolCardsAfter = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
-                
-                if (toolCardsAfter.length > countBefore) {
-                    obs.disconnect();
-                    
-                    const duplicatedToolIndex = currentIndex + 1;
-                    const duplicatedTool = toolCardsAfter[duplicatedToolIndex];
-                    
-                    if (!duplicatedTool || duplicatedToolIndex === toolCardsAfter.length - 1) return;
-                    
-                    const movesNeeded = (toolCardsAfter.length - 1) - duplicatedToolIndex;
-                    this.moveToolToEndViaKeyboard(duplicatedTool, movesNeeded);
-                }
-            });
-            
-            dupeObserver.observe(toolsContainer, { childList: true, subtree: true });
-            setTimeout(() => dupeObserver.disconnect(), 3000);
-        },
-        
-        moveToolToEndViaKeyboard(toolCard, movesNeeded) {
-            const dragHandle = toolCard.querySelector('div[role="button"][aria-roledescription="sortable"]');
-            if (!dragHandle) return;
-            
-            dragHandle.focus();
-            
-            setTimeout(() => {
-                const spaceDownEvent = new KeyboardEvent('keydown', {
-                    key: ' ', code: 'Space', keyCode: 32, which: 32,
-                    bubbles: true, cancelable: true
-                });
-                dragHandle.dispatchEvent(spaceDownEvent);
-                
-                let moveCount = 0;
-                const moveInterval = setInterval(() => {
-                    if (moveCount >= movesNeeded) {
-                        clearInterval(moveInterval);
-                        setTimeout(() => {
-                            const spaceDropEvent = new KeyboardEvent('keydown', {
-                                key: ' ', code: 'Space', keyCode: 32, which: 32,
-                                bubbles: true, cancelable: true
-                            });
-                            dragHandle.dispatchEvent(spaceDropEvent);
-                            dragHandle.blur();
-                            Logger.log('Tool moved to end successfully');
-                        }, 50);
-                        return;
-                    }
-                    
-                    const arrowDownEvent = new KeyboardEvent('keydown', {
-                        key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40,
-                        bubbles: true, cancelable: true
-                    });
-                    dragHandle.dispatchEvent(arrowDownEvent);
-                    moveCount++;
-                }, 50);
-            }, 50);
-        },
-        
-        cleanupOrphanedButtons() {
-            const allDupToEndBtns = document.querySelectorAll('.wf-duplicate-to-end-btn');
-            let removed = 0;
-            
-            allDupToEndBtns.forEach(btn => {
-                const buttonContainer = btn.parentElement;
-                if (!buttonContainer) {
-                    btn.remove();
-                    removed++;
-                    return;
-                }
-                
-                const prevSibling = btn.previousElementSibling;
-                const nextSibling = btn.nextElementSibling;
-                
-                if (!prevSibling || !nextSibling || nextSibling.tagName !== 'BUTTON') {
-                    btn.remove();
-                    removed++;
-                }
-            });
-            
-            if (removed > 0) {
-                Logger.log(`Cleaned up ${removed} orphaned duplicate-to-end button(s)`);
-            }
-        }
-    });
-
-    // ---------- Source Data Explorer Plugin ----------
-    PluginManager.register({
-        id: 'sourceDataExplorer',
-        name: 'Source Data Explorer',
-        description: 'Adds button to open the source data URL in a new tab',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { added: false },
-        
-        onMutation(state, context) {
-            if (!context.source) return;
-            if (state.added) return;
-            
-            const containers = document.querySelectorAll('div.flex.items-center.gap-2.mt-2');
-            let targetContainer = null;
-            
-            for (const container of containers) {
-                const recommendBtn = container.querySelector('button');
-                if (recommendBtn && recommendBtn.textContent.includes('Recommend Tools')) {
-                    targetContainer = container;
-                    break;
-                }
-            }
-            
-            if (!targetContainer) return;
-            if (targetContainer.querySelector('#wf-source-explorer-btn')) {
-                state.added = true;
-                return;
-            }
-            
-            let baseUrl = context.source;
-            if (baseUrl.includes('/mcp')) {
-                baseUrl = baseUrl.substring(0, baseUrl.indexOf('/mcp'));
-            }
-            
-            const sourceBtn = document.createElement('button');
-            sourceBtn.id = 'wf-source-explorer-btn';
-            sourceBtn.className = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-sm pl-3 pr-3 text-xs gap-1.5 relative';
-            sourceBtn.setAttribute('data-state', 'closed');
-            
-            sourceBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 text-blue-500">
-                    <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
-                    <path d="M3 5V19C3 20.6569 7.02944 22 12 22C16.9706 22 21 20.6569 21 19V5"></path>
-                    <path d="M3 12C3 13.6569 7.02944 15 12 15C16.9706 15 21 13.6569 21 12"></path>
-                </svg>
-                Source Data Explorer
-            `;
-            
-            sourceBtn.addEventListener('click', () => {
-                window.open(baseUrl, '_blank');
-                Logger.log('Opened source URL: ' + baseUrl);
-            });
-            
-            const firstButton = targetContainer.querySelector('button');
-            if (firstButton && firstButton.nextSibling) {
-                targetContainer.insertBefore(sourceBtn, firstButton.nextSibling);
-            } else {
-                targetContainer.appendChild(sourceBtn);
-            }
-            
-            state.added = true;
-            Logger.log('✓ Source Data Explorer button added');
-        }
-    });
-
-    // ---------- Auto Confirm Re-execute Plugin ----------
-    PluginManager.register({
-        id: 'autoConfirmReexecute',
-        name: 'Auto-Confirm Re-execute',
-        description: 'Automatically confirms re-execute dialogs',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: {},
-        
-        onMutation(state, context) {
-            const dialog = document.querySelector('div[role="alertdialog"][data-state="open"]');
-            if (!dialog) return;
-            
-            const heading = dialog.querySelector('h2');
-            if (!heading || !heading.textContent.includes('Re-execute this step')) return;
-            
-            const buttons = dialog.querySelectorAll('button');
-            let confirmBtn = null;
-            
-            buttons.forEach(btn => {
-                const btnText = btn.textContent.trim();
-                if (btnText.includes('Re-execute') && btnText.includes('Invalidate')) {
-                    confirmBtn = btn;
-                }
-            });
-            
-            if (confirmBtn) {
-                Logger.log('Auto-confirming re-execute dialog');
-                confirmBtn.click();
-            }
-        }
-    });
-
-    // ---------- Three Column Layout Plugin ----------
-    PluginManager.register({
-        id: 'threeColumnLayout',
-        name: 'Three Column Layout',
-        description: 'Transforms the layout into three resizable columns',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { applied: false },
-        
-        onMutation(state, context) {
-            if (state.applied) return;
-
-            const mainContainer = document.querySelector(SELECTORS.mainContainer);
-            if (!mainContainer) return;
-
-            if (document.getElementById('wf-three-col-layout')) {
-                state.applied = true;
-                return;
-            }
-
-            const leftColumn = document.querySelector(SELECTORS.leftColumn);
-            const existingDivider = mainContainer.querySelector('div[data-resize-handle]');
-            const workflowColumn = document.querySelector(SELECTORS.workflowColumn);
-
-            if (!leftColumn || !workflowColumn || !existingDivider) return;
-
-            const topSection = leftColumn.querySelector('div.flex-shrink-0');
-            const bottomSection = leftColumn.querySelector('div.flex-1.min-h-0.overflow-hidden');
-
-            if (!topSection || !bottomSection) return;
-
-            const panelGroupId = mainContainer.getAttribute('data-panel-group-id') || ':r6:';
-            
-            const preservedElements = {
-                leftColumn: leftColumn.parentNode.removeChild(leftColumn),
-                workflowColumn: workflowColumn.parentNode.removeChild(workflowColumn),
-                topSection: topSection,
-                bottomSection: bottomSection
-            };
-            
-            mainContainer.innerHTML = '';
-            mainContainer.id = 'wf-three-col-layout';
-
-            const savedCol1 = Storage.get(STORAGE_KEYS.col1Width, 25);
-            const savedCol2 = Storage.get(STORAGE_KEYS.col2Width, 37.5);
-            const savedCol3 = Storage.get(STORAGE_KEYS.col3Width, 37.5);
-
-            const col1 = document.createElement('div');
-            col1.className = 'flex flex-col overflow-hidden transition-opacity';
-            col1.id = 'wf-col-text';
-            col1.style.cssText = `flex: ${savedCol1} 1 0px; overflow: hidden;`;
-            col1.setAttribute('data-panel-group-id', panelGroupId);
-            col1.setAttribute('data-panel', '');
-            col1.setAttribute('data-panel-id', 'wf-col-text');
-            col1.setAttribute('data-panel-size', '25');
-            
-            const splitWrapper = document.createElement('div');
-            splitWrapper.className = 'flex flex-col h-full';
-            splitWrapper.id = 'wf-split-wrapper';
-            
-            this.reorganizeFirstColumnContent(splitWrapper, preservedElements.topSection);
-            col1.appendChild(splitWrapper);
-
-            const divider1 = this.createDivider(panelGroupId, 'wf-divider-1', 'wf-col-text', 40, 15, 25);
-            
-            const col2 = document.createElement('div');
-            col2.className = 'flex flex-col overflow-hidden transition-opacity';
-            col2.id = 'wf-col-tools';
-            col2.style.cssText = `flex: ${savedCol2} 1 0px; overflow: hidden;`;
-            col2.setAttribute('data-panel-group-id', panelGroupId);
-            col2.setAttribute('data-panel', '');
-            col2.setAttribute('data-panel-id', 'wf-col-tools');
-            col2.setAttribute('data-panel-size', '37.5');
-            col2.appendChild(preservedElements.bottomSection);
-
-            const divider2 = this.createDivider(panelGroupId, 'wf-divider-2', 'wf-col-tools', 50, 20, 37.5);
-
-            preservedElements.workflowColumn.style.flex = `${savedCol3} 1 0px`;
-            preservedElements.workflowColumn.setAttribute('data-panel-size', savedCol3.toString());
-
-            mainContainer.appendChild(col1);
-            mainContainer.appendChild(divider1);
-            mainContainer.appendChild(col2);
-            mainContainer.appendChild(divider2);
-            mainContainer.appendChild(preservedElements.workflowColumn);
-
-            this.setupColumnResize(divider1, col1, col2);
-            this.setupColumnResize(divider2, col2, preservedElements.workflowColumn);
-
-            state.applied = true;
-            Logger.log('✓ Three column layout applied');
-        },
-        
-        createDivider(panelGroupId, id, ariaControls, max, min, current) {
-            const divider = document.createElement('div');
-            divider.className = 'relative w-[2px] h-[98%] my-auto hover:bg-brand transition-all duration-300 ease-in-out mx-[1px] before:absolute before:top-0 before:left-[-3px] before:right-[-3px] before:bottom-0 before:content-[""] before:cursor-col-resize';
-            divider.setAttribute('role', 'separator');
-            divider.style.touchAction = 'none';
-            divider.setAttribute('tabindex', '0');
-            divider.setAttribute('data-panel-group-direction', 'horizontal');
-            divider.setAttribute('data-panel-group-id', panelGroupId);
-            divider.setAttribute('data-resize-handle', '');
-            divider.setAttribute('data-panel-resize-handle-enabled', 'true');
-            divider.setAttribute('data-panel-resize-handle-id', id);
-            divider.setAttribute('data-resize-handle-state', 'inactive');
-            divider.setAttribute('aria-controls', ariaControls);
-            divider.setAttribute('aria-valuemax', max.toString());
-            divider.setAttribute('aria-valuemin', min.toString());
-            divider.setAttribute('aria-valuenow', current.toString());
-            return divider;
-        },
-        
-        reorganizeFirstColumnContent(wrapper, topSection) {
-            const savedRatio = Storage.get(STORAGE_KEYS.sectionSplitRatio, 60);
-            
-            const existingSection = topSection.querySelector('div.p-3.border-b');
-            if (!existingSection) {
-                Logger.log('⚠ Existing section not found for reorganization');
-                return;
-            }
-
-            topSection.removeChild(existingSection);
-
-            const topPanel = document.createElement('div');
-            topPanel.id = 'wf-top-panel';
-            topPanel.className = 'flex flex-col overflow-hidden';
-            topPanel.style.flex = `${savedRatio} 1 0%`;
-            topPanel.style.minHeight = '100px';
-            
-            existingSection.className = 'p-3 border-b flex flex-col h-full';
-            
-            const textareaWrapper = existingSection.querySelector('div.space-y-2.relative');
-            if (textareaWrapper) {
-                textareaWrapper.className = 'space-y-2 relative flex-1 flex flex-col';
-                
-                const relativeDiv = textareaWrapper.querySelector('div.relative');
-                if (relativeDiv) {
-                    relativeDiv.className = 'relative flex-1 flex flex-col';
-                    
-                    const textareaContainer = relativeDiv.querySelector('div.flex.flex-col');
-                    if (textareaContainer) {
-                        textareaContainer.style.height = '100%';
-                    }
-                }
-            }
-            
-            topPanel.appendChild(existingSection);
-
-            const resizeHandle = document.createElement('div');
-            resizeHandle.id = 'wf-section-resize-handle';
-            resizeHandle.className = 'relative h-[2px] w-full hover:bg-brand transition-all duration-300 ease-in-out my-[1px]';
-            resizeHandle.style.backgroundColor = 'var(--border)';
-            resizeHandle.style.cursor = 'grab';
-            resizeHandle.setAttribute('role', 'separator');
-            resizeHandle.style.touchAction = 'none';
-            
-            const hitArea = document.createElement('div');
-            hitArea.style.cssText = 'position: absolute; top: -6px; bottom: -6px; left: 0; right: 0; cursor: grab;';
-            resizeHandle.appendChild(hitArea);
-
-            const bottomPanel = document.createElement('div');
-            bottomPanel.id = 'wf-bottom-panel';
-            bottomPanel.className = 'p-3 border-b overflow-y-auto';
-            bottomPanel.style.flex = `${100 - savedRatio} 1 0%`;
-            bottomPanel.style.minHeight = '100px';
-
-            this.createNotesSection(bottomPanel);
-
-            wrapper.appendChild(topPanel);
-            wrapper.appendChild(resizeHandle);
-            wrapper.appendChild(bottomPanel);
-
-            this.setupSectionResize(resizeHandle, topPanel, bottomPanel);
-        },
-        
-        createNotesSection(container) {
-            const savedNotes = Storage.get(STORAGE_KEYS.notes, '');
-            Logger.log(`✓ Notes loaded from storage (${savedNotes.length} chars)`);
-
-            container.className = 'p-3 border-b overflow-hidden flex flex-col';
-
-            const escapedNotes = savedNotes
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-
-            container.innerHTML = `
-                <div class="flex flex-col flex-1">
-                    <div class="flex items-center justify-between h-5 mb-2">
-                        <div class="text-sm text-muted-foreground font-medium">Notes</div>
-                    </div>
-                    <div class="relative flex-1 flex flex-col">
-                        <div class="flex flex-col relative rounded-md overflow-hidden border border-input bg-background shadow-sm h-full">
-                            <textarea id="wf-notes-textarea" class="flex-1 w-full border-0 bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none" placeholder="Add your notes here. These are not submitted with your task. They are auto-saved and persist between page loads.">${escapedNotes}</textarea>
-                        </div>
-                    </div>
-                </div>
-            `;
-        },
-        
-        setupSectionResize(handle, topPanel, bottomPanel) {
-            let isResizing = false;
-            let startY = 0;
-            let startTopHeight = 0;
-            let startBottomHeight = 0;
-            let totalHeight = 0;
-
-            handle.addEventListener('mousedown', (e) => {
-                isResizing = true;
-                startY = e.clientY;
-                
-                const wrapper = handle.parentElement;
-                totalHeight = wrapper.offsetHeight;
-                startTopHeight = topPanel.offsetHeight;
-                startBottomHeight = bottomPanel.offsetHeight;
-
-                document.body.style.cursor = 'grabbing';
-                document.body.style.userSelect = 'none';
-                handle.style.cursor = 'grabbing';
-                handle.style.backgroundColor = 'var(--brand)';
-                e.preventDefault();
-            });
-
-            document.addEventListener('mousemove', (e) => {
-                if (!isResizing) return;
-
-                const deltaY = e.clientY - startY;
-                const newTopHeight = startTopHeight + deltaY;
-                const newBottomHeight = startBottomHeight - deltaY;
-
-                const topPercent = (newTopHeight / totalHeight) * 100;
-                const bottomPercent = (newBottomHeight / totalHeight) * 100;
-
-                if (topPercent >= 20 && topPercent <= 80) {
-                    topPanel.style.flex = `${topPercent} 1 0%`;
-                    bottomPanel.style.flex = `${bottomPercent} 1 0%`;
-                }
-            });
-
-            document.addEventListener('mouseup', () => {
-                if (isResizing) {
-                    isResizing = false;
-                    document.body.style.cursor = '';
-                    document.body.style.userSelect = '';
-                    handle.style.backgroundColor = 'var(--border)';
-
-                    const topFlex = parseFloat(topPanel.style.flex) || 60;
-                    Storage.set(STORAGE_KEYS.sectionSplitRatio, topFlex);
-                }
-            });
-
-            handle.addEventListener('mouseenter', () => {
-                if (!isResizing) handle.style.backgroundColor = 'var(--brand)';
-            });
-
-            handle.addEventListener('mouseleave', () => {
-                if (!isResizing) handle.style.backgroundColor = 'var(--border)';
-            });
-        },
-        
-        setupColumnResize(divider, leftCol, rightCol) {
-            let isResizing = false;
-            let startX = 0;
-            let startLeftWidth = 0;
-            let startRightWidth = 0;
-            let totalWidth = 0;
-
-            divider.addEventListener('mousedown', (e) => {
-                isResizing = true;
-                startX = e.clientX;
-                
-                const parent = divider.parentElement;
-                totalWidth = parent.offsetWidth;
-                
-                const leftFlex = parseFloat(leftCol.style.flex) || 25;
-                const rightFlex = parseFloat(rightCol.style.flex) || 37.5;
-                
-                startLeftWidth = (leftFlex / 100) * totalWidth;
-                startRightWidth = (rightFlex / 100) * totalWidth;
-
-                document.body.style.cursor = 'col-resize';
-                document.body.style.userSelect = 'none';
-                divider.setAttribute('data-resize-handle-state', 'active');
-                e.preventDefault();
-            });
-
-            document.addEventListener('mousemove', (e) => {
-                if (!isResizing) return;
-
-                const deltaX = e.clientX - startX;
-                const newLeftWidth = startLeftWidth + deltaX;
-                const newRightWidth = startRightWidth - deltaX;
-
-                const leftPercent = (newLeftWidth / totalWidth) * 100;
-                const rightPercent = (newRightWidth / totalWidth) * 100;
-
-                const minLeft = parseFloat(divider.getAttribute('aria-valuemin')) || 15;
-                const maxLeft = parseFloat(divider.getAttribute('aria-valuemax')) || 45;
-
-                if (leftPercent >= minLeft && leftPercent <= maxLeft && rightPercent >= 20) {
-                    leftCol.style.flex = `${leftPercent} 1 0px`;
-                    leftCol.setAttribute('data-panel-size', leftPercent.toString());
-                    
-                    rightCol.style.flex = `${rightPercent} 1 0px`;
-                    rightCol.setAttribute('data-panel-size', rightPercent.toString());
-                    
-                    divider.setAttribute('aria-valuenow', leftPercent.toString());
-                }
-            });
-
-            document.addEventListener('mouseup', () => {
-                if (isResizing) {
-                    isResizing = false;
-                    document.body.style.cursor = '';
-                    document.body.style.userSelect = '';
-                    divider.setAttribute('data-resize-handle-state', 'inactive');
-                    this.saveColumnWidths();
-                }
-            });
-        },
-        
-        saveColumnWidths() {
-            const col1 = document.getElementById('wf-col-text');
-            const col2 = document.getElementById('wf-col-tools');
-            const col3 = document.querySelector(SELECTORS.workflowColumn);
-
-            if (col1) Storage.set(STORAGE_KEYS.col1Width, parseFloat(col1.style.flex) || 25);
-            if (col2) Storage.set(STORAGE_KEYS.col2Width, parseFloat(col2.style.flex) || 37.5);
-            if (col3) Storage.set(STORAGE_KEYS.col3Width, parseFloat(col3.style.flex) || 37.5);
-        }
-    });
-
-    // ---------- Notes Auto-Save Plugin ----------
-    PluginManager.register({
-        id: 'notesAutoSave',
-        name: 'Notes Auto-Save',
-        description: 'Auto-saves notes to persist between page loads',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { setup: false, saveTimeout: null },
-        
-        onMutation(state, context) {
-            if (state.setup) return;
-
-            const textarea = document.getElementById('wf-notes-textarea');
-            if (!textarea) return;
-
-            state.setup = true;
-            Logger.log('✓ Notes auto-save configured');
-
-            textarea.addEventListener('input', () => {
-                if (state.saveTimeout) {
-                    clearTimeout(state.saveTimeout);
-                }
-                
-                state.saveTimeout = setTimeout(() => {
-                    const currentValue = textarea.value;
-                    Storage.set(STORAGE_KEYS.notes, currentValue);
-                    Logger.log(`✓ Notes auto-saved (${currentValue.length} chars)`);
-                }, 1000);
-            });
-        }
-    });
-
-    // ---------- Tool Favorites Plugin ----------
-    PluginManager.register({
-        id: 'toolFavorites',
-        name: 'Tool Favorites',
-        description: 'Adds star icons to mark tools as favorites',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { initialized: false, favorites: new Set(), lastCount: 0 },
-        
-        onMutation(state, context) {
-            // Load favorites if not initialized
-            if (!state.initialized) {
-                const saved = Storage.get(STORAGE_KEYS.favoriteTools, '[]');
-                try {
-                    state.favorites = new Set(JSON.parse(saved));
-                    state.initialized = true;
-                    Logger.log(`✓ Loaded ${state.favorites.size} favorite tool(s)`);
-                } catch (e) {
-                    Logger.error('Error loading favorites:', e);
-                    state.favorites = new Set();
-                }
-            }
-
-            const toolsContainer = document.querySelector('#wf-col-tools > div > div > div');
-            if (!toolsContainer) return;
-
-            const toolButtons = toolsContainer.querySelectorAll('button.group\\/tool');
-            
-            let starsAdded = 0;
-            toolButtons.forEach(button => {
-                if (this.addFavoriteButton(button, state)) {
-                    starsAdded++;
-                }
-            });
-            
-            if (starsAdded > 0 && starsAdded !== state.lastCount) {
-                Logger.log(`✓ Added favorite stars to ${starsAdded} tool(s)`);
-                state.lastCount = starsAdded;
-            }
-        },
-        
-        addFavoriteButton(toolButton, state) {
-            if (toolButton.querySelector('.wf-favorite-star')) return false;
-
-            const nameElement = toolButton.querySelector('div.flex.flex-col.items-start span.text-xs.font-medium.text-foreground span span');
-            const toolName = nameElement ? nameElement.textContent.trim() : null;
-            if (!toolName) return false;
-
-            const nameContainer = toolButton.querySelector('div.flex.flex-col.items-start span.text-xs.font-medium.text-foreground');
-            if (!nameContainer) return false;
-
-            const starContainer = document.createElement('span');
-            starContainer.className = 'wf-favorite-star inline-flex items-center mr-1 cursor-pointer hover:opacity-70 transition-opacity';
-            starContainer.style.cssText = 'display: inline-flex; align-items: center; margin-right: 4px;';
-            
-            const isFavorite = state.favorites.has(toolName);
-            starContainer.appendChild(this.createStarSVG(isFavorite));
-            
-            starContainer.addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                
-                if (state.favorites.has(toolName)) {
-                    state.favorites.delete(toolName);
-                } else {
-                    state.favorites.add(toolName);
-                }
-                Storage.set(STORAGE_KEYS.favoriteTools, JSON.stringify([...state.favorites]));
-                
-                starContainer.innerHTML = '';
-                starContainer.appendChild(this.createStarSVG(state.favorites.has(toolName)));
-            });
-            
-            const toolNameSpan = nameContainer.querySelector('span');
-            if (toolNameSpan) {
-                const wrapper = document.createElement('span');
-                wrapper.style.cssText = 'display: inline-flex; align-items: center;';
-                
-                const nameText = toolNameSpan.cloneNode(true);
-                wrapper.appendChild(starContainer);
-                wrapper.appendChild(nameText);
-                
-                nameContainer.replaceChild(wrapper, toolNameSpan);
-            }
-            
-            return true;
-        },
-        
-        createStarSVG(filled) {
-            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('width', '14');
-            svg.setAttribute('height', '14');
-            svg.setAttribute('viewBox', '0 0 24 24');
-            svg.setAttribute('fill', filled ? '#FFD700' : 'none');
-            svg.setAttribute('stroke', filled ? '#FFD700' : 'currentColor');
-            svg.setAttribute('stroke-width', '1');
-            svg.setAttribute('stroke-linecap', 'round');
-            svg.setAttribute('stroke-linejoin', 'round');
-            svg.style.cssText = 'display: inline-block; vertical-align: middle;';
-            
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('d', 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z');
-            
-            svg.appendChild(path);
-            return svg;
-        }
-    });
-
-    // ---------- Settings Modal Plugin ----------
-    PluginManager.register({
-        id: 'settingsModal',
-        name: 'Settings Modal',
-        description: 'Adds a settings button and modal to configure features',
-        enabledByDefault: true,
-        phase: 'mutation',
-        initialState: { added: false, modalOpen: false },
-        
-        onMutation(state, context) {
-            if (document.getElementById('wf-settings-btn')) {
-                state.added = true;
-                return;
-            }
-            
-            const bugReportBtn = document.querySelector(SELECTORS.bugReportBtn);
-            if (!bugReportBtn) return;
-            
-            const settingsBtn = document.createElement('button');
-            settingsBtn.id = 'wf-settings-btn';
-            settingsBtn.className = bugReportBtn.className;
-            settingsBtn.style.cssText = bugReportBtn.style.cssText || '';
-            settingsBtn.style.bottom = '136px';
-            
-            settingsBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="stroke-current size-5">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24M21 12h-6m-6 0H3"></path>
-                </svg>
-                <span class="sr-only">WF Enhancer Settings</span>
-            `;
-            
-            let modal = document.getElementById('wf-settings-modal');
-            if (!modal) {
-                modal = this.createSettingsModal(state);
-            }
-            
-            settingsBtn.addEventListener('click', () => {
-                state.modalOpen = !state.modalOpen;
-                modal.style.display = state.modalOpen ? 'block' : 'none';
-            });
-            
-            bugReportBtn.parentNode.insertBefore(settingsBtn, bugReportBtn);
-            state.added = true;
-            Logger.log('✓ Settings button added');
-        },
-        
-        createSettingsModal(state) {
-            const existingModal = document.getElementById('wf-settings-modal');
-            if (existingModal) existingModal.remove();
-            
-            const modal = document.createElement('div');
-            modal.id = 'wf-settings-modal';
-            modal.style.cssText = `
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                background: var(--background);
-                border: 1px solid var(--border);
-                border-radius: 12px;
-                padding: 24px;
-                width: 450px;
-                max-height: 80vh;
-                overflow-y: auto;
-                z-index: 10000;
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-                display: none;
-            `;
-            
-            // Get all plugins except settingsModal itself
-            const plugins = PluginManager.getAll().filter(p => p.id !== 'settingsModal');
-            
-            const pluginToggles = plugins.map(plugin => {
-                const isEnabled = PluginManager.isEnabled(plugin.id);
-                return `
-                    <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border);">
-                        <div style="flex: 1; margin-right: 12px;">
-                            <div style="font-size: 14px; font-weight: 500;">${plugin.name}</div>
-                            <div style="font-size: 12px; color: var(--muted-foreground); margin-top: 2px;">${plugin.description}</div>
-                        </div>
-                        <label style="position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0;">
-                            <input type="checkbox" data-plugin-id="${plugin.id}" ${isEnabled ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;">
-                            <span class="toggle-track" style="
-                                position: absolute;
-                                cursor: pointer;
-                                top: 0; left: 0; right: 0; bottom: 0;
-                                background-color: ${isEnabled ? 'var(--brand, #4f46e5)' : '#ccc'};
-                                transition: 0.3s;
-                                border-radius: 24px;
-                            ">
-                                <span class="toggle-thumb" style="
-                                    position: absolute;
-                                    content: '';
-                                    height: 18px;
-                                    width: 18px;
-                                    left: ${isEnabled ? '23px' : '3px'};
-                                    bottom: 3px;
-                                    background-color: white;
-                                    transition: 0.3s;
-                                    border-radius: 50%;
-                                "></span>
-                            </span>
-                        </label>
-                    </div>
-                `;
-            }).join('');
-            
-            const debugEnabled = Logger.isDebugEnabled();
-            
-            modal.innerHTML = `
-                <div class="space-y-4">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 style="font-size: 18px; font-weight: 600;">WF Enhancer Settings</h2>
-                        <button id="wf-settings-close" style="
-                            width: 24px;
-                            height: 24px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            border-radius: 4px;
-                            border: none;
-                            background: transparent;
-                            cursor: pointer;
-                            transition: background 0.2s;
-                        ">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M18 6L6 18M6 6l12 12"/>
-                            </svg>
-                        </button>
-                    </div>
-                    
-                    <div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 2px solid var(--border);">
-                        <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 8px;">General</div>
-                        <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 12px 0;">
-                            <div style="flex: 1; margin-right: 12px;">
-                                <div style="font-size: 14px; font-weight: 500;">Debug Logging</div>
-                                <div style="font-size: 12px; color: var(--muted-foreground); margin-top: 2px;">Enable console logging for debugging</div>
-                            </div>
-                            <label style="position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0;">
-                                <input type="checkbox" id="wf-setting-debug" ${debugEnabled ? 'checked' : ''} style="opacity: 0; width: 0; height: 0;">
-                                <span class="toggle-track" style="
-                                    position: absolute;
-                                    cursor: pointer;
-                                    top: 0; left: 0; right: 0; bottom: 0;
-                                    background-color: ${debugEnabled ? 'var(--brand, #4f46e5)' : '#ccc'};
-                                    transition: 0.3s;
-                                    border-radius: 24px;
-                                ">
-                                    <span class="toggle-thumb" style="
-                                        position: absolute;
-                                        content: '';
-                                        height: 18px;
-                                        width: 18px;
-                                        left: ${debugEnabled ? '23px' : '3px'};
-                                        bottom: 3px;
-                                        background-color: white;
-                                        transition: 0.3s;
-                                        border-radius: 50%;
-                                    "></span>
-                                </span>
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div>
-                        <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 8px;">Features</div>
-                        ${pluginToggles}
-                    </div>
-                    
-                    <div id="wf-settings-message" style="
-                        display: none;
-                        padding: 12px;
-                        background: var(--accent);
-                        border-radius: 6px;
-                        font-size: 13px;
-                        text-align: center;
-                        margin-top: 16px;
-                    ">
-                        Settings changed. Please refresh the page for changes to take effect.
-                    </div>
-                    
-                    <div style="font-size: 11px; color: var(--muted-foreground); text-align: center; margin-top: 16px;">
-                        WF Enhancer v${VERSION}
-                    </div>
-                </div>
-            `;
-            
-            document.body.appendChild(modal);
-            
-            // Debug toggle handler
-            const debugCheckbox = modal.querySelector('#wf-setting-debug');
-            if (debugCheckbox) {
-                debugCheckbox.addEventListener('change', (e) => {
-                    const track = e.target.nextElementSibling;
-                    const thumb = track.querySelector('.toggle-thumb');
-                    
-                    if (e.target.checked) {
-                        track.style.backgroundColor = 'var(--brand, #4f46e5)';
-                        thumb.style.left = '23px';
-                    } else {
-                        track.style.backgroundColor = '#ccc';
-                        thumb.style.left = '3px';
-                    }
-                    
-                    Logger.setDebugEnabled(e.target.checked);
-                });
-            }
-            
-            // Plugin toggle handlers
-            modal.querySelectorAll('input[data-plugin-id]').forEach(checkbox => {
-                checkbox.addEventListener('change', (e) => {
-                    const pluginId = e.target.getAttribute('data-plugin-id');
-                    const track = e.target.nextElementSibling;
-                    const thumb = track.querySelector('.toggle-thumb');
-                    
-                    if (e.target.checked) {
-                        track.style.backgroundColor = 'var(--brand, #4f46e5)';
-                        thumb.style.left = '23px';
-                    } else {
-                        track.style.backgroundColor = '#ccc';
-                        thumb.style.left = '3px';
-                    }
-                    
-                    PluginManager.setEnabled(pluginId, e.target.checked);
-                    document.getElementById('wf-settings-message').style.display = 'block';
-                });
-            });
-            
-            // Close button
-            modal.querySelector('#wf-settings-close').addEventListener('click', () => {
-                modal.style.display = 'none';
-                state.modalOpen = false;
-            });
-            
-            // Click outside to close
-            document.addEventListener('click', (e) => {
-                if (state.modalOpen && !modal.contains(e.target) && !e.target.closest('#wf-settings-btn')) {
-                    modal.style.display = 'none';
-                    state.modalOpen = false;
-                }
-            });
-            
-            // Hover effects for close button
-            const closeBtn = modal.querySelector('#wf-settings-close');
-            closeBtn.addEventListener('mouseover', () => closeBtn.style.background = 'var(--accent)');
-            closeBtn.addEventListener('mouseout', () => closeBtn.style.background = 'transparent');
-            
-            return modal;
-        }
-    });
-
-    // ============= MUTATION OBSERVER =============
-    function initObserver() {
-        const observer = new MutationObserver(() => {
-            PluginManager.runMutationPlugins();
-        });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        Logger.log('✓ Mutation observer initialized');
-    }
-
-    // ============= INITIALIZATION =============
-    function init() {
-        if (Context.initialized) {
-            Logger.log('⚠ Initialization already complete, skipping duplicate call');
+    // ============= MAIN INITIALIZATION =============
+    let mainObserver = null;
+    let corePluginsLoaded = false;
+    
+    async function initializeCorePlugins() {
+        if (corePluginsLoaded) {
+            Logger.debug('Core plugins already loaded');
             return;
         }
-        Context.initialized = true;
-
-        console.log('[Fleet Enhancer] Version: ' + VERSION);
-        console.log('[Fleet Enhancer] GitHub: https://github.com/adastra1826/fleet-ux-improvements');
-        console.log('[Fleet Enhancer] If you have any issues, please report them to the GitHub repository. :)');
-
-        // Run init-phase plugins
-        PluginManager.runInitPlugins();
         
-        // Start mutation observer
-        initObserver();
-        
-        // Run mutation plugins once immediately
-        PluginManager.runMutationPlugins();
-
-        console.log('[Fleet Enhancer] ✓ Initialization complete');
-    }
-
-    function waitForPageReady() {
-        const checkInterval = setInterval(() => {
-            if (document.readyState === 'complete' || 
-                (document.readyState === 'interactive' && document.body)) {
-                clearInterval(checkInterval);
-                init();
+        await PluginLoader.loadCorePlugins();
+        if (DEV_LOG_PANEL_ENABLED) {
+            try {
+                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '1.3');
+                const loadedVersion = plugin._version || plugin.version || '1.3';
+                plugin._sourceFile = 'logger-panel.js';
+                plugin._version = loadedVersion;
+                plugin._isCore = true;
+                plugin._isDev = true;
+                PluginManager.register(plugin);
+                Logger.log(`✓ Loaded dev logger panel plugin v${loadedVersion}`);
+            } catch (err) {
+                Logger.error('✗ Failed to load dev logger panel plugin', err);
             }
-        }, 50);
+        }
+        corePluginsLoaded = true;
         
-        setTimeout(() => {
-            clearInterval(checkInterval);
-            if (!Context.initialized) {
-                Logger.log('⚠ Page ready timeout reached, initializing anyway');
-                init();
-            }
-        }, 10000);
+        await waitForBody();
+        PluginManager.runCorePlugins();
     }
-
-    // ============= START =============
-    // Run early plugins immediately (network interception)
-    PluginManager.runEarlyPlugins();
     
-    // Wait for DOM then initialize
-    waitForPageReady();
-
+    async function initializeForPage() {
+        Logger.log('Initializing for current page...');
+        
+        try {
+            // Load archetype definitions (cached after first load)
+            await ArchetypeManager.loadArchetypes();
+            
+            // Wait for DOM
+            await waitForBody();
+            
+            // Detect archetype using URL + optional disambiguation
+            const archetype = await ArchetypeManager.detectArchetype();
+            
+            if (!archetype) {
+                Logger.warn('No matching archetype found. No archetype plugins will load.');
+                return;
+            }
+            
+            // Load archetype-specific plugins
+            const pluginsToLoad = ArchetypeManager.getPluginsForCurrentArchetype();
+            await PluginLoader.loadPluginsForArchetype(pluginsToLoad, archetype.id);
+            
+            // Run early plugins
+            PluginManager.runEarlyPlugins();
+            
+            // Set up DOM observer
+            mainObserver = new MutationObserver(() => {
+                if (Context.initialized) {
+                    PluginManager.runMutationPlugins();
+                }
+            });
+            CleanupRegistry.registerObserver(mainObserver);
+            
+            // Run init plugins and start observing
+            Context.initialized = true;
+            PluginManager.runInitPlugins();
+            
+            mainObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['style', 'class']
+            });
+            
+            // Run mutation plugins once for initial state
+            PluginManager.runMutationPlugins();
+            
+            Logger.log(`✓ Initialized for archetype: ${archetype.name} (path: "${Context.currentPath}")`);
+        } catch (error) {
+            Logger.error('Failed to initialize:', error);
+        }
+    }
+    
+    async function handleNavigation(newUrl, previousUrl) {
+        Logger.log('Handling navigation, checking archetype match...');
+        
+        try {
+            await ArchetypeManager.loadArchetypes();
+            
+            const newPath = UrlMatcher.getPathFromUrl(newUrl);
+            const matchesArchetype = ArchetypeManager.archetypes.some(archetype => {
+                if (!archetype.urlPattern) {
+                    return false;
+                }
+                return UrlMatcher.matches(newPath, archetype.urlPattern);
+            });
+            
+            if (matchesArchetype) {
+                Logger.log('Navigation target matches archetype; refreshing page...');
+                location.reload();
+                return;
+            }
+        } catch (error) {
+            Logger.error('Failed to check archetype match on navigation:', error);
+        }
+        
+        Logger.log('Handling navigation, reinitializing...');
+        
+        // Clean up archetype plugins and resources
+        Context.initialized = false;
+        Context.outdatedPlugins = []; // Clear outdated plugins list on navigation
+        PluginManager.cleanupArchetypePlugins();
+        CleanupRegistry.cleanup();
+        
+        // Clear archetype plugins
+        PluginManager.clearArchetypePlugins();
+        
+        // Small delay to let SPA finish its DOM updates
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Reinitialize for the new page
+        await initializeForPage();
+    }
+    
+    function waitForBody() {
+        return new Promise((resolve) => {
+            if (document.body) {
+                resolve();
+            } else {
+                const observer = new MutationObserver(() => {
+                    if (document.body) {
+                        observer.disconnect();
+                        resolve();
+                    }
+                });
+                observer.observe(document.documentElement, { childList: true, subtree: true });
+            }
+        });
+    }
+    
+    // ============= STARTUP =============
+    async function startup() {
+        Logger.log(`${LOG_PREFIX} v${VERSION} starting...`);
+        
+        // Initialize navigation monitoring FIRST
+        NavigationManager.init();
+        NavigationManager.onNavigate(handleNavigation);
+        
+        // Wait for body
+        await waitForBody();
+        
+        // Load and initialize core plugins
+        await initializeCorePlugins();
+        
+        // Initialize archetype-specific plugins
+        await initializeForPage();
+    }
+    
+    // Start!
+    startup();
 })();
