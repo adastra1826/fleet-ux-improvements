@@ -5,7 +5,7 @@ const plugin = {
     id: 'dev-logger-panel',
     name: 'Dev Logger Panel',
     description: 'Floating panel to view Fleet UX Enhancer logs without prefix',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'core',
 
@@ -15,8 +15,13 @@ const plugin = {
         maxLogs: 500,
         isVisible: true,
         isDragging: false,
+        isResizing: false,
         dragOffsetX: 0,
         dragOffsetY: 0,
+        resizeStartX: 0,
+        resizeStartY: 0,
+        resizeStartWidth: 0,
+        resizeStartHeight: 0,
         searchQuery: '',
         originalConsole: null,
         unsubscribe: null
@@ -42,7 +47,7 @@ const plugin = {
         root.style.display = 'flex';
         root.style.flexDirection = 'column';
         root.style.zIndex = '2147483646';
-        root.style.resize = 'both';
+        root.style.resize = 'none';
         root.style.overflow = 'auto';
         root.style.minWidth = '240px';
         root.style.minHeight = '140px';
@@ -78,6 +83,17 @@ const plugin = {
         clearButton.style.background = 'transparent';
         clearButton.style.color = 'inherit';
         clearButton.style.cursor = 'pointer';
+
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.textContent = 'Copy';
+        copyButton.style.fontSize = '11px';
+        copyButton.style.padding = '2px 6px';
+        copyButton.style.borderRadius = '6px';
+        copyButton.style.border = '1px solid rgba(255,255,255,0.2)';
+        copyButton.style.background = 'transparent';
+        copyButton.style.color = 'inherit';
+        copyButton.style.cursor = 'pointer';
 
         const minimizeButton = document.createElement('button');
         minimizeButton.type = 'button';
@@ -135,13 +151,27 @@ const plugin = {
         toggleButton.style.cursor = 'pointer';
         toggleButton.style.boxShadow = '0 6px 18px rgba(0,0,0,0.35)';
 
+        const resizeHandle = document.createElement('div');
+        resizeHandle.style.position = 'absolute';
+        resizeHandle.style.right = '2px';
+        resizeHandle.style.bottom = '2px';
+        resizeHandle.style.width = '14px';
+        resizeHandle.style.height = '14px';
+        resizeHandle.style.cursor = 'se-resize';
+        resizeHandle.style.background = 'transparent';
+        resizeHandle.style.borderRight = '2px solid rgba(255,255,255,0.25)';
+        resizeHandle.style.borderBottom = '2px solid rgba(255,255,255,0.25)';
+        resizeHandle.style.borderRadius = '0 0 8px 0';
+
         headerActions.appendChild(clearButton);
+        headerActions.appendChild(copyButton);
         headerActions.appendChild(minimizeButton);
         header.appendChild(headerTitle);
         header.appendChild(headerActions);
         root.appendChild(header);
         root.appendChild(searchWrap);
         root.appendChild(body);
+        root.appendChild(resizeHandle);
 
         document.body.appendChild(root);
         document.body.appendChild(toggleButton);
@@ -162,6 +192,31 @@ const plugin = {
 
         const onMinimize = () => updateVisibility(false);
 
+        const copyToClipboard = async (text) => {
+            if (!text) return;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                    return;
+                }
+            } catch (e) {
+                // Fall back below
+            }
+
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            temp.style.position = 'fixed';
+            temp.style.top = '-1000px';
+            document.body.appendChild(temp);
+            temp.select();
+            try {
+                document.execCommand('copy');
+            } catch (e) {
+                // Ignore
+            }
+            document.body.removeChild(temp);
+        };
+
         const addLogEntry = (level, message) => {
             const entry = document.createElement('div');
             entry.style.marginBottom = '4px';
@@ -174,6 +229,20 @@ const plugin = {
             if (level === 'info') entry.style.color = '#6ee7b7';
 
             entry.textContent = message;
+            entry.style.borderRadius = '6px';
+            entry.style.padding = '2px 4px';
+            entry.style.cursor = 'pointer';
+
+            entry.addEventListener('mouseenter', () => {
+                entry.style.background = 'rgba(255,255,255,0.08)';
+            });
+            entry.addEventListener('mouseleave', () => {
+                entry.style.background = 'transparent';
+            });
+            entry.addEventListener('click', () => {
+                copyToClipboard(message);
+            });
+
             body.appendChild(entry);
             body.scrollTop = body.scrollHeight;
 
@@ -271,12 +340,40 @@ const plugin = {
 
         const onMouseUp = () => {
             state.isDragging = false;
+            state.isResizing = false;
+            document.body.style.userSelect = '';
         };
 
         const onToggle = () => updateVisibility(!state.isVisible);
         const onClear = () => {
             state.logs.forEach((log) => log.node && log.node.parentNode && log.node.parentNode.removeChild(log.node));
             state.logs = [];
+        };
+
+        const onCopyAll = () => {
+            const text = state.logs.map((log) => log.text).join('\n');
+            copyToClipboard(text);
+        };
+
+        const onResizeStart = (event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            state.isResizing = true;
+            const rect = root.getBoundingClientRect();
+            state.resizeStartX = event.clientX;
+            state.resizeStartY = event.clientY;
+            state.resizeStartWidth = rect.width;
+            state.resizeStartHeight = rect.height;
+            document.body.style.userSelect = 'none';
+        };
+
+        const onResizeMove = (event) => {
+            if (!state.isResizing) return;
+            const nextWidth = Math.max(240, state.resizeStartWidth + (event.clientX - state.resizeStartX));
+            const nextHeight = Math.max(140, state.resizeStartHeight + (event.clientY - state.resizeStartY));
+            root.style.width = `${nextWidth}px`;
+            root.style.height = `${nextHeight}px`;
         };
 
         const onSearch = (event) => {
@@ -289,11 +386,14 @@ const plugin = {
 
         header.addEventListener('mousedown', onMouseDown);
         document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mousemove', onResizeMove);
         document.addEventListener('mouseup', onMouseUp);
         toggleButton.addEventListener('click', onToggle);
         clearButton.addEventListener('click', onClear);
+        copyButton.addEventListener('click', onCopyAll);
         minimizeButton.addEventListener('click', onMinimize);
         searchInput.addEventListener('input', onSearch);
+        resizeHandle.addEventListener('mousedown', onResizeStart);
 
         updateVisibility(true);
         Logger.log('✓ Dev logger panel initialized');

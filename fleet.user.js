@@ -1101,8 +1101,8 @@
         await PluginLoader.loadCorePlugins();
         if (DEV_LOG_PANEL_ENABLED) {
             try {
-                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '1.1');
-                const loadedVersion = plugin._version || plugin.version || '0.2';
+                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '1.2');
+                const loadedVersion = plugin._version || plugin.version || '1.2';
                 plugin._sourceFile = 'logger-panel.js';
                 plugin._version = loadedVersion;
                 plugin._isCore = true;
