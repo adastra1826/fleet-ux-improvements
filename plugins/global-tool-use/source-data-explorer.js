@@ -5,15 +5,14 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button to open source data in new tab',
-    _version: '1.3',
+    _version: '2.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonAdded: false, missingLogged: false, interceptionInstalled: false },
     
     // Plugin-specific selectors
     selectors: {
-        toolbar: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
-        workflowIndicator: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)'
+        toolbar: '[id="\:r7\:"] > div.flex-shrink-0 > div > div.space-y-2.relative',
     },
     
     onMutation(state, context) {
@@ -26,11 +25,8 @@ const plugin = {
         const toolbar = Context.dom.query(this.selectors.toolbar, {
             context: `${this.id}.toolbar`
         });
-        const workflowIndicator = Context.dom.query(this.selectors.workflowIndicator, {
-            context: `${this.id}.workflowIndicator`
-        });
         
-        if (!toolbar || !workflowIndicator) {
+        if (!toolbar) {
             if (!state.missingLogged) {
                 Logger.debug('Toolbar or workflow indicator not found for Source Data Explorer');
                 state.missingLogged = true;
@@ -38,10 +34,8 @@ const plugin = {
             return;
         }
 
-        if (workflowIndicator.textContent.includes('Workflow')) {
-            this.addSourceButton(toolbar, context);
-            state.buttonAdded = true;
-        }
+        this.addSourceButton(toolbar, context);
+        state.buttonAdded = true;
     },
 
     installNetworkInterception(context, state) {
