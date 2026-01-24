@@ -42,11 +42,6 @@
         archetypesPath: 'archetypes.json'
     };
     
-    // Core plugins that load on every page
-    const CORE_PLUGINS = [
-        { name: 'settings-ui.js', version: '2.0' }
-    ];
-
     // ============= SHARED CONTEXT =============
     const Context = {
         version: VERSION,
@@ -339,21 +334,6 @@
         },
         setModuleLoggingEnabled(moduleId, enabled) {
             this.set(`module-logging-${moduleId}`, enabled);
-        },
-        getPluginOrder(archetypeId) {
-            const key = `plugin-order-${archetypeId || 'global'}`;
-            const stored = this.get(key, null);
-            if (!stored) return null;
-            try {
-                return JSON.parse(stored);
-            } catch (e) {
-                Logger.error(`Failed to parse plugin order for ${key}:`, e);
-                return null;
-            }
-        },
-        setPluginOrder(archetypeId, order) {
-            const key = `plugin-order-${archetypeId || 'global'}`;
-            this.set(key, JSON.stringify(order || []));
         }
     };
 
@@ -556,6 +536,8 @@
     // ============= ARCHETYPE MANAGER =============
     const ArchetypeManager = {
         archetypes: [],
+        corePlugins: [],
+        devPlugins: [],
         currentArchetype: null,
         _archetypesLoaded: false,
         
@@ -576,6 +558,8 @@
                             try {
                                 const config = JSON.parse(response.responseText);
                                 this.archetypes = config.archetypes || [];
+                                this.corePlugins = config.corePlugins || [];
+                                this.devPlugins = config.devPlugins || [];
                                 this._archetypesLoaded = true;
                                 Logger.log(`✓ Loaded ${this.archetypes.length} archetypes`);
                                 resolve(config);
@@ -594,6 +578,14 @@
                     }
                 });
             });
+        },
+
+        getCorePlugins() {
+            return this.corePlugins || [];
+        },
+
+        getDevPlugins() {
+            return this.devPlugins || [];
         },
         
         /**
@@ -1011,15 +1003,20 @@
             return plugin;
         },
         
-        async loadCorePlugins() {
-            if (CORE_PLUGINS.length === 0) {
-                Logger.debug('No core plugins configured');
+        async loadPluginsFromConfig(pluginList, type) {
+            if (!pluginList || pluginList.length === 0) {
+                Logger.debug(`No ${type} plugins configured`);
                 return;
             }
-            
-            Logger.log(`Loading ${CORE_PLUGINS.length} core plugin(s)...`);
-            
-            for (const pluginDef of CORE_PLUGINS) {
+
+            const normalizedType = type === 'dev' ? 'dev' : 'core';
+            Logger.log(`Loading ${pluginList.length} ${normalizedType} plugin(s)...`);
+
+            const loader = normalizedType === 'dev'
+                ? this.loadDevPlugin.bind(this)
+                : this.loadCorePlugin.bind(this);
+
+            for (const pluginDef of pluginList) {
                 // Support both old format (string) and new format (object with name and version)
                 let filename, version;
                 if (typeof pluginDef === 'string') {
@@ -1030,19 +1027,23 @@
                     filename = pluginDef.name;
                     version = pluginDef.version;
                 } else {
-                    Logger.error('Invalid core plugin definition:', pluginDef);
+                    Logger.error(`Invalid ${normalizedType} plugin definition:`, pluginDef);
                     continue;
                 }
                 
                 try {
-                    const plugin = await this.loadCorePlugin(filename, version);
+                    const plugin = await loader(filename, version);
+                    const loadedVersion = plugin._version || plugin.version || version;
                     plugin._sourceFile = filename;
-                    plugin._version = version;
+                    plugin._version = loadedVersion;
                     plugin._isCore = true;
+                    if (normalizedType === 'dev') {
+                        plugin._isDev = true;
+                    }
                     PluginManager.register(plugin);
-                    Logger.log(`✓ Loaded core plugin: ${filename} v${version}`);
+                    Logger.log(`✓ Loaded ${normalizedType} plugin: ${filename} v${loadedVersion}`);
                 } catch (err) {
-                    Logger.error(`✗ Failed to load core plugin: ${filename} v${version}`, err);
+                    Logger.error(`✗ Failed to load ${normalizedType} plugin: ${filename} v${version}`, err);
                 }
             }
         },
@@ -1257,21 +1258,14 @@
             Logger.debug('Core plugins already loaded');
             return;
         }
-        
-        await PluginLoader.loadCorePlugins();
+
+        await ArchetypeManager.loadArchetypes();
+        const corePlugins = ArchetypeManager.getCorePlugins();
+        await PluginLoader.loadPluginsFromConfig(corePlugins, 'core');
+
         if (DEV_LOG_PANEL_ENABLED) {
-            try {
-                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '1.3');
-                const loadedVersion = plugin._version || plugin.version || '1.3';
-                plugin._sourceFile = 'logger-panel.js';
-                plugin._version = loadedVersion;
-                plugin._isCore = true;
-                plugin._isDev = true;
-                PluginManager.register(plugin);
-                Logger.log(`✓ Loaded dev logger panel plugin v${loadedVersion}`);
-            } catch (err) {
-                Logger.error('✗ Failed to load dev logger panel plugin', err);
-            }
+            const devPlugins = ArchetypeManager.getDevPlugins();
+            await PluginLoader.loadPluginsFromConfig(devPlugins, 'dev');
         }
         corePluginsLoaded = true;
         

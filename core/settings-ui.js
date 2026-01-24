@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '2.0',
+    _version: '2.1',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -497,7 +497,7 @@ const plugin = {
             if (fromIndex === -1 || toIndex === -1) return;
             order.splice(fromIndex, 1);
             order.splice(toIndex, 0, draggedId);
-            Storage.setPluginOrder(this._settingsArchetypeId, order);
+            this._setStoredPluginOrder(this._settingsArchetypeId, order);
             this._renderPluginList(modal, plugins);
             this._attachPluginToggleListeners(modal, plugins);
             this._attachPluginReorderListeners(modal, plugins);
@@ -531,11 +531,29 @@ const plugin = {
         return order.map(id => byId.get(id)).filter(Boolean);
     },
 
+    _getPluginOrderKey(archetypeId) {
+        return `plugin-order-${archetypeId || 'global'}`;
+    },
+
+    _setStoredPluginOrder(archetypeId, order) {
+        const key = this._getPluginOrderKey(archetypeId);
+        Storage.set(key, JSON.stringify(order || []));
+    },
+
     _getStoredPluginOrder(archetypeId, plugins) {
         const ids = plugins.map(plugin => plugin.id);
-        const stored = Storage.getPluginOrder(archetypeId);
+        const key = this._getPluginOrderKey(archetypeId);
+        const storedRaw = Storage.get(key, null);
+        let stored = null;
+        if (storedRaw) {
+            try {
+                stored = JSON.parse(storedRaw);
+            } catch (e) {
+                Logger.error(`Failed to parse plugin order for ${key}:`, e);
+            }
+        }
         if (!stored || !Array.isArray(stored)) {
-            Storage.setPluginOrder(archetypeId, ids);
+            this._setStoredPluginOrder(archetypeId, ids);
             return ids;
         }
         const valid = new Set(ids);
@@ -543,7 +561,7 @@ const plugin = {
         const missing = ids.filter(id => !filtered.includes(id));
         const normalized = filtered.concat(missing);
         if (JSON.stringify(stored) !== JSON.stringify(normalized)) {
-            Storage.setPluginOrder(archetypeId, normalized);
+            this._setStoredPluginOrder(archetypeId, normalized);
         }
         return normalized;
     },
