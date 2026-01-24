@@ -5,14 +5,14 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button to open source data in new tab',
-    _version: '2.2',
+    _version: '2.3',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonAdded: false, missingLogged: false, interceptionInstalled: false },
     
     // Plugin-specific selectors
     selectors: {
-        toolbar: '[id="\:r7\:"] > div.flex-shrink-0 > div > div.space-y-2.relative',
+        toolbar: '[id="\:r7\:"] > div.flex-shrink-0 > div > div.flex.items-center.gap-2.mt-2'
     },
     
     onMutation(state, context) {
