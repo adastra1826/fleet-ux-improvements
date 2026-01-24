@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '2.4',
+    _version: '2.5',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -36,14 +36,14 @@ const plugin = {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 16px;
-                height: 16px;
+                width: 10px;
+                height: 10px;
                 opacity: 0.7;
             }
             .favorite-star.inline {
                 margin-right: 6px;
-                width: 14px;
-                height: 14px;
+                width: 10px;
+                height: 10px;
                 display: inline-flex;
                 align-items: center;
             }
