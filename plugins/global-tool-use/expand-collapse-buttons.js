@@ -3,18 +3,17 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.6',
+    _version: '1.7',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
-        toolbar: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1',
-        toolsContainer: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
+        toolbar: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
         workflowToolsIndicator: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)',
         workflowToolsArea: '[id="\:re\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\:bg-muted\/30'
+        workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\:bg-muted\/30'
     },
     
     onMutation(state, context) {
@@ -67,7 +66,10 @@ const plugin = {
             container.appendChild(collapseBtn);
             container.appendChild(trailingDivider);
 
-            toolbar.insertBefore(container, toolbar.firstChild);
+            const insertBeforeTarget = toolsIndicator && toolsIndicator.parentElement === toolbar
+                ? toolsIndicator.nextSibling
+                : toolbar.firstChild;
+            toolbar.insertBefore(container, insertBeforeTarget);
             state.added = true;
             Logger.log('✓ Expand/Collapse buttons added to toolbar');
         }
@@ -84,7 +86,7 @@ const plugin = {
             return;
         }
 
-        const toolHeaders = Context.dom.queryAll(this.selectors.toolHeader, {
+        const toolHeaders = Context.dom.queryAll(this.selectors.workflowToolHeader, {
             root: workflowToolsArea,
             context: `${this.id}.toolHeaders`
         });
