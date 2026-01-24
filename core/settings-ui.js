@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '2.4',
+    _version: '2.5',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -365,9 +365,12 @@ const plugin = {
                 const isEnabled = e.target.checked;
                 this._setGlobalEnabled(isEnabled);
                 if (!isEnabled) {
+                    this._storeGlobalSnapshot(plugins);
                     plugins.forEach(plugin => {
                         PluginManager.setEnabled(plugin.id, false);
                     });
+                } else {
+                    this._restoreGlobalSnapshot(plugins);
                 }
                 this._renderPluginList(modal, plugins);
                 this._attachPluginToggleListeners(modal, plugins);
@@ -630,6 +633,35 @@ const plugin = {
 
     _setGlobalEnabled(enabled) {
         Storage.set('global-plugins-enabled', enabled);
+    },
+
+    _storeGlobalSnapshot(plugins) {
+        if (!Array.isArray(plugins)) return;
+        const snapshot = plugins.map(plugin => ({
+            id: plugin.id,
+            enabled: PluginManager.isEnabled(plugin.id)
+        }));
+        Storage.set('global-plugins-previous', JSON.stringify(snapshot));
+    },
+
+    _restoreGlobalSnapshot(plugins) {
+        if (!Array.isArray(plugins)) return;
+        const raw = Storage.get('global-plugins-previous', null);
+        if (!raw) return;
+        let snapshot = null;
+        try {
+            snapshot = JSON.parse(raw);
+        } catch (e) {
+            Logger.error('Failed to parse global plugins snapshot:', e);
+            return;
+        }
+        if (!Array.isArray(snapshot)) return;
+        const byId = new Map(snapshot.map(item => [item.id, item.enabled]));
+        plugins.forEach(plugin => {
+            if (byId.has(plugin.id)) {
+                PluginManager.setEnabled(plugin.id, Boolean(byId.get(plugin.id)));
+            }
+        });
     },
 
     _ensureMessageElement(modal) {
