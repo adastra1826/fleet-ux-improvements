@@ -44,7 +44,7 @@
     
     // Core plugins that load on every page
     const CORE_PLUGINS = [
-        { name: 'settings-ui.js', version: '1.0' }
+        { name: 'settings-ui.js', version: '1.1' }
     ];
 
     // ============= SHARED CONTEXT =============
@@ -327,6 +327,18 @@
         getPluginKey(filename, sourcePath) {
             // Create a unique key for the plugin based on its path
             return sourcePath || filename;
+        },
+        getSubmoduleLoggingEnabled() {
+            return this.get('submodule-logging', false);
+        },
+        setSubmoduleLoggingEnabled(enabled) {
+            this.set('submodule-logging', enabled);
+        },
+        getModuleLoggingEnabled(moduleId) {
+            return this.get(`module-logging-${moduleId}`, false);
+        },
+        setModuleLoggingEnabled(moduleId, enabled) {
+            this.set(`module-logging-${moduleId}`, enabled);
         }
     };
 
@@ -334,6 +346,8 @@
     const Logger = {
         _debugEnabled: null,
         _verboseEnabled: null,
+        _submoduleEnabled: null,
+        _moduleLogEnabled: {},
         _listeners: new Set(),
         
         isDebugEnabled() {
@@ -349,6 +363,21 @@
             }
             return this._verboseEnabled;
         },
+
+        isSubmoduleLoggingEnabled() {
+            if (this._submoduleEnabled === null) {
+                this._submoduleEnabled = Storage.getSubmoduleLoggingEnabled();
+            }
+            return this._submoduleEnabled;
+        },
+
+        isModuleLoggingEnabled(moduleId) {
+            if (!moduleId) return false;
+            if (typeof this._moduleLogEnabled[moduleId] === 'undefined') {
+                this._moduleLogEnabled[moduleId] = Storage.getModuleLoggingEnabled(moduleId);
+            }
+            return this._moduleLogEnabled[moduleId];
+        },
         
         setDebugEnabled(enabled) {
             this._debugEnabled = enabled;
@@ -358,6 +387,17 @@
         setVerboseEnabled(enabled) {
             this._verboseEnabled = enabled;
             Storage.set('verbose', enabled);
+        },
+
+        setSubmoduleLoggingEnabled(enabled) {
+            this._submoduleEnabled = enabled;
+            Storage.setSubmoduleLoggingEnabled(enabled);
+        },
+
+        setModuleLoggingEnabled(moduleId, enabled) {
+            if (!moduleId) return;
+            this._moduleLogEnabled[moduleId] = enabled;
+            Storage.setModuleLoggingEnabled(moduleId, enabled);
         },
 
         onLog(listener) {
@@ -374,6 +414,46 @@
                     // Ignore listener errors to keep logging stable
                 }
             });
+        },
+
+        _getModulePrefix(moduleId) {
+            const safeId = moduleId || 'unknown';
+            return `${LOG_PREFIX} [${safeId}]`;
+        },
+
+        _shouldLogModule(moduleId) {
+            return this.isSubmoduleLoggingEnabled() && this.isModuleLoggingEnabled(moduleId);
+        },
+
+        _logModule(level, msg, moduleId, ...args) {
+            if (!this._shouldLogModule(moduleId)) return;
+            const prefix = this._getModulePrefix(moduleId);
+            let payload;
+            if (level === 'debug') {
+                payload = [`${prefix} 🔍 ${msg}`, ...args];
+            } else if (level === 'warn') {
+                payload = [`${prefix} ⚠️ ${msg}`, ...args];
+            } else if (level === 'error') {
+                payload = [`${prefix} ❌ ${msg}`, ...args];
+            } else {
+                payload = [`${prefix} ${msg}`, ...args];
+            }
+            console[level](...payload);
+            this._emit(level, payload);
+        },
+
+        createModuleLogger(moduleIdSource) {
+            const resolveModuleId = typeof moduleIdSource === 'function'
+                ? moduleIdSource
+                : () => moduleIdSource;
+            return {
+                log: (msg, ...args) => this._logModule('log', msg, resolveModuleId(), ...args),
+                debug: (msg, ...args) => this._logModule('debug', msg, resolveModuleId(), ...args),
+                warn: (msg, ...args) => this._logModule('warn', msg, resolveModuleId(), ...args),
+                error: (msg, ...args) => this._logModule('error', msg, resolveModuleId(), ...args),
+                isVerboseEnabled: () => this._shouldLogModule(resolveModuleId()),
+                isDebugEnabled: () => this._shouldLogModule(resolveModuleId())
+            };
         },
         
         log(msg, ...args) {
@@ -738,8 +818,14 @@
          * @param {string} filename - Plugin filename
          * @returns {Object} - Plugin object
          */
-        parsePluginCode(code, filename) {
+        parsePluginCode(code, filename, options = {}) {
             try {
+                const useModuleLogger = options.useModuleLogger === true;
+                const moduleIdHint = options.moduleIdHint || filename;
+                let resolvedModuleId = moduleIdHint;
+                const moduleLogger = useModuleLogger
+                    ? Logger.createModuleLogger(() => resolvedModuleId)
+                    : Logger;
                 const pluginFactory = new Function(
                     'PluginManager',
                     'Storage',
@@ -748,14 +834,18 @@
                     'CleanupRegistry',
                     code + '\n\n// Return the plugin for registration\nreturn plugin;'
                 );
-                
-                return pluginFactory(
+
+                const plugin = pluginFactory(
                     PluginManager,
                     Storage,
-                    Logger,
+                    moduleLogger,
                     Context,
                     CleanupRegistry
                 );
+                if (useModuleLogger && plugin && plugin.id) {
+                    resolvedModuleId = plugin.id;
+                }
+                return plugin;
             } catch (e) {
                 Logger.error(`Failed to parse plugin ${filename}:`, e);
                 throw e;
@@ -774,7 +864,7 @@
             
             // Load plugin code with versioning
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
-            const plugin = this.parsePluginCode(code, filename);
+            const plugin = this.parsePluginCode(code, filename, { useModuleLogger: false });
             this._loadedPluginFiles.add(sourcePath);
             Logger.debug(`Loaded core plugin ${filename} v${version}`);
             return plugin;
@@ -791,7 +881,7 @@
             const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.devPath}/${filename}`;
 
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
-            const plugin = this.parsePluginCode(code, filename);
+            const plugin = this.parsePluginCode(code, filename, { useModuleLogger: false });
             this._loadedPluginFiles.add(sourcePath);
             Logger.debug(`Loaded dev plugin ${filename} v${version}`);
             return plugin;
@@ -825,7 +915,7 @@
                 // Try to load from global first (with versioning)
                 try {
                     const code = await this.loadPluginCode(filename, globalPath, version, globalUrl);
-                    const plugin = this.parsePluginCode(code, filename);
+                    const plugin = this.parsePluginCode(code, filename, { useModuleLogger: true });
                     this._loadedPluginFiles.add(globalPath);
                     Logger.debug(`Loaded ${filename} v${version} from global folder`);
                     return plugin;
@@ -845,7 +935,7 @@
             
             // Load from determined path (explicit or archetype folder)
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
-            const plugin = this.parsePluginCode(code, filename);
+            const plugin = this.parsePluginCode(code, filename, { useModuleLogger: true });
             this._loadedPluginFiles.add(sourcePath);
             Logger.debug(`Loaded ${filename} v${version} from ${sourcePath}`);
             return plugin;
