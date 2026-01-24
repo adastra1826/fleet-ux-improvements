@@ -44,7 +44,7 @@
     
     // Core plugins that load on every page
     const CORE_PLUGINS = [
-        { name: 'settings-ui.js', version: '1.2' }
+        { name: 'settings-ui.js', version: '1.3' }
     ];
 
     // ============= SHARED CONTEXT =============
@@ -1246,8 +1246,8 @@
         await PluginLoader.loadCorePlugins();
         if (DEV_LOG_PANEL_ENABLED) {
             try {
-                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '1.2');
-                const loadedVersion = plugin._version || plugin.version || '1.2';
+                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '1.3');
+                const loadedVersion = plugin._version || plugin.version || '1.3';
                 plugin._sourceFile = 'logger-panel.js';
                 plugin._version = loadedVersion;
                 plugin._isCore = true;

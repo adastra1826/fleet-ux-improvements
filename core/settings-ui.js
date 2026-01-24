@@ -6,30 +6,41 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '1.2',
+    _version: '1.3',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
     // Internal state (not reset on navigation)
     _buttonCreated: false,
     _modalOpen: false,
+    _presenceInterval: null,
     
     init(state, context) {
-        // Only create the button once
-        if (!this._buttonCreated) {
-            this._createSettingsButton();
-            this._buttonCreated = true;
-            Logger.log('✓ Settings UI initialized');
-        }
+        this._ensureSettingsButton();
+        this._ensureModalPresence();
+        this._startPresenceGuard();
     },
     
     // No destroy method - this plugin persists
     
-    _createSettingsButton() {
-        if (document.getElementById('wf-settings-btn')) return;
-        
-        const settingsBtn = document.createElement('button');
-        settingsBtn.id = 'wf-settings-btn';
+    _ensureSettingsButton() {
+        if (!document.body) return;
+        let settingsBtn = document.getElementById('wf-settings-btn');
+        if (!settingsBtn) {
+            settingsBtn = document.createElement('button');
+            settingsBtn.id = 'wf-settings-btn';
+            document.body.appendChild(settingsBtn);
+            if (!this._buttonCreated) {
+                Logger.log('✓ Settings UI initialized');
+                this._buttonCreated = true;
+            }
+        }
+        this._applySettingsButtonBehavior(settingsBtn);
+    },
+
+    _applySettingsButtonBehavior(settingsBtn) {
+        if (!settingsBtn) return;
+        settingsBtn.type = 'button';
         settingsBtn.title = 'Fleet Enhancer Settings';
         settingsBtn.style.cssText = `
             position: fixed;
@@ -48,27 +59,27 @@ const plugin = {
             z-index: 9999;
             transition: all 0.2s;
         `;
-        
         settingsBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
             </svg>
         `;
-        
+
+        if (settingsBtn.dataset.wfSettingsBound === 'true') return;
+        settingsBtn.dataset.wfSettingsBound = 'true';
+
         settingsBtn.addEventListener('mouseenter', () => {
             settingsBtn.style.transform = 'scale(1.1)';
             settingsBtn.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
         });
-        
+
         settingsBtn.addEventListener('mouseleave', () => {
             settingsBtn.style.transform = 'scale(1)';
             settingsBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
         });
-        
+
         settingsBtn.addEventListener('click', () => this._toggleModal());
-        
-        document.body.appendChild(settingsBtn);
     },
     
     _toggleModal() {
@@ -85,6 +96,15 @@ const plugin = {
             this._modalOpen = true;
         }
     },
+
+    _ensureModalPresence() {
+        if (!this._modalOpen) return;
+        const modal = document.getElementById('wf-settings-modal');
+        if (!modal) {
+            const recreated = this._createModal();
+            recreated.style.display = 'block';
+        }
+    },
     
     _closeModal() {
         const modal = document.getElementById('wf-settings-modal');
@@ -92,6 +112,15 @@ const plugin = {
             modal.style.display = 'none';
         }
         this._modalOpen = false;
+    },
+
+    _startPresenceGuard() {
+        if (this._presenceInterval) return;
+        const guard = () => {
+            this._ensureSettingsButton();
+            this._ensureModalPresence();
+        };
+        this._presenceInterval = setInterval(guard, 1000);
     },
     
     _createModal() {

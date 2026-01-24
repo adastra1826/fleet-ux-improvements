@@ -5,7 +5,7 @@ const plugin = {
     id: 'dev-logger-panel',
     name: 'Dev Logger Panel',
     description: 'Floating panel to view Fleet UX Enhancer logs without prefix',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'core',
 
@@ -24,14 +24,45 @@ const plugin = {
         resizeStartHeight: 0,
         searchQuery: '',
         originalConsole: null,
-        unsubscribe: null
+        unsubscribe: null,
+        guardInterval: null,
+        ui: null,
+        handlers: null
     },
 
     init(state, context) {
-        if (state.initialized) return;
-        state.initialized = true;
+        if (!state.initialized) {
+            state.initialized = true;
+            this._setupLogging(state, context);
+            Logger.log('✓ Dev logger panel initialized');
+        }
 
-        const logPrefix = context.logPrefix || '';
+        this._ensureUI(state, context);
+        this._startPresenceGuard(state, context);
+    },
+
+    _startPresenceGuard(state, context) {
+        if (state.guardInterval) return;
+        state.guardInterval = setInterval(() => {
+            this._ensureUI(state, context);
+        }, 1000);
+    },
+
+    _ensureUI(state, context) {
+        if (!document.body) return;
+        const rootPresent = state.ui && state.ui.root && document.body.contains(state.ui.root);
+        const togglePresent = state.ui && state.ui.toggleButton && document.body.contains(state.ui.toggleButton);
+        if (rootPresent && togglePresent) return;
+
+        this._teardownUI(state);
+        state.ui = this._buildUI(state, context);
+        this._ensureHandlers(state);
+        this._bindUI(state);
+        this._renderLogs(state);
+        this._updateVisibility(state, state.isVisible);
+    },
+
+    _buildUI(state, context) {
         const root = document.createElement('div');
         root.id = 'wf-dev-log-panel';
         root.style.position = 'fixed';
@@ -184,83 +215,238 @@ const plugin = {
             root.style.bottom = 'auto';
         });
 
-        const updateVisibility = (visible) => {
-            state.isVisible = visible;
-            root.style.display = visible ? 'flex' : 'none';
-            toggleButton.textContent = visible ? 'Hide Logs' : 'Show Logs';
+        return {
+            root,
+            header,
+            headerActions,
+            clearButton,
+            copyButton,
+            minimizeButton,
+            searchInput,
+            body,
+            toggleButton,
+            resizeHandle
         };
+    },
 
-        const onMinimize = () => updateVisibility(false);
-
-        const copyToClipboard = async (text) => {
-            if (!text) return;
-            try {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(text);
-                    return;
+    _ensureHandlers(state) {
+        if (state.handlers) return;
+        state.handlers = {
+            onMouseDown: (event) => {
+                const ui = state.ui;
+                if (!ui) return;
+                if (event.button !== 0) return;
+                if (event.target === ui.clearButton || ui.headerActions.contains(event.target)) return;
+                if (event.target !== ui.header && !ui.header.contains(event.target)) return;
+                state.isDragging = true;
+                const rect = ui.root.getBoundingClientRect();
+                state.dragOffsetX = event.clientX - rect.left;
+                state.dragOffsetY = event.clientY - rect.top;
+            },
+            onMouseMove: (event) => {
+                if (!state.isDragging) return;
+                const ui = state.ui;
+                if (!ui) return;
+                const nextLeft = Math.max(8, event.clientX - state.dragOffsetX);
+                const nextTop = Math.max(8, event.clientY - state.dragOffsetY);
+                ui.root.style.left = `${nextLeft}px`;
+                ui.root.style.top = `${nextTop}px`;
+                ui.root.style.right = 'auto';
+                ui.root.style.bottom = 'auto';
+            },
+            onMouseUp: () => {
+                state.isDragging = false;
+                state.isResizing = false;
+                if (document.body) {
+                    document.body.style.userSelect = '';
                 }
-            } catch (e) {
-                // Fall back below
-            }
-
-            const temp = document.createElement('textarea');
-            temp.value = text;
-            temp.style.position = 'fixed';
-            temp.style.top = '-1000px';
-            document.body.appendChild(temp);
-            temp.select();
-            try {
-                document.execCommand('copy');
-            } catch (e) {
-                // Ignore
-            }
-            document.body.removeChild(temp);
-        };
-
-        const addLogEntry = (level, message) => {
-            const entry = document.createElement('div');
-            entry.style.marginBottom = '4px';
-            entry.style.whiteSpace = 'pre-wrap';
-            entry.style.wordBreak = 'break-word';
-
-            if (level === 'error') entry.style.color = '#fca5a5';
-            if (level === 'warn') entry.style.color = '#facc15';
-            if (level === 'debug') entry.style.color = '#93c5fd';
-            if (level === 'info') entry.style.color = '#6ee7b7';
-
-            entry.textContent = message;
-            entry.style.borderRadius = '6px';
-            entry.style.padding = '2px 4px';
-            entry.style.cursor = 'pointer';
-
-            entry.addEventListener('mouseenter', () => {
-                entry.style.background = 'rgba(255,255,255,0.08)';
-            });
-            entry.addEventListener('mouseleave', () => {
-                entry.style.background = 'transparent';
-            });
-            entry.addEventListener('click', () => {
-                copyToClipboard(message);
-            });
-
-            body.appendChild(entry);
-            body.scrollTop = body.scrollHeight;
-
-            const logRecord = { node: entry, text: message };
-            state.logs.push(logRecord);
-            if (state.logs.length > state.maxLogs) {
-                const old = state.logs.shift();
-                if (old && old.node && old.node.parentNode) {
-                    old.node.parentNode.removeChild(old.node);
+            },
+            onResizeMove: (event) => {
+                if (!state.isResizing) return;
+                const ui = state.ui;
+                if (!ui) return;
+                const nextWidth = Math.max(240, state.resizeStartWidth + (event.clientX - state.resizeStartX));
+                const nextHeight = Math.max(140, state.resizeStartHeight + (event.clientY - state.resizeStartY));
+                ui.root.style.width = `${nextWidth}px`;
+                ui.root.style.height = `${nextHeight}px`;
+            },
+            onToggle: () => this._updateVisibility(state, !state.isVisible),
+            onClear: () => this._clearLogs(state),
+            onCopyAll: () => this._copyAll(state),
+            onMinimize: () => this._updateVisibility(state, false),
+            onSearch: (event) => {
+                state.searchQuery = event.target.value.trim().toLowerCase();
+                this._applySearchFilter(state);
+            },
+            onResizeStart: (event) => {
+                const ui = state.ui;
+                if (!ui) return;
+                if (event.button !== 0) return;
+                event.preventDefault();
+                event.stopPropagation();
+                state.isResizing = true;
+                const rect = ui.root.getBoundingClientRect();
+                state.resizeStartX = event.clientX;
+                state.resizeStartY = event.clientY;
+                state.resizeStartWidth = rect.width;
+                state.resizeStartHeight = rect.height;
+                if (document.body) {
+                    document.body.style.userSelect = 'none';
                 }
             }
-
-            if (state.searchQuery) {
-                const matches = logRecord.text.toLowerCase().includes(state.searchQuery);
-                entry.style.display = matches ? 'block' : 'none';
-            }
         };
 
+        document.addEventListener('mousemove', state.handlers.onMouseMove);
+        document.addEventListener('mousemove', state.handlers.onResizeMove);
+        document.addEventListener('mouseup', state.handlers.onMouseUp);
+    },
+
+    _bindUI(state) {
+        const ui = state.ui;
+        if (!ui || !state.handlers) return;
+        ui.header.addEventListener('mousedown', state.handlers.onMouseDown);
+        ui.toggleButton.addEventListener('click', state.handlers.onToggle);
+        ui.clearButton.addEventListener('click', state.handlers.onClear);
+        ui.copyButton.addEventListener('click', state.handlers.onCopyAll);
+        ui.minimizeButton.addEventListener('click', state.handlers.onMinimize);
+        ui.searchInput.addEventListener('input', state.handlers.onSearch);
+        ui.resizeHandle.addEventListener('mousedown', state.handlers.onResizeStart);
+    },
+
+    _teardownUI(state) {
+        if (!state.ui) return;
+        if (state.ui.root && state.ui.root.parentNode) {
+            state.ui.root.parentNode.removeChild(state.ui.root);
+        }
+        if (state.ui.toggleButton && state.ui.toggleButton.parentNode) {
+            state.ui.toggleButton.parentNode.removeChild(state.ui.toggleButton);
+        }
+        state.ui = null;
+    },
+
+    _updateVisibility(state, visible) {
+        state.isVisible = visible;
+        const ui = state.ui;
+        if (!ui) return;
+        ui.root.style.display = visible ? 'flex' : 'none';
+        ui.toggleButton.textContent = visible ? 'Hide Logs' : 'Show Logs';
+    },
+
+    _applySearchFilter(state) {
+        state.logs.forEach((log) => {
+            if (!log.node) return;
+            const matches = !state.searchQuery || log.text.toLowerCase().includes(state.searchQuery);
+            log.node.style.display = matches ? 'block' : 'none';
+        });
+    },
+
+    _renderLogs(state) {
+        const ui = state.ui;
+        if (!ui) return;
+        ui.body.innerHTML = '';
+        state.logs.forEach((log) => {
+            const level = log.level || 'log';
+            const entry = this._createLogNode(level, log.text);
+            log.node = entry;
+            ui.body.appendChild(entry);
+        });
+        this._applySearchFilter(state);
+        ui.body.scrollTop = ui.body.scrollHeight;
+    },
+
+    _createLogNode(level, message) {
+        const entry = document.createElement('div');
+        entry.style.marginBottom = '4px';
+        entry.style.whiteSpace = 'pre-wrap';
+        entry.style.wordBreak = 'break-word';
+
+        if (level === 'error') entry.style.color = '#fca5a5';
+        if (level === 'warn') entry.style.color = '#facc15';
+        if (level === 'debug') entry.style.color = '#93c5fd';
+        if (level === 'info') entry.style.color = '#6ee7b7';
+
+        entry.textContent = message;
+        entry.style.borderRadius = '6px';
+        entry.style.padding = '2px 4px';
+        entry.style.cursor = 'pointer';
+
+        entry.addEventListener('mouseenter', () => {
+            entry.style.background = 'rgba(255,255,255,0.08)';
+        });
+        entry.addEventListener('mouseleave', () => {
+            entry.style.background = 'transparent';
+        });
+        entry.addEventListener('click', () => {
+            this._copyToClipboard(message);
+        });
+
+        return entry;
+    },
+
+    _appendLogEntry(state, level, message) {
+        const logRecord = { text: message, level: level };
+        state.logs.push(logRecord);
+        if (state.logs.length > state.maxLogs) {
+            const old = state.logs.shift();
+            if (old && old.node && old.node.parentNode) {
+                old.node.parentNode.removeChild(old.node);
+            }
+        }
+
+        const ui = state.ui;
+        if (!ui) return;
+        const entry = this._createLogNode(level, message);
+        logRecord.node = entry;
+        ui.body.appendChild(entry);
+        ui.body.scrollTop = ui.body.scrollHeight;
+
+        if (state.searchQuery) {
+            const matches = logRecord.text.toLowerCase().includes(state.searchQuery);
+            entry.style.display = matches ? 'block' : 'none';
+        }
+    },
+
+    _clearLogs(state) {
+        state.logs.forEach((log) => {
+            if (log.node && log.node.parentNode) {
+                log.node.parentNode.removeChild(log.node);
+            }
+        });
+        state.logs = [];
+    },
+
+    _copyAll(state) {
+        const text = state.logs.map((log) => log.text).join('\n');
+        this._copyToClipboard(text);
+    },
+
+    _copyToClipboard: async function(text) {
+        if (!text) return;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+        } catch (e) {
+            // Fall back below
+        }
+
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.style.position = 'fixed';
+        temp.style.top = '-1000px';
+        document.body.appendChild(temp);
+        temp.select();
+        try {
+            document.execCommand('copy');
+        } catch (e) {
+            // Ignore
+        }
+        document.body.removeChild(temp);
+    },
+
+    _setupLogging(state, context) {
+        const logPrefix = context.logPrefix || '';
         const formatArgs = (args) => {
             return args.map((arg) => {
                 if (typeof arg === 'string') return arg;
@@ -289,7 +475,7 @@ const plugin = {
 
             const normalizedArgs = [...args];
             normalizedArgs[0] = stripPrefix(normalizedArgs[0]);
-            addLogEntry(level, formatArgs(normalizedArgs));
+            this._appendLogEntry(state, level, formatArgs(normalizedArgs));
         };
 
         const wrapConsole = (methodName, level) => {
@@ -317,89 +503,20 @@ const plugin = {
             wrapConsole('error', 'error');
             wrapConsole('debug', 'debug');
         }
-
-        const onMouseDown = (event) => {
-            if (event.button !== 0) return;
-            if (event.target === clearButton || headerActions.contains(event.target)) return;
-            if (event.target !== header && !header.contains(event.target)) return;
-            state.isDragging = true;
-            const rect = root.getBoundingClientRect();
-            state.dragOffsetX = event.clientX - rect.left;
-            state.dragOffsetY = event.clientY - rect.top;
-        };
-
-        const onMouseMove = (event) => {
-            if (!state.isDragging) return;
-            const nextLeft = Math.max(8, event.clientX - state.dragOffsetX);
-            const nextTop = Math.max(8, event.clientY - state.dragOffsetY);
-            root.style.left = `${nextLeft}px`;
-            root.style.top = `${nextTop}px`;
-            root.style.right = 'auto';
-            root.style.bottom = 'auto';
-        };
-
-        const onMouseUp = () => {
-            state.isDragging = false;
-            state.isResizing = false;
-            document.body.style.userSelect = '';
-        };
-
-        const onToggle = () => updateVisibility(!state.isVisible);
-        const onClear = () => {
-            state.logs.forEach((log) => log.node && log.node.parentNode && log.node.parentNode.removeChild(log.node));
-            state.logs = [];
-        };
-
-        const onCopyAll = () => {
-            const text = state.logs.map((log) => log.text).join('\n');
-            copyToClipboard(text);
-        };
-
-        const onResizeStart = (event) => {
-            if (event.button !== 0) return;
-            event.preventDefault();
-            event.stopPropagation();
-            state.isResizing = true;
-            const rect = root.getBoundingClientRect();
-            state.resizeStartX = event.clientX;
-            state.resizeStartY = event.clientY;
-            state.resizeStartWidth = rect.width;
-            state.resizeStartHeight = rect.height;
-            document.body.style.userSelect = 'none';
-        };
-
-        const onResizeMove = (event) => {
-            if (!state.isResizing) return;
-            const nextWidth = Math.max(240, state.resizeStartWidth + (event.clientX - state.resizeStartX));
-            const nextHeight = Math.max(140, state.resizeStartHeight + (event.clientY - state.resizeStartY));
-            root.style.width = `${nextWidth}px`;
-            root.style.height = `${nextHeight}px`;
-        };
-
-        const onSearch = (event) => {
-            state.searchQuery = event.target.value.trim().toLowerCase();
-            state.logs.forEach((log) => {
-                const matches = !state.searchQuery || log.text.toLowerCase().includes(state.searchQuery);
-                log.node.style.display = matches ? 'block' : 'none';
-            });
-        };
-
-        header.addEventListener('mousedown', onMouseDown);
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mousemove', onResizeMove);
-        document.addEventListener('mouseup', onMouseUp);
-        toggleButton.addEventListener('click', onToggle);
-        clearButton.addEventListener('click', onClear);
-        copyButton.addEventListener('click', onCopyAll);
-        minimizeButton.addEventListener('click', onMinimize);
-        searchInput.addEventListener('input', onSearch);
-        resizeHandle.addEventListener('mousedown', onResizeStart);
-
-        updateVisibility(true);
-        Logger.log('✓ Dev logger panel initialized');
     },
 
     destroy(state) {
+        if (state.guardInterval) {
+            clearInterval(state.guardInterval);
+            state.guardInterval = null;
+        }
+        if (state.handlers) {
+            document.removeEventListener('mousemove', state.handlers.onMouseMove);
+            document.removeEventListener('mousemove', state.handlers.onResizeMove);
+            document.removeEventListener('mouseup', state.handlers.onMouseUp);
+            state.handlers = null;
+        }
+        this._teardownUI(state);
         if (state.unsubscribe) {
             state.unsubscribe();
             state.unsubscribe = null;
