@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '2.3',
+    _version: '2.4',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -157,8 +157,9 @@ const plugin = {
         
         // Build plugin toggles HTML
         const submoduleLoggingEnabled = Logger.isSubmoduleLoggingEnabled();
+        const globalEnabled = this._getGlobalEnabled();
         const pluginTogglesHTML = orderedPlugins.length > 0 
-            ? orderedPlugins.map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled)).join('')
+            ? orderedPlugins.map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled, globalEnabled)).join('')
             : '<p style="color: #666; font-size: 13px; font-style: italic;">No plugins loaded for this page.</p>';
         
         // Build outdated plugins warning HTML
@@ -195,6 +196,19 @@ const plugin = {
                     </button>
                 </div>
                 
+                <!-- Global Toggle -->
+                <div style="margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; background: var(--card, #fafafa);">
+                        <div>
+                            <div style="font-size: 14px; font-weight: 600; color: var(--foreground, #333);">Enable Plugins</div>
+                            <div style="font-size: 12px; color: var(--muted-foreground, #666); margin-top: 4px;">
+                                Disables all plugins on refresh when turned off.
+                            </div>
+                        </div>
+                        ${this._createSwitchHTML('wf-global-enabled', globalEnabled)}
+                    </div>
+                </div>
+
                 <!-- Outdated Plugins Warning -->
                 ${outdatedPluginsHTML}
                 
@@ -238,15 +252,16 @@ const plugin = {
         return modal;
     },
     
-    _createPluginToggleHTML(plugin, submoduleLoggingEnabled) {
+    _createPluginToggleHTML(plugin, submoduleLoggingEnabled, globalEnabled) {
         const isEnabled = PluginManager.isEnabled(plugin.id);
+        const isDisabled = !globalEnabled;
         const moduleLoggingEnabled = Logger.isModuleLoggingEnabled(plugin.id);
         const moduleToggleHTML = submoduleLoggingEnabled && isEnabled ? `
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border, #e5e5e5);">
                     <label style="font-size: 12px; color: var(--muted-foreground, #666);" for="wf-plugin-log-${plugin.id}">
                         Module Logging
                     </label>
-                    ${this._createSwitchHTML(`wf-plugin-log-${plugin.id}`, moduleLoggingEnabled)}
+                    ${this._createSwitchHTML(`wf-plugin-log-${plugin.id}`, moduleLoggingEnabled, null, isDisabled)}
                 </div>
         ` : '';
         return `
@@ -264,7 +279,7 @@ const plugin = {
                             ${plugin.name || plugin.id}
                         </label>
                     </div>
-                    ${this._createSwitchHTML(`wf-plugin-${plugin.id}`, isEnabled, plugin.id)}
+                    ${this._createSwitchHTML(`wf-plugin-${plugin.id}`, isEnabled, plugin.id, isDisabled)}
                 </div>
                 <div style="font-size: 12px; color: var(--muted-foreground, #666); margin-top: 6px; line-height: 1.4;">
                     ${plugin.description || 'No description available'}
@@ -283,16 +298,20 @@ const plugin = {
         `;
     },
     
-    _createSwitchHTML(id, isEnabled, pluginId = null) {
+    _createSwitchHTML(id, isEnabled, pluginId = null, isDisabled = false) {
         const dataAttr = pluginId ? `data-plugin-id="${pluginId}"` : '';
+        const disabledAttr = isDisabled ? 'disabled' : '';
+        const sliderBg = isDisabled ? '#d1d5db' : (isEnabled ? 'var(--brand, #4f46e5)' : '#ccc');
+        const knobBg = isDisabled ? '#f3f4f6' : 'white';
+        const knobShadow = isDisabled ? 'none' : '0 1px 3px rgba(0,0,0,0.2)';
         return `
-            <label style="position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0;">
-                <input type="checkbox" id="${id}" ${dataAttr} ${isEnabled ? 'checked' : ''} style="opacity: 0; width: 0; height: 0; position: absolute;">
+            <label style="position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; ${isDisabled ? 'opacity: 0.6; cursor: not-allowed;' : ''}">
+                <input type="checkbox" id="${id}" ${dataAttr} ${isEnabled ? 'checked' : ''} ${disabledAttr} style="opacity: 0; width: 0; height: 0; position: absolute;">
                 <span class="wf-toggle-slider" style="
                     position: absolute;
-                    cursor: pointer;
+                    cursor: ${isDisabled ? 'not-allowed' : 'pointer'};
                     top: 0; left: 0; right: 0; bottom: 0;
-                    background-color: ${isEnabled ? 'var(--brand, #4f46e5)' : '#ccc'};
+                    background-color: ${sliderBg};
                     transition: 0.2s;
                     border-radius: 24px;
                 ">
@@ -302,10 +321,10 @@ const plugin = {
                         width: 18px;
                         left: ${isEnabled ? '23px' : '3px'};
                         bottom: 3px;
-                        background-color: white;
+                        background-color: ${knobBg};
                         transition: 0.2s;
                         border-radius: 50%;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+                        box-shadow: ${knobShadow};
                     "></span>
                 </span>
             </label>
@@ -335,6 +354,28 @@ const plugin = {
         };
         document.addEventListener('keydown', handleEscape);
         
+        // Global toggle
+        const globalToggle = Context.dom.query('#wf-global-enabled', {
+            root: modal,
+            context: `${this.id}.globalToggle`
+        });
+        if (globalToggle) {
+            globalToggle.addEventListener('change', (e) => {
+                this._handleToggleChange(e);
+                const isEnabled = e.target.checked;
+                this._setGlobalEnabled(isEnabled);
+                if (!isEnabled) {
+                    plugins.forEach(plugin => {
+                        PluginManager.setEnabled(plugin.id, false);
+                    });
+                }
+                this._renderPluginList(modal, plugins);
+                this._attachPluginToggleListeners(modal, plugins);
+                this._attachPluginReorderListeners(modal, plugins);
+                this._updateSettingsMessage(modal, plugins);
+            });
+        }
+
         // Plugin toggles
         this._attachPluginToggleListeners(modal, plugins);
         this._attachPluginReorderListeners(modal, plugins);
@@ -419,9 +460,10 @@ const plugin = {
             return;
         }
         const submoduleLoggingEnabled = Logger.isSubmoduleLoggingEnabled();
+        const globalEnabled = this._getGlobalEnabled();
         const orderedPlugins = this._getOrderedPlugins(plugins, this._settingsArchetypeId);
         container.innerHTML = orderedPlugins
-            .map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled))
+            .map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled, globalEnabled))
             .join('');
     },
 
@@ -569,6 +611,7 @@ const plugin = {
             .map(plugin => plugin)
             .sort((a, b) => (a.id || '').localeCompare(b.id || ''));
         return {
+            globalEnabled: this._getGlobalEnabled(),
             debug: Logger.isDebugEnabled(),
             verbose: Logger.isVerboseEnabled(),
             submoduleLogging: Logger.isSubmoduleLoggingEnabled(),
@@ -579,6 +622,14 @@ const plugin = {
             })),
             pluginOrder: this._getStoredPluginOrder(archetypeId, plugins)
         };
+    },
+
+    _getGlobalEnabled() {
+        return Storage.get('global-plugins-enabled', true);
+    },
+
+    _setGlobalEnabled(enabled) {
+        Storage.set('global-plugins-enabled', enabled);
     },
 
     _ensureMessageElement(modal) {
