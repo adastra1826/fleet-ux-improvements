@@ -3,15 +3,15 @@ const plugin = {
     id: 'duplicateToEnd',
     name: 'Duplicate to End',
     description: 'Adds button to duplicate a tool and move it to the end of the workflow',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
-        workflowToolsArea: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
+        workflowToolsArea: '[id="\:re\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
+        workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
     },
     
     onMutation(state, context) {
@@ -33,7 +33,7 @@ const plugin = {
         let buttonsAdded = 0;
         
         toolCards.forEach(card => {
-            const header = Context.dom.query(this.selectors.toolHeader, {
+            const header = Context.dom.query(this.selectors.workflowToolHeader, {
                 root: card,
                 context: `${this.id}.toolHeader`
             });
@@ -88,12 +88,12 @@ const plugin = {
             
             dupToEndBtn.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 text-muted-foreground hover:text-primary">
-                    <rect x="9" y="2" width="10" height="10" rx="1.5" ry="1.5"></rect>
-                    <path d="M5 10c-0.8 0-1.5 0.7-1.5 1.5v7c0 0.8 0.7 1.5 1.5 1.5h7c0.8 0 1.5-0.7 1.5-1.5"></path>
-                    <line x1="14" y1="5" x2="14" y2="9"></line>
-                    <line x1="12" y1="7" x2="16" y2="7"></line>
-                    <polyline points="21 14 21 20 15 20"></polyline>
-                    <path d="M21 20 L17 16"></path>
+                    <line x1="15" x2="15" y1="12" y2="18"></line>
+                    <line x1="12" x2="18" y1="15" y2="15"></line>
+                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                    <line x1="20" y1="9" x2="20" y2="17"></line>
+                    <polyline points="18 15 20 17 22 15"></polyline>
                 </svg>
             `;
             
