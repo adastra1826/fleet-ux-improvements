@@ -44,7 +44,7 @@
     
     // Core plugins that load on every page
     const CORE_PLUGINS = [
-        { name: 'settings-ui.js', version: '1.5' }
+        { name: 'settings-ui.js', version: '2.0' }
     ];
 
     // ============= SHARED CONTEXT =============
