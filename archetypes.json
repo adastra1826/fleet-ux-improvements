@@ -20,10 +20,6 @@
       "disambiguationSelectors": [],
       "plugins": [
         {
-          "name": "global/network-interception.js",
-          "version": "1.1"
-        },
-        {
           "name": "global/autocorrect-textareas.js",
           "version": "1.1"
         },
@@ -33,7 +29,7 @@
         },
         {
           "name": "global-tool-use/source-data-explorer.js",
-          "version": "1.2"
+          "version": "1.3"
         },
         {
           "name": "global-tool-use/favorites.js",
@@ -76,10 +72,6 @@
       "urlPattern": "workflows/m-type/create",
       "disambiguationSelectors": [],
       "plugins": [
-        {
-          "name": "global/network-interception.js",
-          "version": "1.1"
-        },
         {
           "name": "global/autocorrect-textareas.js",
           "version": "1.1"
