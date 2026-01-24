@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '2.1',
+    _version: '2.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -13,6 +13,7 @@ const plugin = {
     // Plugin-specific selectors
     selectors: {
         workflowToolsArea: '[id="\:re\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
+        workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
         workflowToolName: 'div.flex-1.min-w-0',
         toolsContainer: '[id="\:r7\:"] > div.flex-1.min-h-0.overflow-hidden > div > div > div.flex-1.overflow-y-auto > div',
         toolHeader: 'button > span.min-w-0.flex-1.overflow-hidden.flex.gap-2.items-start',
@@ -155,28 +156,39 @@ const plugin = {
         });
         if (!workflowToolsArea) return;
 
-        const workflowToolNames = Context.dom.queryAll(this.selectors.workflowToolName, {
+        const workflowToolHeaders = Context.dom.queryAll(this.selectors.workflowToolHeader, {
             root: workflowToolsArea,
-            context: `${this.id}.workflowToolName`
+            context: `${this.id}.workflowToolHeader`
         });
 
-        workflowToolNames.forEach(nameContainer => {
+        workflowToolHeaders.forEach(header => {
+            const nameContainer = Context.dom.query(this.selectors.workflowToolName, {
+                root: header,
+                context: `${this.id}.workflowToolName`
+            });
+            if (!nameContainer) return;
+
             const toolName = nameContainer.querySelector('span')?.textContent?.trim();
             if (!toolName) return;
 
-            const parentRow = nameContainer.parentElement;
-            if (!parentRow) return;
+            const isFavorite = favoriteTools.has(toolName);
+            let starWrapper = header.querySelector('.favorite-star.inline.workflow');
 
-            let starWrapper = parentRow.querySelector('.favorite-star.inline');
+            if (!isFavorite) {
+                if (starWrapper) {
+                    starWrapper.remove();
+                }
+                return;
+            }
+
             if (!starWrapper) {
                 starWrapper = this.createStarElement(toolName, favoriteTools, { inline: true, tagName: 'div' });
                 starWrapper.classList.add('workflow');
-                parentRow.insertBefore(starWrapper, nameContainer);
+                header.insertBefore(starWrapper, nameContainer);
             }
 
-            const isFavorite = favoriteTools.has(toolName);
-            starWrapper.innerHTML = isFavorite ? '⭐' : '☆';
-            starWrapper.classList.toggle('favorited', isFavorite);
+            starWrapper.innerHTML = '⭐';
+            starWrapper.classList.add('favorited');
         });
     }
 };
