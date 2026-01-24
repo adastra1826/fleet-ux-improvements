@@ -44,7 +44,7 @@
     
     // Core plugins that load on every page
     const CORE_PLUGINS = [
-        { name: 'settings-ui.js', version: '1.3' }
+        { name: 'settings-ui.js', version: '1.5' }
     ];
 
     // ============= SHARED CONTEXT =============
@@ -339,6 +339,21 @@
         },
         setModuleLoggingEnabled(moduleId, enabled) {
             this.set(`module-logging-${moduleId}`, enabled);
+        },
+        getPluginOrder(archetypeId) {
+            const key = `plugin-order-${archetypeId || 'global'}`;
+            const stored = this.get(key, null);
+            if (!stored) return null;
+            try {
+                return JSON.parse(stored);
+            } catch (e) {
+                Logger.error(`Failed to parse plugin order for ${key}:`, e);
+                return null;
+            }
+        },
+        setPluginOrder(archetypeId, order) {
+            const key = `plugin-order-${archetypeId || 'global'}`;
+            this.set(key, JSON.stringify(order || []));
         }
     };
 

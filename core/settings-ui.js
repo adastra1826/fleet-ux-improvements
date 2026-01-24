@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '1.4',
+    _version: '2.0',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -86,8 +86,7 @@ const plugin = {
         let modal = document.getElementById('wf-settings-modal');
         
         if (this._modalOpen && modal) {
-            modal.style.display = 'none';
-            this._modalOpen = false;
+            this._closeModal();
         } else {
             // Always recreate modal content when opening to get fresh plugin list
             if (modal) modal.remove();
@@ -110,6 +109,10 @@ const plugin = {
         const modal = document.getElementById('wf-settings-modal');
         if (modal) {
             modal.style.display = 'none';
+        }
+        const msg = document.getElementById('wf-settings-message');
+        if (msg) {
+            msg.style.display = 'none';
         }
         this._modalOpen = false;
     },
@@ -144,14 +147,18 @@ const plugin = {
         
         // Get current state
         const archetype = Context.currentArchetype;
+        const archetypeId = archetype ? archetype.id : 'global';
         const allPlugins = PluginManager.getAll();
         const archetypePlugins = allPlugins.filter(p => p.phase !== 'core');
+        const orderedPlugins = this._getOrderedPlugins(archetypePlugins, archetypeId);
         const version = Context.version || 'unknown';
+        this._settingsArchetypeId = archetypeId;
+        this._initialSettingsSnapshot = this._getSettingsSnapshot(archetypePlugins, archetypeId);
         
         // Build plugin toggles HTML
         const submoduleLoggingEnabled = Logger.isSubmoduleLoggingEnabled();
-        const pluginTogglesHTML = archetypePlugins.length > 0 
-            ? archetypePlugins.map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled)).join('')
+        const pluginTogglesHTML = orderedPlugins.length > 0 
+            ? orderedPlugins.map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled)).join('')
             : '<p style="color: #666; font-size: 13px; font-style: italic;">No plugins loaded for this page.</p>';
         
         // Build outdated plugins warning HTML
@@ -213,21 +220,6 @@ const plugin = {
                     </div>
                 </div>
                 
-                <!-- Message area -->
-                <div id="wf-settings-message" style="
-                    display: none;
-                    padding: 12px;
-                    background: #fef3c7;
-                    border: 1px solid #f59e0b;
-                    border-radius: 6px;
-                    font-size: 13px;
-                    text-align: center;
-                    margin-bottom: 16px;
-                    color: #92400e;
-                ">
-                    Settings changed. Refresh the page for changes to take effect.
-                </div>
-                
                 <!-- Footer -->
                 <div style="font-size: 11px; color: var(--muted-foreground, #888); text-align: center; padding-top: 12px; border-top: 1px solid var(--border, #e5e5e5);">
                     Fleet Workflow Enhancer · 
@@ -237,9 +229,11 @@ const plugin = {
         `;
         
         document.body.appendChild(modal);
+        this._ensureMessageElement(modal);
         
         // Attach event listeners
-        this._attachModalListeners(modal, archetypePlugins);
+        this._attachModalListeners(modal, orderedPlugins);
+        this._updateSettingsMessage(modal, archetypePlugins);
         
         return modal;
     },
@@ -256,11 +250,20 @@ const plugin = {
                 </div>
         ` : '';
         return `
-            <div style="display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 10px; background: var(--card, #fafafa);">
+            <div data-plugin-id="${plugin.id}" style="display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 10px; background: var(--card, #fafafa);">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <label style="font-size: 14px; font-weight: 500; cursor: pointer; color: var(--foreground, #333);" for="wf-plugin-${plugin.id}">
-                        ${plugin.name || plugin.id}
-                    </label>
+                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                        <div class="wf-drag-handle" draggable="true" data-plugin-id="${plugin.id}" title="Drag to reorder" style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--muted-foreground, #888);">
+                            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <line x1="4" y1="5" x2="16" y2="5"></line>
+                                <line x1="4" y1="10" x2="16" y2="10"></line>
+                                <line x1="4" y1="15" x2="16" y2="15"></line>
+                            </svg>
+                        </div>
+                        <label style="font-size: 14px; font-weight: 500; cursor: pointer; color: var(--foreground, #333); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" for="wf-plugin-${plugin.id}">
+                            ${plugin.name || plugin.id}
+                        </label>
+                    </div>
                     ${this._createSwitchHTML(`wf-plugin-${plugin.id}`, isEnabled, plugin.id)}
                 </div>
                 <div style="font-size: 12px; color: var(--muted-foreground, #666); margin-top: 6px; line-height: 1.4;">
@@ -347,6 +350,7 @@ const plugin = {
         
         // Plugin toggles
         this._attachPluginToggleListeners(modal, plugins);
+        this._attachPluginReorderListeners(modal, plugins);
         
         // Debug toggle
         const debugToggle = Context.dom.query('#wf-debug-enabled', {
@@ -357,6 +361,7 @@ const plugin = {
             debugToggle.addEventListener('change', (e) => {
                 this._handleToggleChange(e);
                 Logger.setDebugEnabled(e.target.checked);
+                this._updateSettingsMessage(modal, plugins);
             });
         }
         
@@ -369,6 +374,7 @@ const plugin = {
             verboseToggle.addEventListener('change', (e) => {
                 this._handleToggleChange(e);
                 Logger.setVerboseEnabled(e.target.checked);
+                this._updateSettingsMessage(modal, plugins);
             });
         }
 
@@ -383,6 +389,8 @@ const plugin = {
                 Logger.setSubmoduleLoggingEnabled(e.target.checked);
                 this._renderPluginList(modal, plugins);
                 this._attachPluginToggleListeners(modal, plugins);
+                this._attachPluginReorderListeners(modal, plugins);
+                this._updateSettingsMessage(modal, plugins);
             });
         }
         
@@ -424,7 +432,8 @@ const plugin = {
             return;
         }
         const submoduleLoggingEnabled = Logger.isSubmoduleLoggingEnabled();
-        container.innerHTML = plugins
+        const orderedPlugins = this._getOrderedPlugins(plugins, this._settingsArchetypeId);
+        container.innerHTML = orderedPlugins
             .map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled))
             .join('');
     },
@@ -439,9 +448,10 @@ const plugin = {
                 checkbox.addEventListener('change', (e) => {
                     this._handleToggleChange(e);
                     PluginManager.setEnabled(plugin.id, e.target.checked);
-                    this._showMessage();
                     this._renderPluginList(modal, plugins);
                     this._attachPluginToggleListeners(modal, plugins);
+                    this._attachPluginReorderListeners(modal, plugins);
+                    this._updateSettingsMessage(modal, plugins);
                 });
             }
             const moduleCheckbox = Context.dom.query(`#wf-plugin-log-${plugin.id}`, {
@@ -452,15 +462,148 @@ const plugin = {
                 moduleCheckbox.addEventListener('change', (e) => {
                     this._handleToggleChange(e);
                     Logger.setModuleLoggingEnabled(plugin.id, e.target.checked);
+                    this._updateSettingsMessage(modal, plugins);
                 });
             }
         });
     },
-    
-    _showMessage() {
-        const msg = document.getElementById('wf-settings-message');
-        if (msg) {
-            msg.style.display = 'block';
+
+    _attachPluginReorderListeners(modal, plugins) {
+        const list = Context.dom.query('#wf-plugin-list', {
+            root: modal,
+            context: `${this.id}.pluginListReorder`
+        });
+        if (!list || list.dataset.wfReorderBound === 'true') return;
+        list.dataset.wfReorderBound = 'true';
+
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+
+        list.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const targetItem = Context.dom.closest(e.target, '[data-plugin-id]', {
+                root: list,
+                context: `${this.id}.pluginDropTarget`
+            });
+            if (!targetItem) return;
+            const targetId = targetItem.getAttribute('data-plugin-id');
+            const draggedId = this._draggingPluginId;
+            if (!draggedId || draggedId === targetId) return;
+
+            const order = this._getStoredPluginOrder(this._settingsArchetypeId, plugins);
+            const fromIndex = order.indexOf(draggedId);
+            const toIndex = order.indexOf(targetId);
+            if (fromIndex === -1 || toIndex === -1) return;
+            order.splice(fromIndex, 1);
+            order.splice(toIndex, 0, draggedId);
+            Storage.setPluginOrder(this._settingsArchetypeId, order);
+            this._renderPluginList(modal, plugins);
+            this._attachPluginToggleListeners(modal, plugins);
+            this._attachPluginReorderListeners(modal, plugins);
+            this._updateSettingsMessage(modal, plugins);
+        });
+
+        const handles = list.querySelectorAll('.wf-drag-handle');
+        handles.forEach(handle => {
+            if (handle.dataset.wfDragBound === 'true') return;
+            handle.dataset.wfDragBound = 'true';
+            handle.addEventListener('dragstart', (e) => {
+                const id = handle.getAttribute('data-plugin-id');
+                this._draggingPluginId = id;
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', id);
+                }
+                handle.style.cursor = 'grabbing';
+            });
+            handle.addEventListener('dragend', () => {
+                this._draggingPluginId = null;
+                handle.style.cursor = 'grab';
+            });
+        });
+    },
+
+    _getOrderedPlugins(plugins, archetypeId) {
+        if (!plugins || plugins.length === 0) return [];
+        const order = this._getStoredPluginOrder(archetypeId, plugins);
+        const byId = new Map(plugins.map(plugin => [plugin.id, plugin]));
+        return order.map(id => byId.get(id)).filter(Boolean);
+    },
+
+    _getStoredPluginOrder(archetypeId, plugins) {
+        const ids = plugins.map(plugin => plugin.id);
+        const stored = Storage.getPluginOrder(archetypeId);
+        if (!stored || !Array.isArray(stored)) {
+            Storage.setPluginOrder(archetypeId, ids);
+            return ids;
+        }
+        const valid = new Set(ids);
+        const filtered = stored.filter(id => valid.has(id));
+        const missing = ids.filter(id => !filtered.includes(id));
+        const normalized = filtered.concat(missing);
+        if (JSON.stringify(stored) !== JSON.stringify(normalized)) {
+            Storage.setPluginOrder(archetypeId, normalized);
+        }
+        return normalized;
+    },
+
+    _getSettingsSnapshot(plugins, archetypeId) {
+        const sortedPlugins = plugins
+            .map(plugin => plugin)
+            .sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+        return {
+            debug: Logger.isDebugEnabled(),
+            verbose: Logger.isVerboseEnabled(),
+            submoduleLogging: Logger.isSubmoduleLoggingEnabled(),
+            pluginStates: sortedPlugins.map(plugin => ({
+                id: plugin.id,
+                enabled: PluginManager.isEnabled(plugin.id),
+                moduleLogging: Logger.isModuleLoggingEnabled(plugin.id)
+            })),
+            pluginOrder: this._getStoredPluginOrder(archetypeId, plugins)
+        };
+    },
+
+    _ensureMessageElement(modal) {
+        let msg = document.getElementById('wf-settings-message');
+        if (!msg) {
+            msg = document.createElement('div');
+            msg.id = 'wf-settings-message';
+            msg.style.cssText = `
+                position: fixed;
+                display: none;
+                padding: 12px;
+                background: #fef3c7;
+                border: 1px solid #f59e0b;
+                border-radius: 6px;
+                font-size: 13px;
+                text-align: center;
+                color: #92400e;
+                z-index: 10001;
+            `;
+            msg.textContent = 'Settings changed. Refresh the page for changes to take effect.';
+            document.body.appendChild(msg);
+        }
+        this._positionMessage(modal, msg);
+        return msg;
+    },
+
+    _positionMessage(modal, msg) {
+        if (!modal || !msg) return;
+        const rect = modal.getBoundingClientRect();
+        msg.style.left = `${rect.left}px`;
+        msg.style.top = `${rect.bottom + 8}px`;
+        msg.style.width = `${rect.width}px`;
+    },
+
+    _updateSettingsMessage(modal, plugins) {
+        const msg = this._ensureMessageElement(modal);
+        const current = this._getSettingsSnapshot(plugins, this._settingsArchetypeId);
+        const changed = JSON.stringify(current) !== JSON.stringify(this._initialSettingsSnapshot);
+        msg.style.display = changed ? 'block' : 'none';
+        if (changed) {
+            this._positionMessage(modal, msg);
         }
     },
     
