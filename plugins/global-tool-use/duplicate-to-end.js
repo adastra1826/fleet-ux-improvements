@@ -3,7 +3,7 @@ const plugin = {
     id: 'duplicateToEnd',
     name: 'Duplicate to End',
     description: 'Adds button to duplicate a tool and move it to the end of the workflow',
-    _version: '1.10',
+    _version: '1.12',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -82,20 +82,20 @@ const plugin = {
             if (!deleteBtn || deleteBtn.tagName !== 'BUTTON') return;
             
             const dupToEndBtn = document.createElement('button');
-            dupToEndBtn.className = 'wf-duplicate-to-end-btn inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground size-7 h-7 w-7';
+            dupToEndBtn.className = 'wf-duplicate-to-end-btn inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground h-7 w-9';
             dupToEndBtn.title = 'Duplicate to End of Workflow';
             dupToEndBtn.setAttribute('data-state', 'closed');
             
             dupToEndBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="wf-duplicate-to-end-icon h-3.5 w-3.5 text-muted-foreground hover:text-primary">
-                    <g transform="translate(-2 3) scale(0.9)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="24" viewBox="0 0 32 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="wf-duplicate-to-end-icon h-3.5 w-4.5 text-muted-foreground hover:text-primary">
+                    <g transform="translate(-2 3)"
                         <line x1="15" x2="15" y1="12" y2="18"></line>
                         <line x1="12" x2="18" y1="15" y2="15"></line>
                         <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
                         <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
                     </g>
-                    <line x1="22" y1="4" x2="22" y2="22"></line>
-                    <polyline points="20 20 22 22 24 20"></polyline>
+                    <line x1="26" y1="4" x2="26" y2="22"></line>
+                    <polyline points="24 20 26 22 28 20"></polyline>
                 </svg>
             `;
             
