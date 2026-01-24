@@ -947,11 +947,12 @@
                 loadPromises.push(
                     this.loadArchetypePlugin(filename, version, archetypeId)
                         .then(plugin => {
+                            const loadedVersion = plugin._version || plugin.version || version;
                             plugin._sourceFile = filename;
-                            plugin._version = version;
+                            plugin._version = loadedVersion;
                             plugin._isCore = false;
                             PluginManager.register(plugin);
-                            Logger.log(`✓ Loaded plugin: ${filename} v${version}`);
+                            Logger.log(`✓ Loaded plugin: ${filename} v${loadedVersion}`);
                         })
                         .catch(err => {
                             Logger.error(`✗ Failed to load plugin: ${filename} v${version}`, err);
@@ -1100,7 +1101,7 @@
         await PluginLoader.loadCorePlugins();
         if (DEV_LOG_PANEL_ENABLED) {
             try {
-                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '0.1');
+                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '0.2');
                 plugin._sourceFile = 'logger-panel.js';
                 plugin._version = '0.1';
                 plugin._isCore = true;
