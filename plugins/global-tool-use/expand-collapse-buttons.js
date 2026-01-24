@@ -3,7 +3,7 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.7',
+    _version: '1.8',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
@@ -13,7 +13,7 @@ const plugin = {
         toolbar: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
         workflowToolsIndicator: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)',
         workflowToolsArea: '[id="\:re\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\:bg-muted\/30'
+        workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
     },
     
     onMutation(state, context) {
@@ -93,9 +93,23 @@ const plugin = {
         let successCount = 0;
 
         toolHeaders.forEach((header) => {
-            const currentState = header.getAttribute('data-state');
-            if ((targetState === 'open' && currentState === 'closed') ||
-                (targetState === 'closed' && currentState === 'open')) {
+            const stateSource = header.getAttribute('data-state')
+                ? header
+                : Context.dom.closest(header, '[data-state]', {
+                    context: `${this.id}.toolHeaderState`
+                });
+            const currentState = stateSource?.getAttribute('data-state');
+            const ariaExpanded = header.getAttribute('aria-expanded');
+            const isOpen = currentState === 'open' ? true
+                : currentState === 'closed' ? false
+                    : ariaExpanded === 'true' ? true
+                        : ariaExpanded === 'false' ? false
+                            : null;
+
+            if (isOpen === null) return;
+
+            if ((targetState === 'open' && !isOpen) ||
+                (targetState === 'closed' && isOpen)) {
                 header.click();
                 successCount++;
             }
