@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '2.3',
+    _version: '2.4',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -33,16 +33,23 @@ const plugin = {
                 cursor: pointer;
                 margin-right: 6px;
                 transition: all 0.2s;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 16px;
+                height: 16px;
                 opacity: 0.7;
             }
             .favorite-star.inline {
                 margin-right: 6px;
+                width: 14px;
+                height: 14px;
                 display: inline-flex;
                 align-items: center;
             }
             .favorite-star svg {
-                width: 14px;
-                height: 14px;
+                width: 100%;
+                height: 100%;
                 display: block;
             }
             .favorite-star:hover {
@@ -125,6 +132,8 @@ const plugin = {
     createStarSvg(isFavorite) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('width', '100%');
+        svg.setAttribute('height', '100%');
         svg.setAttribute('aria-hidden', 'true');
         svg.setAttribute('focusable', 'false');
         svg.classList.add('favorite-star-icon');
