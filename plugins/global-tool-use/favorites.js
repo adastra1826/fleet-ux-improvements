@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '2.2',
+    _version: '2.3',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -33,14 +33,17 @@ const plugin = {
                 cursor: pointer;
                 margin-right: 6px;
                 transition: all 0.2s;
-                font-size: 18px;
                 opacity: 0.7;
             }
             .favorite-star.inline {
                 margin-right: 6px;
-                font-size: 14px;
                 display: inline-flex;
                 align-items: center;
+            }
+            .favorite-star svg {
+                width: 14px;
+                height: 14px;
+                display: block;
             }
             .favorite-star:hover {
                 opacity: 1;
@@ -115,11 +118,32 @@ const plugin = {
     createStarElement(toolName, favoriteTools, { inline = false, tagName = 'span' } = {}) {
         const star = document.createElement(tagName);
         star.className = inline ? 'favorite-star inline' : 'favorite-star';
-        star.innerHTML = favoriteTools.has(toolName) ? '⭐' : '☆';
-        if (favoriteTools.has(toolName)) {
-            star.classList.add('favorited');
-        }
+        this.updateStarElement(star, favoriteTools.has(toolName));
         return star;
+    },
+
+    createStarSvg(isFavorite) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        svg.classList.add('favorite-star-icon');
+        svg.setAttribute('fill', isFavorite ? '#FFD700' : 'none');
+        svg.setAttribute('stroke', isFavorite ? '#FFD700' : 'currentColor');
+        svg.setAttribute('stroke-width', '1.5');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z');
+        svg.appendChild(path);
+        return svg;
+    },
+
+    updateStarElement(starEl, isFavorite) {
+        starEl.innerHTML = '';
+        starEl.appendChild(this.createStarSvg(isFavorite));
+        starEl.classList.toggle('favorited', isFavorite);
     },
 
     toggleFavorite(toolName, favoriteTools, toolsContainer) {
@@ -145,8 +169,7 @@ const plugin = {
             const star = header.querySelector('.favorite-star');
             if (!toolName || !star) return;
             const isFavorite = favoriteTools.has(toolName);
-            star.innerHTML = isFavorite ? '⭐' : '☆';
-            star.classList.toggle('favorited', isFavorite);
+            this.updateStarElement(star, isFavorite);
         });
     },
 
@@ -187,8 +210,7 @@ const plugin = {
                 header.insertBefore(starWrapper, nameContainer);
             }
 
-            starWrapper.innerHTML = '⭐';
-            starWrapper.classList.add('favorited');
+            this.updateStarElement(starWrapper, true);
         });
     }
 };
