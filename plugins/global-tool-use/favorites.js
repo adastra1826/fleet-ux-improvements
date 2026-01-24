@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '2.5',
+    _version: '2.6',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -200,11 +200,12 @@ const plugin = {
             });
             if (!nameContainer) return;
 
-            const toolName = nameContainer.querySelector('span')?.textContent?.trim();
+            const nameTextSpan = nameContainer.querySelector('span');
+            const toolName = nameTextSpan?.textContent?.trim();
             if (!toolName) return;
 
             const isFavorite = favoriteTools.has(toolName);
-            let starWrapper = header.querySelector('.favorite-star.inline.workflow');
+            let starWrapper = nameContainer.querySelector('.favorite-star.inline.workflow');
 
             if (!isFavorite) {
                 if (starWrapper) {
@@ -216,7 +217,11 @@ const plugin = {
             if (!starWrapper) {
                 starWrapper = this.createStarElement(toolName, favoriteTools, { inline: true, tagName: 'div' });
                 starWrapper.classList.add('workflow');
-                header.insertBefore(starWrapper, nameContainer);
+                if (nameTextSpan) {
+                    nameContainer.insertBefore(starWrapper, nameTextSpan);
+                } else {
+                    nameContainer.insertBefore(starWrapper, nameContainer.firstChild);
+                }
             }
 
             this.updateStarElement(starWrapper, true);
