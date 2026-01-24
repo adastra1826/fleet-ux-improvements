@@ -3,7 +3,7 @@ const plugin = {
     id: 'duplicateToEnd',
     name: 'Duplicate to End',
     description: 'Adds button to duplicate a tool and move it to the end of the workflow',
-    _version: '1.4',
+    _version: '1.5',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -88,10 +88,12 @@ const plugin = {
             
             dupToEndBtn.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="wf-duplicate-to-end-icon h-3.5 w-3.5 text-muted-foreground hover:text-primary">
-                    <line x1="15" x2="15" y1="12" y2="18"></line>
-                    <line x1="12" x2="18" y1="15" y2="15"></line>
-                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
-                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                    <g transform="translate(3 3) scale(0.75)">
+                        <line x1="15" x2="15" y1="12" y2="18"></line>
+                        <line x1="12" x2="18" y1="15" y2="15"></line>
+                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                    </g>
                     <line x1="22" y1="7" x2="22" y2="19"></line>
                     <polyline points="20 17 22 19 24 17"></polyline>
                 </svg>
