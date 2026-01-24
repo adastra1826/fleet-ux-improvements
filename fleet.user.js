@@ -40,7 +40,7 @@
         devPath: 'dev',
         archetypesPath: 'archetypes.json'
     };
-    const DEV_LOG_PANEL_ENABLED = GITHUB_CONFIG.branch !== 'main';
+    const DEV_SCRIPTS_ENABLED = GITHUB_CONFIG.branch !== 'main';
     
     // ============= SHARED CONTEXT =============
     const Context = {
@@ -1263,7 +1263,8 @@
         const corePlugins = ArchetypeManager.getCorePlugins();
         await PluginLoader.loadPluginsFromConfig(corePlugins, 'core');
 
-        if (DEV_LOG_PANEL_ENABLED) {
+        // Load all dev folder scripts on non-main branches.
+        if (DEV_SCRIPTS_ENABLED) {
             const devPlugins = ArchetypeManager.getDevPlugins();
             await PluginLoader.loadPluginsFromConfig(devPlugins, 'dev');
         }
