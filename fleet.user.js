@@ -16,9 +16,16 @@
 (function() {
     'use strict';
 
+    // Exit immediately if inside an iframe.
+    if (window.top != window.self) {
+        console.warn("[Fleet UX Enhancer] - iframe detected. Terminating script instance.");
+        return;
+    }
+
     // ============= CORE CONFIGURATION =============
     const VERSION = '2.x.x';
     const STORAGE_PREFIX = 'wf-enhancer-';
+    const LOG_PREFIX = '[Fleet UX Enhancer]';
     
     // Base URL that matches the @match pattern (without trailing wildcard)
     const BASE_URL = 'https://fleetai.com/';
@@ -351,22 +358,22 @@
         
         log(msg, ...args) {
             if (this.isDebugEnabled()) {
-                console.log(`[Fleet Enhancer] ${msg}`, ...args);
+                console.log(`${LOG_PREFIX} ${msg}`, ...args);
             }
         },
         
         debug(msg, ...args) {
             if (this.isVerboseEnabled()) {
-                console.debug(`[Fleet Enhancer] 🔍 ${msg}`, ...args);
+                console.debug(`${LOG_PREFIX} 🔍 ${msg}`, ...args);
             }
         },
         
         warn(msg, ...args) {
-            console.warn(`[Fleet Enhancer] ⚠️ ${msg}`, ...args);
+            console.warn(`${LOG_PREFIX} ⚠️ ${msg}`, ...args);
         },
         
         error(msg, ...args) {
-            console.error(`[Fleet Enhancer] ❌ ${msg}`, ...args);
+            console.error(`${LOG_PREFIX} ❌ ${msg}`, ...args);
         }
     };
 
@@ -1142,7 +1149,7 @@
     
     // ============= STARTUP =============
     async function startup() {
-        Logger.log(`Fleet Workflow Enhancer v${VERSION} starting...`);
+        Logger.log(`${LOG_PREFIX} v${VERSION} starting...`);
         
         // Initialize navigation monitoring FIRST
         NavigationManager.init();
