@@ -1,0 +1,244 @@
+// logger-panel.js
+// Floating panel that shows only script logs
+
+const plugin = {
+    id: 'dev-logger-panel',
+    name: 'Dev Logger Panel',
+    description: 'Floating panel to view Fleet UX Enhancer logs without prefix',
+    _version: '0.1',
+    enabledByDefault: true,
+    phase: 'init',
+
+    initialState: {
+        initialized: false,
+        logs: [],
+        maxLogs: 500,
+        isVisible: true,
+        isDragging: false,
+        dragOffsetX: 0,
+        dragOffsetY: 0,
+        originalConsole: null
+    },
+
+    init(state, context) {
+        if (state.initialized) return;
+        state.initialized = true;
+
+        const logPrefix = context.logPrefix || '';
+        const root = document.createElement('div');
+        root.id = 'wf-dev-log-panel';
+        root.style.position = 'fixed';
+        root.style.right = '24px';
+        root.style.bottom = '80px';
+        root.style.width = '360px';
+        root.style.height = '240px';
+        root.style.background = 'rgba(16, 18, 24, 0.95)';
+        root.style.color = '#e5e7eb';
+        root.style.border = '1px solid rgba(255,255,255,0.12)';
+        root.style.borderRadius = '10px';
+        root.style.boxShadow = '0 8px 24px rgba(0,0,0,0.4)';
+        root.style.display = 'flex';
+        root.style.flexDirection = 'column';
+        root.style.zIndex = '2147483646';
+        root.style.resize = 'both';
+        root.style.overflow = 'hidden';
+
+        const header = document.createElement('div');
+        header.id = 'wf-dev-log-panel-header';
+        header.style.flex = '0 0 auto';
+        header.style.padding = '6px 10px';
+        header.style.fontSize = '12px';
+        header.style.fontWeight = '600';
+        header.style.background = 'rgba(255,255,255,0.06)';
+        header.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        header.style.cursor = 'move';
+        header.style.userSelect = 'none';
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.justifyContent = 'space-between';
+
+        const headerTitle = document.createElement('span');
+        headerTitle.textContent = 'Fleet UX Logs';
+
+        const headerActions = document.createElement('div');
+        headerActions.style.display = 'flex';
+        headerActions.style.gap = '6px';
+
+        const clearButton = document.createElement('button');
+        clearButton.type = 'button';
+        clearButton.textContent = 'Clear';
+        clearButton.style.fontSize = '11px';
+        clearButton.style.padding = '2px 6px';
+        clearButton.style.borderRadius = '6px';
+        clearButton.style.border = '1px solid rgba(255,255,255,0.2)';
+        clearButton.style.background = 'transparent';
+        clearButton.style.color = 'inherit';
+        clearButton.style.cursor = 'pointer';
+
+        const body = document.createElement('div');
+        body.id = 'wf-dev-log-panel-body';
+        body.style.flex = '1 1 auto';
+        body.style.overflow = 'auto';
+        body.style.padding = '8px';
+        body.style.fontSize = '11px';
+        body.style.lineHeight = '1.4';
+        body.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+
+        const toggleButton = document.createElement('button');
+        toggleButton.id = 'wf-dev-log-toggle';
+        toggleButton.type = 'button';
+        toggleButton.textContent = 'Hide Logs';
+        toggleButton.style.position = 'fixed';
+        toggleButton.style.right = '24px';
+        toggleButton.style.bottom = '24px';
+        toggleButton.style.zIndex = '2147483646';
+        toggleButton.style.padding = '6px 10px';
+        toggleButton.style.fontSize = '12px';
+        toggleButton.style.borderRadius = '10px';
+        toggleButton.style.border = '1px solid rgba(0,0,0,0.2)';
+        toggleButton.style.background = '#111827';
+        toggleButton.style.color = '#f9fafb';
+        toggleButton.style.cursor = 'pointer';
+        toggleButton.style.boxShadow = '0 6px 18px rgba(0,0,0,0.35)';
+
+        headerActions.appendChild(clearButton);
+        header.appendChild(headerTitle);
+        header.appendChild(headerActions);
+        root.appendChild(header);
+        root.appendChild(body);
+
+        document.body.appendChild(root);
+        document.body.appendChild(toggleButton);
+        CleanupRegistry.registerElement(root);
+        CleanupRegistry.registerElement(toggleButton);
+
+        const updateVisibility = (visible) => {
+            state.isVisible = visible;
+            root.style.display = visible ? 'flex' : 'none';
+            toggleButton.textContent = visible ? 'Hide Logs' : 'Show Logs';
+        };
+
+        const addLogEntry = (level, message) => {
+            const entry = document.createElement('div');
+            entry.style.marginBottom = '4px';
+            entry.style.whiteSpace = 'pre-wrap';
+            entry.style.wordBreak = 'break-word';
+
+            if (level === 'error') entry.style.color = '#fca5a5';
+            if (level === 'warn') entry.style.color = '#facc15';
+            if (level === 'debug') entry.style.color = '#93c5fd';
+            if (level === 'info') entry.style.color = '#6ee7b7';
+
+            entry.textContent = message;
+            body.appendChild(entry);
+            body.scrollTop = body.scrollHeight;
+
+            state.logs.push(entry);
+            if (state.logs.length > state.maxLogs) {
+                const old = state.logs.shift();
+                if (old && old.parentNode) old.parentNode.removeChild(old);
+            }
+        };
+
+        const formatArgs = (args) => {
+            return args.map((arg) => {
+                if (typeof arg === 'string') return arg;
+                if (arg instanceof Error) return arg.stack || arg.message || String(arg);
+                try {
+                    return JSON.stringify(arg);
+                } catch (e) {
+                    return String(arg);
+                }
+            }).join(' ');
+        };
+
+        const stripPrefix = (text) => {
+            if (!logPrefix || typeof text !== 'string') return text;
+            if (text.startsWith(logPrefix)) {
+                const trimmed = text.slice(logPrefix.length);
+                return trimmed.startsWith(' ') ? trimmed.slice(1) : trimmed;
+            }
+            return text;
+        };
+
+        const handleConsoleCall = (level, args) => {
+            if (!args || args.length === 0) return;
+            const first = args[0];
+            if (typeof first !== 'string' || !first.startsWith(logPrefix)) return;
+
+            const normalizedArgs = [...args];
+            normalizedArgs[0] = stripPrefix(normalizedArgs[0]);
+            addLogEntry(level, formatArgs(normalizedArgs));
+        };
+
+        const wrapConsole = (methodName, level) => {
+            const original = console[methodName].bind(console);
+            state.originalConsole[methodName] = original;
+            console[methodName] = (...args) => {
+                original(...args);
+                try {
+                    handleConsoleCall(level, args);
+                } catch (e) {
+                    original('Logger panel failed to capture log', e);
+                }
+            };
+        };
+
+        state.originalConsole = {};
+        wrapConsole('log', 'log');
+        wrapConsole('info', 'info');
+        wrapConsole('warn', 'warn');
+        wrapConsole('error', 'error');
+        wrapConsole('debug', 'debug');
+
+        const onMouseDown = (event) => {
+            if (event.button !== 0) return;
+            if (event.target === clearButton || headerActions.contains(event.target)) return;
+            if (event.target !== header && !header.contains(event.target)) return;
+            state.isDragging = true;
+            const rect = root.getBoundingClientRect();
+            state.dragOffsetX = event.clientX - rect.left;
+            state.dragOffsetY = event.clientY - rect.top;
+        };
+
+        const onMouseMove = (event) => {
+            if (!state.isDragging) return;
+            const nextLeft = Math.max(8, event.clientX - state.dragOffsetX);
+            const nextTop = Math.max(8, event.clientY - state.dragOffsetY);
+            root.style.left = `${nextLeft}px`;
+            root.style.top = `${nextTop}px`;
+            root.style.right = 'auto';
+            root.style.bottom = 'auto';
+        };
+
+        const onMouseUp = () => {
+            state.isDragging = false;
+        };
+
+        const onToggle = () => updateVisibility(!state.isVisible);
+
+        const onClear = () => {
+            state.logs.forEach((node) => node.parentNode && node.parentNode.removeChild(node));
+            state.logs = [];
+        };
+
+        CleanupRegistry.registerEventListener(header, 'mousedown', onMouseDown);
+        CleanupRegistry.registerEventListener(document, 'mousemove', onMouseMove);
+        CleanupRegistry.registerEventListener(document, 'mouseup', onMouseUp);
+        CleanupRegistry.registerEventListener(toggleButton, 'click', onToggle);
+        CleanupRegistry.registerEventListener(clearButton, 'click', onClear);
+
+        updateVisibility(true);
+        Logger.log('✓ Dev logger panel initialized');
+    },
+
+    destroy(state) {
+        if (state.originalConsole) {
+            ['log', 'info', 'warn', 'error', 'debug'].forEach((method) => {
+                if (state.originalConsole[method]) {
+                    console[method] = state.originalConsole[method];
+                }
+            });
+        }
+    }
+};

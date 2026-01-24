@@ -26,6 +26,7 @@
     const VERSION = '2.x.x';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
+    const DEV_LOG_PANEL_ENABLED = true;
     
     // Base URL that matches the @match pattern (without trailing wildcard)
     const BASE_URL = 'https://fleetai.com/';
@@ -37,6 +38,7 @@
         branch: 'dev',
         pluginsPath: 'plugins',
         corePath: 'core',
+        devPath: 'dev',
         archetypesPath: 'archetypes.json'
     };
     
@@ -53,6 +55,7 @@
         currentArchetype: null,
         currentPath: null,
         outdatedPlugins: [], // Track plugins that couldn't be updated
+        logPrefix: LOG_PREFIX,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
     };
 
@@ -751,6 +754,23 @@
             Logger.debug(`Loaded core plugin ${filename} v${version}`);
             return plugin;
         },
+
+        /**
+         * Load a dev plugin with versioning support
+         * @param {string} filename - Plugin filename
+         * @param {string} version - Required version
+         * @returns {Promise<Object>} - Plugin object
+         */
+        async loadDevPlugin(filename, version) {
+            const sourcePath = `dev/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.devPath}/${filename}`;
+
+            const code = await this.loadPluginCode(filename, sourcePath, version, url);
+            const plugin = this.parsePluginCode(code, filename);
+            this._loadedPluginFiles.add(sourcePath);
+            Logger.debug(`Loaded dev plugin ${filename} v${version}`);
+            return plugin;
+        },
         
         /**
          * Load an archetype plugin with versioning support
@@ -1053,6 +1073,19 @@
         }
         
         await PluginLoader.loadCorePlugins();
+        if (DEV_LOG_PANEL_ENABLED) {
+            try {
+                const plugin = await PluginLoader.loadDevPlugin('logger-panel.js', '0.1');
+                plugin._sourceFile = 'logger-panel.js';
+                plugin._version = '0.1';
+                plugin._isCore = true;
+                plugin._isDev = true;
+                PluginManager.register(plugin);
+                Logger.log('✓ Loaded dev logger panel plugin');
+            } catch (err) {
+                Logger.error('✗ Failed to load dev logger panel plugin', err);
+            }
+        }
         corePluginsLoaded = true;
         
         await waitForBody();
