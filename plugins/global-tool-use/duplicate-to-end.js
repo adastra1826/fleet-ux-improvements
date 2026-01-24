@@ -3,10 +3,10 @@ const plugin = {
     id: 'duplicateToEnd',
     name: 'Duplicate to End',
     description: 'Adds button to duplicate a tool and move it to the end of the workflow',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: {},
+    initialState: { missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
@@ -16,7 +16,13 @@ const plugin = {
     
     onMutation(state, context) {
         const toolsContainer = document.querySelector(this.selectors.workflowToolsArea);
-        if (!toolsContainer) return;
+        if (!toolsContainer) {
+            if (!state.missingLogged) {
+                Logger.debug('Tools container not found for duplicate-to-end');
+                state.missingLogged = true;
+            }
+            return;
+        }
         
         const toolCards = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
         let buttonsAdded = 0;
@@ -84,7 +90,10 @@ const plugin = {
                 });
                 
                 if (currentDuplicateBtn) {
+                    Logger.log('Duplicate-to-end action triggered');
                     this.duplicateToolToEnd(card, currentDuplicateBtn);
+                } else {
+                    Logger.warn('Duplicate button not found when attempting duplicate-to-end');
                 }
             });
             
@@ -102,12 +111,19 @@ const plugin = {
     
     duplicateToolToEnd(card, duplicateBtn) {
         const toolsContainer = document.querySelector(this.selectors.workflowToolsArea);
-        if (!toolsContainer) return;
+        if (!toolsContainer) {
+            Logger.warn('Tools container missing during duplicate-to-end');
+            return;
+        }
         
         const toolCardsBefore = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
         const countBefore = toolCardsBefore.length;
         const toolCardsArray = Array.from(toolCardsBefore);
         const currentIndex = toolCardsArray.indexOf(card.closest('div.rounded-lg.border.transition-colors') || card);
+        if (currentIndex === -1) {
+            Logger.warn('Unable to resolve current tool index for duplicate-to-end');
+            return;
+        }
         
         duplicateBtn.click();
         
@@ -120,7 +136,14 @@ const plugin = {
                 const duplicatedToolIndex = currentIndex + 1;
                 const duplicatedTool = toolCardsAfter[duplicatedToolIndex];
                 
-                if (!duplicatedTool || duplicatedToolIndex === toolCardsAfter.length - 1) return;
+                if (!duplicatedTool) {
+                    Logger.warn('Duplicated tool not found after duplication');
+                    return;
+                }
+                if (duplicatedToolIndex === toolCardsAfter.length - 1) {
+                    Logger.debug('Duplicated tool already at end');
+                    return;
+                }
                 
                 const movesNeeded = (toolCardsAfter.length - 1) - duplicatedToolIndex;
                 this.moveToolToEndViaKeyboard(duplicatedTool, movesNeeded);
@@ -133,7 +156,10 @@ const plugin = {
     
     moveToolToEndViaKeyboard(toolCard, movesNeeded) {
         const dragHandle = toolCard.querySelector('div[role="button"][aria-roledescription="sortable"]');
-        if (!dragHandle) return;
+        if (!dragHandle) {
+            Logger.warn('Drag handle missing while moving tool to end');
+            return;
+        }
         
         dragHandle.focus();
         

@@ -5,10 +5,10 @@ const plugin = {
     id: 'notes',
     name: 'Workflow Notes',
     description: 'Add a persistent notes section to the workflow builder',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'init',
-    initialState: {},
+    initialState: { waitingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
@@ -24,6 +24,10 @@ const plugin = {
     
     init(state, context) {
         // Wait for the left column to exist
+        if (!state.waitingLogged) {
+            Logger.debug('Waiting for left column to mount for notes');
+            state.waitingLogged = true;
+        }
         const waitForColumn = setInterval(() => {
             const leftColumn = document.querySelector(this.selectors.leftColumn);
             if (leftColumn) {

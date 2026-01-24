@@ -3,7 +3,7 @@ const plugin = {
     id: 'networkInterception',
     name: 'Network Interception',
     description: 'Captures MCP request URLs for the Source Data Explorer button',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'early',
     initialState: {},
@@ -24,7 +24,7 @@ const plugin = {
             if (url.pathname === '/mcp' && config && config.method === 'POST') {
                 if (context.source === null) {
                     context.source = url.href;
-                    Logger.log('✓ Source URL captured (fetch)');
+                    Logger.log(`✓ Source URL captured (fetch): ${url.href}`);
                 }
             }
             return originalFetch.apply(this, args);
@@ -43,7 +43,7 @@ const plugin = {
             if (this._interceptedMethod === 'POST' && this._interceptedURL && this._interceptedURL.includes('/mcp')) {
                 if (context.source === null) {
                     context.source = this._interceptedURL;
-                    Logger.log('✓ Source URL captured (XHR)');
+                    Logger.log(`✓ Source URL captured (XHR): ${this._interceptedURL}`);
                 }
             }
             return originalXHRSend.apply(this, [body]);

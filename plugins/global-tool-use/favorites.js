@@ -5,10 +5,10 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite button to tools and sort favorites to top',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: { initialized: false },
+    initialState: { initialized: false, missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
@@ -48,7 +48,13 @@ const plugin = {
     
     onMutation(state, context) {
         const toolsContainer = document.querySelector(this.selectors.toolsContainer);
-        if (!toolsContainer) return;
+        if (!toolsContainer) {
+            if (!state.missingLogged) {
+                Logger.debug('Tools container not found for favorites');
+                state.missingLogged = true;
+            }
+            return;
+        }
         
         const favoriteTools = new Set(Storage.get(this.storageKeys.favoriteTools, []));
         
@@ -73,10 +79,12 @@ const plugin = {
                     favoriteTools.delete(toolName);
                     star.innerHTML = '☆';
                     star.classList.remove('favorited');
+                    Logger.log(`Removed favorite: ${toolName}`);
                 } else {
                     favoriteTools.add(toolName);
                     star.innerHTML = '⭐';
                     star.classList.add('favorited');
+                    Logger.log(`Added favorite: ${toolName}`);
                 }
                 Storage.set(this.storageKeys.favoriteTools, Array.from(favoriteTools));
                 

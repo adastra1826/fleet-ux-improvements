@@ -8,18 +8,18 @@
       "urlPattern": "work/problems/create-tool-use*",
       "disambiguationSelectors": [],
       "plugins": [
-        { "name": "global/network-interception.js", "version": "1.0" },
-        { "name": "global/autocorrect-textareas.js", "version": "1.0" },
-        { "name": "global-tool-use/autocorrect-search.js", "version": "1.0" },
-        { "name": "global-tool-use/source-data-explorer.js", "version": "1.0" },
-        { "name": "global-tool-use/favorites.js", "version": "1.0" },
-        { "name": "global-tool-use/expand-collapse-buttons.js", "version": "1.0" },
-        { "name": "global-tool-use/mini-execute-buttons.js", "version": "1.0" },
-        { "name": "global-tool-use/duplicate-to-end.js", "version": "1.0" },
-        { "name": "global-tool-use/auto-confirm-reexecute.js", "version": "1.0" },
-        { "name": "global-task-creation/remove-textarea-gradient.js", "version": "1.0" },
-        { "name": "tool-use-task-creation/notes.js", "version": "1.0" },
-        { "name": "tool-use-task-creation/layout-manager.js", "version": "1.0" }
+        { "name": "global/network-interception.js", "version": "1.1" },
+        { "name": "global/autocorrect-textareas.js", "version": "1.1" },
+        { "name": "global-tool-use/autocorrect-search.js", "version": "1.1" },
+        { "name": "global-tool-use/source-data-explorer.js", "version": "1.1" },
+        { "name": "global-tool-use/favorites.js", "version": "1.1" },
+        { "name": "global-tool-use/expand-collapse-buttons.js", "version": "1.1" },
+        { "name": "global-tool-use/mini-execute-buttons.js", "version": "1.1" },
+        { "name": "global-tool-use/duplicate-to-end.js", "version": "1.1" },
+        { "name": "global-tool-use/auto-confirm-reexecute.js", "version": "1.1" },
+        { "name": "global-task-creation/remove-textarea-gradient.js", "version": "1.1" },
+        { "name": "tool-use-task-creation/notes.js", "version": "1.1" },
+        { "name": "tool-use-task-creation/layout-manager.js", "version": "1.1" }
       ]
     },
     {
@@ -29,9 +29,9 @@
       "urlPattern": "workflows/m-type/create",
       "disambiguationSelectors": [],
       "plugins": [
-        { "name": "global/network-interception.js", "version": "1.0" },
-        { "name": "global/autocorrect-textareas.js", "version": "1.0" },
-        { "name": "global-task-creation/remove-textarea-gradient.js", "version": "1.0" },
+        { "name": "global/network-interception.js", "version": "1.1" },
+        { "name": "global/autocorrect-textareas.js", "version": "1.1" },
+        { "name": "global-task-creation/remove-textarea-gradient.js", "version": "1.1" },
         { "name": "task-templates.js", "version": "1.0" },
         { "name": "quick-actions.js", "version": "1.0" }
       ]
@@ -43,7 +43,7 @@
       "urlPattern": "work/create",
       "disambiguationSelectors": [],
       "plugins": [
-        { "name": "global/dummy-module.js", "version": "1.0" },
+        { "name": "global/dummy-module.js", "version": "1.1" },
         { "name": "dashboard-enhancements.js", "version": "1.0" },
         { "name": "quick-filters.js", "version": "1.0" }
       ]
@@ -55,7 +55,7 @@
       "urlPattern": "work/problems/qa-tool-use/*",
       "disambiguationSelectors": [],
       "plugins": [
-        { "name": "global/bug-report-expand.js", "version": "1.0" },
+        { "name": "global/bug-report-expand.js", "version": "1.1" },
         { "name": "review-shortcuts.js", "version": "1.0" },
         { "name": "bulk-actions.js", "version": "1.0" },
         { "name": "comment-templates.js", "version": "1.0" }

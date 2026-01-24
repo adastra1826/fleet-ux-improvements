@@ -3,10 +3,12 @@ const plugin = {
     id: 'autoConfirmReexecute',
     name: 'Auto-Confirm Re-execute',
     description: 'Automatically confirms re-execute dialogs',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: {},
+    initialState: {
+        missingConfirmLogged: false
+    },
     
     onMutation(state, context) {
         const dialog = document.querySelector('div[role="alertdialog"][data-state="open"]');
@@ -25,9 +27,15 @@ const plugin = {
             }
         });
         
-        if (confirmBtn) {
-            Logger.log('Auto-confirming re-execute dialog');
-            confirmBtn.click();
+        if (!confirmBtn) {
+            if (!state.missingConfirmLogged) {
+                Logger.warn('Re-execute dialog detected but confirm button missing');
+                state.missingConfirmLogged = true;
+            }
+            return;
         }
+
+        Logger.log('Auto-confirming re-execute dialog');
+        confirmBtn.click();
     }
 };

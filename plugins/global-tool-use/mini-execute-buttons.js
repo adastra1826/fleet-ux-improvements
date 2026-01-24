@@ -3,10 +3,10 @@ const plugin = {
     id: 'miniExecuteButtons',
     name: 'Mini Execute Buttons',
     description: 'Adds quick execute buttons to collapsed workflow tools',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: {},
+    initialState: { missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
@@ -16,7 +16,13 @@ const plugin = {
     
     onMutation(state, context) {
         const toolsContainer = document.querySelector(this.selectors.workflowToolsArea);
-        if (!toolsContainer) return;
+        if (!toolsContainer) {
+            if (!state.missingLogged) {
+                Logger.debug('Tools container not found for mini execute buttons');
+                state.missingLogged = true;
+            }
+            return;
+        }
 
         const toolCards = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
         let buttonsAdded = 0;
@@ -59,11 +65,11 @@ const plugin = {
     },
     
     executeTool(card, header) {
-        Logger.log('executeTool called');
+        Logger.log('Mini execute triggered');
         
         const collapsibleRoot = card.querySelector('div[data-state]');
         if (!collapsibleRoot) {
-            Logger.log('No collapsible root found');
+            Logger.warn('No collapsible root found for mini execute');
             return;
         }
 
@@ -116,7 +122,11 @@ const plugin = {
                 if (executeBtn) {
                     executeBtn.click();
                     Logger.log('Clicked execute button for open tool');
+                } else {
+                    Logger.warn('Execute button not found for open tool');
                 }
+            } else {
+                Logger.warn('Collapsed content not found for open tool');
             }
         }
     },

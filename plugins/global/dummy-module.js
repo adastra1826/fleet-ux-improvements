@@ -5,7 +5,7 @@
 const plugin = {
     // ========== REQUIRED ==========
     id: 'dummy-module',
-    _version: '1.0',
+    _version: '1.1',
     
     // ========== RECOMMENDED ==========
     name: 'Dummy Module',
@@ -27,10 +27,10 @@ const plugin = {
     init(state, context) {
         state.initCount++;
         
-        Logger.log(`[Dummy Module] ✓ Initialized!`);
-        Logger.log(`[Dummy Module]   Archetype: ${context.currentArchetype?.name || 'None'}`);
-        Logger.log(`[Dummy Module]   Version: ${context.version}`);
-        Logger.log(`[Dummy Module]   Init count: ${state.initCount}`);
+        Logger.log('✓ Initialized');
+        Logger.log(`Archetype: ${context.currentArchetype?.name || 'None'}`);
+        Logger.log(`Version: ${context.version}`);
+        Logger.log(`Init count: ${state.initCount}`);
         
         // Example: Register a cleanup item if you create intervals/elements
         // const myInterval = CleanupRegistry.registerInterval(
@@ -60,7 +60,7 @@ const plugin = {
      * @param {Object} context - Shared context
      */
     destroy(state, context) {
-        Logger.log(`[Dummy Module] 🧹 Destroyed after ${state.initCount} init(s)`);
+        Logger.log(`🧹 Destroyed after ${state.initCount} init(s)`);
         // Perform any custom cleanup here
         // Note: Items registered with CleanupRegistry are automatically cleaned up
     }

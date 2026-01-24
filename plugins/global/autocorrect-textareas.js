@@ -3,10 +3,15 @@ const plugin = {
     id: 'autocorrectTextareas',
     name: 'Disable Textarea Autocorrect',
     description: 'Disables autocorrect on prompt editor and notes',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: { promptEditor: false, notesTextarea: false },
+    initialState: {
+        promptEditor: false,
+        notesTextarea: false,
+        promptMissingLogged: false,
+        notesMissingLogged: false
+    },
     
     onMutation(state, context) {
         if (!state.promptEditor) {
@@ -18,6 +23,9 @@ const plugin = {
                 promptEditor.setAttribute('spellcheck', 'false');
                 state.promptEditor = true;
                 Logger.log('✓ Autocorrect disabled on prompt editor');
+            } else if (!state.promptMissingLogged) {
+                Logger.debug('Prompt editor not found for autocorrect disable');
+                state.promptMissingLogged = true;
             }
         }
 
@@ -30,6 +38,9 @@ const plugin = {
                 notesTextarea.setAttribute('spellcheck', 'false');
                 state.notesTextarea = true;
                 Logger.log('✓ Autocorrect disabled on notes textarea');
+            } else if (!state.notesMissingLogged) {
+                Logger.debug('Notes textarea not found for autocorrect disable');
+                state.notesMissingLogged = true;
             }
         }
     }

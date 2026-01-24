@@ -3,14 +3,20 @@ const plugin = {
     id: 'bugReportExpand',
     name: 'Bug Report Expand',
     description: 'Makes bug report cards expandable to see full text',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: {},
+    initialState: { missingLogged: false },
     
     onMutation(state, context) {
         const bugReportCards = document.querySelectorAll('div.p-3.bg-muted\\/50.rounded-lg.text-sm');
-        if (bugReportCards.length === 0) return;
+        if (bugReportCards.length === 0) {
+            if (!state.missingLogged) {
+                Logger.debug('No bug report cards found to expand');
+                state.missingLogged = true;
+            }
+            return;
+        }
 
         let modified = 0;
 

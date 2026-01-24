@@ -3,10 +3,10 @@ const plugin = {
     id: 'layoutManager',
     name: 'Three Column Layout',
     description: 'Transforms the layout into three resizable columns with integrated notes',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: { applied: false },
+    initialState: { applied: false, missingLogged: false, structureMissingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
@@ -29,14 +29,16 @@ const plugin = {
 
         const mainContainer = document.querySelector(this.selectors.mainContainer);
         if (!mainContainer) {
-            if (Logger.isVerboseEnabled()) {
-                Logger.debug('layoutManager: mainContainer not found, selector:', this.selectors.mainContainer);
+            if (!state.missingLogged) {
+                Logger.debug('Main container not found for layout manager');
+                state.missingLogged = true;
             }
             return;
         }
 
         if (document.getElementById('wf-three-col-layout')) {
             state.applied = true;
+            Logger.debug('Three column layout already applied');
             return;
         }
 
@@ -45,10 +47,9 @@ const plugin = {
         const workflowColumn = document.querySelector(this.selectors.workflowColumn);
 
         if (!leftColumn || !workflowColumn || !existingDivider) {
-            if (Logger.isVerboseEnabled()) {
-                Logger.debug(`layoutManager: Missing elements - leftColumn: ${!!leftColumn}, workflowColumn: ${!!workflowColumn}, divider: ${!!existingDivider}`);
-                if (!leftColumn) Logger.debug('  leftColumn selector:', this.selectors.leftColumn);
-                if (!workflowColumn) Logger.debug('  workflowColumn selector:', this.selectors.workflowColumn);
+            if (!state.structureMissingLogged) {
+                Logger.debug(`Missing layout elements - leftColumn: ${!!leftColumn}, workflowColumn: ${!!workflowColumn}, divider: ${!!existingDivider}`);
+                state.structureMissingLogged = true;
             }
             return;
         }
@@ -56,7 +57,10 @@ const plugin = {
         const topSection = leftColumn.querySelector('div.flex-shrink-0');
         const bottomSection = leftColumn.querySelector('div.flex-1.min-h-0.overflow-hidden');
 
-        if (!topSection || !bottomSection) return;
+        if (!topSection || !bottomSection) {
+            Logger.warn('Top or bottom section missing for layout manager');
+            return;
+        }
 
         const panelGroupId = mainContainer.getAttribute('data-panel-group-id') || ':r6:';
         
@@ -144,7 +148,7 @@ const plugin = {
         
         const existingSection = topSection.querySelector('div.p-3.border-b');
         if (!existingSection) {
-            Logger.log('⚠ Existing section not found for reorganization');
+            Logger.warn('Existing section not found for reorganization');
             return;
         }
 
@@ -294,6 +298,7 @@ const plugin = {
 
                 const topFlex = parseFloat(topPanel.style.flex) || 60;
                 Storage.set(this.storageKeys.sectionSplitRatio, topFlex);
+                Logger.debug(`Saved section split ratio: ${topFlex.toFixed(1)}%`);
             }
         });
 
@@ -372,8 +377,12 @@ const plugin = {
         const col2 = document.getElementById('wf-col-tools');
         const col3 = document.querySelector(this.selectors.workflowColumn);
 
-        if (col1) Storage.set(this.storageKeys.col1Width, parseFloat(col1.style.flex) || 25);
-        if (col2) Storage.set(this.storageKeys.col2Width, parseFloat(col2.style.flex) || 37.5);
-        if (col3) Storage.set(this.storageKeys.col3Width, parseFloat(col3.style.flex) || 37.5);
+        const col1Size = col1 ? (parseFloat(col1.style.flex) || 25) : null;
+        const col2Size = col2 ? (parseFloat(col2.style.flex) || 37.5) : null;
+        const col3Size = col3 ? (parseFloat(col3.style.flex) || 37.5) : null;
+        if (col1Size !== null) Storage.set(this.storageKeys.col1Width, col1Size);
+        if (col2Size !== null) Storage.set(this.storageKeys.col2Width, col2Size);
+        if (col3Size !== null) Storage.set(this.storageKeys.col3Width, col3Size);
+        Logger.debug(`Saved column widths: ${col1Size ?? 'n/a'} / ${col2Size ?? 'n/a'} / ${col3Size ?? 'n/a'}`);
     }
 };

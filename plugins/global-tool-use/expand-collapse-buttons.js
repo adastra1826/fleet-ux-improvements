@@ -3,10 +3,10 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: { added: false },
+    initialState: { added: false, missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
@@ -19,8 +19,9 @@ const plugin = {
     onMutation(state, context) {
         const toolbar = document.querySelector(this.selectors.toolbar);
         if (!toolbar) {
-            if (Logger.isVerboseEnabled()) {
-                Logger.debug('expandCollapseButtons: toolbar not found, selector:', this.selectors.toolbar);
+            if (!state.missingLogged) {
+                Logger.debug('Toolbar not found for expand/collapse buttons');
+                state.missingLogged = true;
             }
             return;
         }

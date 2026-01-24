@@ -5,10 +5,10 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button to open source data in new tab',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: { buttonAdded: false },
+    initialState: { buttonAdded: false, missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
@@ -22,7 +22,15 @@ const plugin = {
         const toolbar = document.querySelector(this.selectors.toolbar);
         const workflowIndicator = document.querySelector(this.selectors.workflowIndicator);
         
-        if (toolbar && workflowIndicator && workflowIndicator.textContent.includes('Workflow')) {
+        if (!toolbar || !workflowIndicator) {
+            if (!state.missingLogged) {
+                Logger.debug('Toolbar or workflow indicator not found for Source Data Explorer');
+                state.missingLogged = true;
+            }
+            return;
+        }
+
+        if (workflowIndicator.textContent.includes('Workflow')) {
             this.addSourceButton(toolbar, context);
             state.buttonAdded = true;
         }
