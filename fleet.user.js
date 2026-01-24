@@ -1173,6 +1173,28 @@
     }
     
     async function handleNavigation(newUrl, previousUrl) {
+        Logger.log('Handling navigation, checking archetype match...');
+        
+        try {
+            await ArchetypeManager.loadArchetypes();
+            
+            const newPath = UrlMatcher.getPathFromUrl(newUrl);
+            const matchesArchetype = ArchetypeManager.archetypes.some(archetype => {
+                if (!archetype.urlPattern) {
+                    return false;
+                }
+                return UrlMatcher.matches(newPath, archetype.urlPattern);
+            });
+            
+            if (matchesArchetype) {
+                Logger.log('Navigation target matches archetype; refreshing page...');
+                location.reload();
+                return;
+            }
+        } catch (error) {
+            Logger.error('Failed to check archetype match on navigation:', error);
+        }
+        
         Logger.log('Handling navigation, reinitializing...');
         
         // Clean up archetype plugins and resources
