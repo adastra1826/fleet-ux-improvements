@@ -1,9 +1,9 @@
 // ============= autocorrect-search.js =============
 const plugin = {
     id: 'autocorrectSearch',
-    name: 'Disable Search Autocorrect',
+    name: 'Disable Tool Search Textbox Autocorrect',
     description: 'Disables autocorrect/autocomplete on the search input',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false, missingLogged: false },

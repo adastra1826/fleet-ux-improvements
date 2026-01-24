@@ -1,16 +1,14 @@
 // ============= autocorrect-textareas.js =============
 const plugin = {
     id: 'autocorrectTextareas',
-    name: 'Disable Textarea Autocorrect',
-    description: 'Disables autocorrect on prompt editor and notes',
-    _version: '1.1',
+    name: 'Disable Prompt Text Area Autocorrect',
+    description: 'Disables autocorrect on the prompt editor',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: {
         promptEditor: false,
-        notesTextarea: false,
-        promptMissingLogged: false,
-        notesMissingLogged: false
+        promptMissingLogged: false
     },
     
     onMutation(state, context) {
@@ -26,21 +24,6 @@ const plugin = {
             } else if (!state.promptMissingLogged) {
                 Logger.debug('Prompt editor not found for autocorrect disable');
                 state.promptMissingLogged = true;
-            }
-        }
-
-        if (!state.notesTextarea) {
-            const notesTextarea = document.getElementById('wf-notes-textarea');
-            if (notesTextarea) {
-                notesTextarea.setAttribute('autocomplete', 'off');
-                notesTextarea.setAttribute('autocorrect', 'off');
-                notesTextarea.setAttribute('autocapitalize', 'off');
-                notesTextarea.setAttribute('spellcheck', 'false');
-                state.notesTextarea = true;
-                Logger.log('✓ Autocorrect disabled on notes textarea');
-            } else if (!state.notesMissingLogged) {
-                Logger.debug('Notes textarea not found for autocorrect disable');
-                state.notesMissingLogged = true;
             }
         }
     }
