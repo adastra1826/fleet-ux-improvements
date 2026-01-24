@@ -29,7 +29,7 @@
         },
         {
           "name": "global-tool-use/source-data-explorer.js",
-          "version": "1.3"
+          "version": "2.0"
         },
         {
           "name": "global-tool-use/favorites.js",
@@ -78,15 +78,7 @@
         },
         {
           "name": "global-task-creation/remove-textarea-gradient.js",
-          "version": "1.1"
-        },
-        {
-          "name": "task-templates.js",
-          "version": "1.0"
-        },
-        {
-          "name": "quick-actions.js",
-          "version": "1.0"
+          "version": "1.2"
         }
       ]
     },
@@ -100,14 +92,6 @@
         {
           "name": "global/dummy-module.js",
           "version": "1.1"
-        },
-        {
-          "name": "dashboard-enhancements.js",
-          "version": "1.0"
-        },
-        {
-          "name": "quick-filters.js",
-          "version": "1.0"
         }
       ]
     },
@@ -121,18 +105,6 @@
         {
           "name": "global/bug-report-expand.js",
           "version": "1.2"
-        },
-        {
-          "name": "review-shortcuts.js",
-          "version": "1.0"
-        },
-        {
-          "name": "bulk-actions.js",
-          "version": "1.0"
-        },
-        {
-          "name": "comment-templates.js",
-          "version": "1.0"
         }
       ]
     }
