@@ -4,16 +4,16 @@
 const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
-    description: 'Add favorite button to tools and sort favorites to top',
-    _version: '2.0',
+    description: 'Add favorite stars to tools and workflow list',
+    _version: '2.1',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: { initialized: false, missingLogged: false },
+    initialState: { missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
         workflowToolsArea: '[id="\:re\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        workflowToolName: 'div > div > div > div.flex.items-center.gap-3.p-3.cursor-pointer.hover\:bg-muted\/30 > div.flex-1.min-w-0',
+        workflowToolName: 'div.flex-1.min-w-0',
         toolsContainer: '[id="\:r7\:"] > div.flex-1.min-h-0.overflow-hidden > div > div > div.flex-1.overflow-y-auto > div',
         toolHeader: 'button > span.min-w-0.flex-1.overflow-hidden.flex.gap-2.items-start',
         toolName: 'span'
@@ -30,13 +30,12 @@ const plugin = {
         style.textContent = `
             .favorite-star {
                 cursor: pointer;
-                margin-left: auto;
+                margin-right: 6px;
                 transition: all 0.2s;
                 font-size: 18px;
                 opacity: 0.7;
             }
             .favorite-star.inline {
-                margin-left: 0;
                 margin-right: 6px;
                 font-size: 14px;
                 display: inline-flex;
@@ -89,34 +88,19 @@ const plugin = {
                 e.stopPropagation();
                 this.toggleFavorite(toolName, favoriteTools, toolsContainer);
             };
-            
-            header.appendChild(star);
+
+            const nameSpan = Context.dom.query('span:not(.favorite-star)', {
+                root: header,
+                context: `${this.id}.toolNameSpan`
+            });
+            if (nameSpan?.parentElement) {
+                nameSpan.parentElement.insertBefore(star, nameSpan);
+            } else {
+                header.appendChild(star);
+            }
         });
 
         this.syncWorkflowStars(favoriteTools);
-        
-        // Initial sort
-        if (!state.initialized) {
-            this.sortTools(toolsContainer, favoriteTools);
-            state.initialized = true;
-        }
-    },
-    
-    sortTools(container, favoriteTools) {
-        const tools = Array.from(container.children);
-        tools.sort((a, b) => {
-            const aName = this.getToolNameFromHeader(a);
-            const bName = this.getToolNameFromHeader(b);
-            const aFavorited = favoriteTools.has(aName);
-            const bFavorited = favoriteTools.has(bName);
-            
-            if (aFavorited && !bFavorited) return -1;
-            if (!aFavorited && bFavorited) return 1;
-            return 0;
-        });
-        
-        tools.forEach(tool => container.appendChild(tool));
-        Logger.debug('Tools sorted by favorites');
     },
 
     getToolNameFromHeader(header) {
@@ -127,8 +111,8 @@ const plugin = {
         return nameSpan?.textContent?.trim() || null;
     },
 
-    createStarElement(toolName, favoriteTools, { inline = false } = {}) {
-        const star = document.createElement('span');
+    createStarElement(toolName, favoriteTools, { inline = false, tagName = 'span' } = {}) {
+        const star = document.createElement(tagName);
         star.className = inline ? 'favorite-star inline' : 'favorite-star';
         star.innerHTML = favoriteTools.has(toolName) ? '⭐' : '☆';
         if (favoriteTools.has(toolName)) {
@@ -146,7 +130,6 @@ const plugin = {
             Logger.log(`Added favorite: ${toolName}`);
         }
         Storage.set(this.storageKeys.favoriteTools, Array.from(favoriteTools));
-        this.sortTools(toolsContainer, favoriteTools);
         this.syncWorkflowStars(favoriteTools);
         this.syncToolListStars(toolsContainer, favoriteTools);
     },
@@ -186,7 +169,7 @@ const plugin = {
 
             let starWrapper = parentRow.querySelector('.favorite-star.inline');
             if (!starWrapper) {
-                starWrapper = this.createStarElement(toolName, favoriteTools, { inline: true });
+                starWrapper = this.createStarElement(toolName, favoriteTools, { inline: true, tagName: 'div' });
                 starWrapper.classList.add('workflow');
                 parentRow.insertBefore(starWrapper, nameContainer);
             }
