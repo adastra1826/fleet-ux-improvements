@@ -3,17 +3,17 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
-        toolbar: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
-        toolsContainer: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
-        workflowToolsIndicator: '#\\:rb\\: > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)'
+        toolbar: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
+        toolsContainer: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div',
+        workflowToolsIndicator: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div',
+        toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\:bg-muted\/30'         
     },
     
     onMutation(state, context) {
