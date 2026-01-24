@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '1.0',
+    _version: '1.1',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -120,8 +120,9 @@ const plugin = {
         const version = Context.version || 'unknown';
         
         // Build plugin toggles HTML
+        const submoduleLoggingEnabled = Logger.isSubmoduleLoggingEnabled();
         const pluginTogglesHTML = archetypePlugins.length > 0 
-            ? archetypePlugins.map(plugin => this._createPluginToggleHTML(plugin)).join('')
+            ? archetypePlugins.map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled)).join('')
             : '<p style="color: #666; font-size: 13px; font-style: italic;">No plugins loaded for this page.</p>';
         
         // Build outdated plugins warning HTML
@@ -179,6 +180,7 @@ const plugin = {
                     <div style="display: flex; flex-direction: column; gap: 10px;">
                         ${this._createToggleHTML('wf-debug-enabled', 'Enable Debug Logging', Logger.isDebugEnabled())}
                         ${this._createToggleHTML('wf-verbose-enabled', 'Enable Verbose Logging', Logger.isVerboseEnabled())}
+                        ${this._createToggleHTML('wf-submodule-logging-enabled', 'Enable Submodule Logging', submoduleLoggingEnabled)}
                     </div>
                 </div>
                 
@@ -213,8 +215,17 @@ const plugin = {
         return modal;
     },
     
-    _createPluginToggleHTML(plugin) {
+    _createPluginToggleHTML(plugin, submoduleLoggingEnabled) {
         const isEnabled = PluginManager.isEnabled(plugin.id);
+        const moduleLoggingEnabled = Logger.isModuleLoggingEnabled(plugin.id);
+        const moduleToggleHTML = submoduleLoggingEnabled ? `
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border, #e5e5e5);">
+                    <label style="font-size: 12px; color: var(--muted-foreground, #666);" for="wf-plugin-log-${plugin.id}">
+                        Module Logging
+                    </label>
+                    ${this._createSwitchHTML(`wf-plugin-log-${plugin.id}`, moduleLoggingEnabled)}
+                </div>
+        ` : '';
         return `
             <div style="display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 10px; background: var(--card, #fafafa);">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -226,6 +237,7 @@ const plugin = {
                 <div style="font-size: 12px; color: var(--muted-foreground, #666); margin-top: 6px; line-height: 1.4;">
                     ${plugin.description || 'No description available'}
                 </div>
+                ${moduleToggleHTML}
             </div>
         `;
     },
@@ -296,16 +308,7 @@ const plugin = {
         document.addEventListener('keydown', handleEscape);
         
         // Plugin toggles
-        plugins.forEach(plugin => {
-            const checkbox = modal.querySelector(`#wf-plugin-${plugin.id}`);
-            if (checkbox) {
-                checkbox.addEventListener('change', (e) => {
-                    this._handleToggleChange(e);
-                    PluginManager.setEnabled(plugin.id, e.target.checked);
-                    this._showMessage();
-                });
-            }
-        });
+        this._attachPluginToggleListeners(modal, plugins);
         
         // Debug toggle
         const debugToggle = modal.querySelector('#wf-debug-enabled');
@@ -322,6 +325,17 @@ const plugin = {
             verboseToggle.addEventListener('change', (e) => {
                 this._handleToggleChange(e);
                 Logger.setVerboseEnabled(e.target.checked);
+            });
+        }
+
+        // Submodule logging toggle
+        const submoduleToggle = modal.querySelector('#wf-submodule-logging-enabled');
+        if (submoduleToggle) {
+            submoduleToggle.addEventListener('change', (e) => {
+                this._handleToggleChange(e);
+                Logger.setSubmoduleLoggingEnabled(e.target.checked);
+                this._renderPluginList(modal, plugins);
+                this._attachPluginToggleListeners(modal, plugins);
             });
         }
         
@@ -342,6 +356,39 @@ const plugin = {
         
         slider.style.backgroundColor = isChecked ? 'var(--brand, #4f46e5)' : '#ccc';
         knob.style.left = isChecked ? '23px' : '3px';
+    },
+
+    _renderPluginList(modal, plugins) {
+        const container = modal.querySelector('#wf-plugin-list');
+        if (!container) return;
+        if (!plugins || plugins.length === 0) {
+            container.innerHTML = '<p style="color: #666; font-size: 13px; font-style: italic;">No plugins loaded for this page.</p>';
+            return;
+        }
+        const submoduleLoggingEnabled = Logger.isSubmoduleLoggingEnabled();
+        container.innerHTML = plugins
+            .map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled))
+            .join('');
+    },
+
+    _attachPluginToggleListeners(modal, plugins) {
+        plugins.forEach(plugin => {
+            const checkbox = modal.querySelector(`#wf-plugin-${plugin.id}`);
+            if (checkbox) {
+                checkbox.addEventListener('change', (e) => {
+                    this._handleToggleChange(e);
+                    PluginManager.setEnabled(plugin.id, e.target.checked);
+                    this._showMessage();
+                });
+            }
+            const moduleCheckbox = modal.querySelector(`#wf-plugin-log-${plugin.id}`);
+            if (moduleCheckbox) {
+                moduleCheckbox.addEventListener('change', (e) => {
+                    this._handleToggleChange(e);
+                    Logger.setModuleLoggingEnabled(plugin.id, e.target.checked);
+                });
+            }
+        });
     },
     
     _showMessage() {
