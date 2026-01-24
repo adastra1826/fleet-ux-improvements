@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '1.3',
+    _version: '1.4',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -247,7 +247,7 @@ const plugin = {
     _createPluginToggleHTML(plugin, submoduleLoggingEnabled) {
         const isEnabled = PluginManager.isEnabled(plugin.id);
         const moduleLoggingEnabled = Logger.isModuleLoggingEnabled(plugin.id);
-        const moduleToggleHTML = submoduleLoggingEnabled ? `
+        const moduleToggleHTML = submoduleLoggingEnabled && isEnabled ? `
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border, #e5e5e5);">
                     <label style="font-size: 12px; color: var(--muted-foreground, #666);" for="wf-plugin-log-${plugin.id}">
                         Module Logging
@@ -440,6 +440,8 @@ const plugin = {
                     this._handleToggleChange(e);
                     PluginManager.setEnabled(plugin.id, e.target.checked);
                     this._showMessage();
+                    this._renderPluginList(modal, plugins);
+                    this._attachPluginToggleListeners(modal, plugins);
                 });
             }
             const moduleCheckbox = Context.dom.query(`#wf-plugin-log-${plugin.id}`, {
