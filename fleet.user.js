@@ -18,7 +18,7 @@
 
     // Exit immediately if inside an iframe.
     if (window.top != window.self) {
-        console.warn("[Fleet UX Enhancer] - iframe detected. Terminating script instance.");
+        console.warn("[Fleet UX Enhancer] - iframe detected. Terminating duplicate script instance. This is normal.");
         return;
     }
 
@@ -334,6 +334,7 @@
     const Logger = {
         _debugEnabled: null,
         _verboseEnabled: null,
+        _listeners: new Set(),
         
         isDebugEnabled() {
             if (this._debugEnabled === null) {
@@ -358,25 +359,49 @@
             this._verboseEnabled = enabled;
             Storage.set('verbose', enabled);
         },
+
+        onLog(listener) {
+            this._listeners.add(listener);
+            return () => this._listeners.delete(listener);
+        },
+
+        _emit(level, args) {
+            if (!this._listeners.size) return;
+            this._listeners.forEach((listener) => {
+                try {
+                    listener(level, args);
+                } catch (e) {
+                    // Ignore listener errors to keep logging stable
+                }
+            });
+        },
         
         log(msg, ...args) {
             if (this.isDebugEnabled()) {
-                console.log(`${LOG_PREFIX} ${msg}`, ...args);
+                const payload = [`${LOG_PREFIX} ${msg}`, ...args];
+                console.log(...payload);
+                this._emit('log', payload);
             }
         },
         
         debug(msg, ...args) {
             if (this.isVerboseEnabled()) {
-                console.debug(`${LOG_PREFIX} 🔍 ${msg}`, ...args);
+                const payload = [`${LOG_PREFIX} 🔍 ${msg}`, ...args];
+                console.debug(...payload);
+                this._emit('debug', payload);
             }
         },
         
         warn(msg, ...args) {
-            console.warn(`${LOG_PREFIX} ⚠️ ${msg}`, ...args);
+            const payload = [`${LOG_PREFIX} ⚠️ ${msg}`, ...args];
+            console.warn(...payload);
+            this._emit('warn', payload);
         },
         
         error(msg, ...args) {
-            console.error(`${LOG_PREFIX} ❌ ${msg}`, ...args);
+            const payload = [`${LOG_PREFIX} ❌ ${msg}`, ...args];
+            console.error(...payload);
+            this._emit('error', payload);
         }
     };
 

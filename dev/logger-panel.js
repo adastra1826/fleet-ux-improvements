@@ -17,7 +17,8 @@ const plugin = {
         isDragging: false,
         dragOffsetX: 0,
         dragOffsetY: 0,
-        originalConsole: null
+        originalConsole: null,
+        unsubscribe: null
     },
 
     init(state, context) {
@@ -184,12 +185,18 @@ const plugin = {
             };
         };
 
-        state.originalConsole = {};
-        wrapConsole('log', 'log');
-        wrapConsole('info', 'info');
-        wrapConsole('warn', 'warn');
-        wrapConsole('error', 'error');
-        wrapConsole('debug', 'debug');
+        if (typeof Logger !== 'undefined' && typeof Logger.onLog === 'function') {
+            state.unsubscribe = Logger.onLog((level, args) => {
+                handleConsoleCall(level, args);
+            });
+        } else {
+            state.originalConsole = {};
+            wrapConsole('log', 'log');
+            wrapConsole('info', 'info');
+            wrapConsole('warn', 'warn');
+            wrapConsole('error', 'error');
+            wrapConsole('debug', 'debug');
+        }
 
         const onMouseDown = (event) => {
             if (event.button !== 0) return;
@@ -233,6 +240,10 @@ const plugin = {
     },
 
     destroy(state) {
+        if (state.unsubscribe) {
+            state.unsubscribe();
+            state.unsubscribe = null;
+        }
         if (state.originalConsole) {
             ['log', 'info', 'warn', 'error', 'debug'].forEach((method) => {
                 if (state.originalConsole[method]) {
