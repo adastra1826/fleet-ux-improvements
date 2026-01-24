@@ -10,7 +10,7 @@ const plugin = {
     
     // Plugin-specific selectors
     selectors: {
-        workflowToolsArea: '#\:re\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
+        workflowToolsArea: '#\\:re\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
         toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
     },
     
