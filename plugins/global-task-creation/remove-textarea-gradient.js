@@ -3,7 +3,7 @@ const plugin = {
     id: 'removeTextareaGradient',
     name: 'Remove Textarea Gradient',
     description: 'Removes the gradient fade overlay from the prompt textarea',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { removed: false, missingLogged: false, overlayMissingLogged: false },
@@ -16,7 +16,9 @@ const plugin = {
     onMutation(state, context) {
         if (state.removed) return;
 
-        const container = document.querySelector(this.selectors.promptTextareaContainer);
+        const container = Context.dom.query(this.selectors.promptTextareaContainer, {
+            context: `${this.id}.promptTextareaContainer`
+        });
         if (!container) {
             if (!state.missingLogged) {
                 Logger.debug('Prompt textarea container not found for gradient removal');
@@ -25,7 +27,10 @@ const plugin = {
             return;
         }
 
-        const gradientOverlay = container.querySelector('div.bg-gradient-to-b');
+        const gradientOverlay = Context.dom.query('div.bg-gradient-to-b', {
+            root: container,
+            context: `${this.id}.gradientOverlay`
+        });
         if (gradientOverlay) {
             gradientOverlay.style.background = 'none';
             gradientOverlay.style.pointerEvents = 'none';

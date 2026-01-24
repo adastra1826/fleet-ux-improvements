@@ -3,7 +3,7 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
@@ -17,7 +17,9 @@ const plugin = {
     },
     
     onMutation(state, context) {
-        const toolbar = document.querySelector(this.selectors.toolbar);
+        const toolbar = Context.dom.query(this.selectors.toolbar, {
+            context: `${this.id}.toolbar`
+        });
         if (!toolbar) {
             if (!state.missingLogged) {
                 Logger.debug('Toolbar not found for expand/collapse buttons');
@@ -26,7 +28,9 @@ const plugin = {
             return;
         }
 
-        const toolsIndicator = document.querySelector(this.selectors.workflowToolsIndicator);
+        const toolsIndicator = Context.dom.query(this.selectors.workflowToolsIndicator, {
+            context: `${this.id}.workflowToolsIndicator`
+        });
         const hasTools = toolsIndicator && toolsIndicator.children.length > 0;
 
         let container = document.getElementById('wf-expand-collapse-container');
@@ -71,13 +75,18 @@ const plugin = {
     },
     
     setAllToolsState(targetState) {
-        const toolsContainer = document.querySelector(this.selectors.toolsContainer);
+        const toolsContainer = Context.dom.query(this.selectors.toolsContainer, {
+            context: `${this.id}.toolsContainer`
+        });
         if (!toolsContainer) {
             Logger.log('⚠ Tools container not found for expand/collapse');
             return;
         }
 
-        const toolHeaders = toolsContainer.querySelectorAll(this.selectors.toolHeader);
+        const toolHeaders = Context.dom.queryAll(this.selectors.toolHeader, {
+            root: toolsContainer,
+            context: `${this.id}.toolHeaders`
+        });
         let successCount = 0;
 
         toolHeaders.forEach((header) => {

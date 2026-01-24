@@ -5,7 +5,7 @@ const plugin = {
     id: 'notes',
     name: 'Workflow Notes',
     description: 'Add a persistent notes section to the workflow builder',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'init',
     initialState: { waitingLogged: false },
@@ -29,7 +29,9 @@ const plugin = {
             state.waitingLogged = true;
         }
         const waitForColumn = setInterval(() => {
-            const leftColumn = document.querySelector(this.selectors.leftColumn);
+            const leftColumn = Context.dom.query(this.selectors.leftColumn, {
+                context: `${this.id}.leftColumn`
+            });
             if (leftColumn) {
                 clearInterval(waitForColumn);
                 this.createNotesSection(leftColumn);
@@ -38,7 +40,9 @@ const plugin = {
     },
     
     createNotesSection(leftColumn) {
-        const promptSection = document.querySelector(this.selectors.promptSectionParent);
+        const promptSection = Context.dom.query(this.selectors.promptSectionParent, {
+            context: `${this.id}.promptSectionParent`
+        });
         if (!promptSection) {
             Logger.warn('Could not find prompt section parent');
             return;

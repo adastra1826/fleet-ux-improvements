@@ -3,13 +3,15 @@ const plugin = {
     id: 'bugReportExpand',
     name: 'Bug Report Expand',
     description: 'Makes bug report cards expandable to see full text',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
     
     onMutation(state, context) {
-        const bugReportCards = document.querySelectorAll('div.p-3.bg-muted\\/50.rounded-lg.text-sm');
+        const bugReportCards = Context.dom.queryAll('div.p-3.bg-muted\\/50.rounded-lg.text-sm', {
+            context: `${this.id}.bugReportCards`
+        });
         if (bugReportCards.length === 0) {
             if (!state.missingLogged) {
                 Logger.debug('No bug report cards found to expand');
@@ -23,10 +25,16 @@ const plugin = {
         bugReportCards.forEach(card => {
             if (card.hasAttribute('data-wf-expand-enabled')) return;
 
-            const contentWrapper = card.querySelector('div.flex.items-start.justify-between.gap-2 > div.flex-1.min-w-0');
+            const contentWrapper = Context.dom.query('div.flex.items-start.justify-between.gap-2 > div.flex-1.min-w-0', {
+                root: card,
+                context: `${this.id}.contentWrapper`
+            });
             if (!contentWrapper) return;
 
-            const textParagraph = contentWrapper.querySelector('p.text-muted-foreground.text-xs.line-clamp-2');
+            const textParagraph = Context.dom.query('p.text-muted-foreground.text-xs.line-clamp-2', {
+                root: contentWrapper,
+                context: `${this.id}.textParagraph`
+            });
             if (!textParagraph) return;
 
             card.setAttribute('data-wf-expand-enabled', 'true');

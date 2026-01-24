@@ -3,7 +3,7 @@ const plugin = {
     id: 'duplicateToEnd',
     name: 'Duplicate to End',
     description: 'Adds button to duplicate a tool and move it to the end of the workflow',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -15,7 +15,9 @@ const plugin = {
     },
     
     onMutation(state, context) {
-        const toolsContainer = document.querySelector(this.selectors.workflowToolsArea);
+        const toolsContainer = Context.dom.query(this.selectors.workflowToolsArea, {
+            context: `${this.id}.workflowToolsArea`
+        });
         if (!toolsContainer) {
             if (!state.missingLogged) {
                 Logger.debug('Tools container not found for duplicate-to-end');
@@ -24,26 +26,50 @@ const plugin = {
             return;
         }
         
-        const toolCards = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
+        const toolCards = Context.dom.queryAll('div.rounded-lg.border.transition-colors', {
+            root: toolsContainer,
+            context: `${this.id}.toolCards`
+        });
         let buttonsAdded = 0;
         
         toolCards.forEach(card => {
-            const header = card.querySelector(this.selectors.toolHeader);
+            const header = Context.dom.query(this.selectors.toolHeader, {
+                root: card,
+                context: `${this.id}.toolHeader`
+            });
             if (!header) return;
             
-            const buttonContainer = header.querySelector('div.flex.items-center.gap-1');
+            const buttonContainer = Context.dom.query('div.flex.items-center.gap-1', {
+                root: header,
+                context: `${this.id}.buttonContainer`
+            });
             if (!buttonContainer) return;
             
-            if (buttonContainer.querySelector('.wf-duplicate-to-end-btn')) return;
+            if (Context.dom.query('.wf-duplicate-to-end-btn', {
+                root: buttonContainer,
+                context: `${this.id}.dupToEndBtn`
+            })) return;
             
-            const buttons = buttonContainer.querySelectorAll('button');
+            const buttons = Context.dom.queryAll('button', {
+                root: buttonContainer,
+                context: `${this.id}.buttons`
+            });
             let duplicateBtn = null;
             
             buttons.forEach(btn => {
-                const svg = btn.querySelector('svg');
+                const svg = Context.dom.query('svg', {
+                    root: btn,
+                    context: `${this.id}.buttonSvg`
+                });
                 if (svg) {
-                    const hasLine15 = svg.querySelector('line[x1="15"][y1="12"][y2="18"]');
-                    const hasRect = svg.querySelector('rect[width="14"][height="14"]');
+                    const hasLine15 = Context.dom.query('line[x1="15"][y1="12"][y2="18"]', {
+                        root: svg,
+                        context: `${this.id}.duplicateIconLine`
+                    });
+                    const hasRect = Context.dom.query('rect[width="14"][height="14"]', {
+                        root: svg,
+                        context: `${this.id}.duplicateIconRect`
+                    });
                     if (hasLine15 && hasRect) {
                         duplicateBtn = btn;
                     }
@@ -75,14 +101,26 @@ const plugin = {
                 e.stopPropagation();
                 e.preventDefault();
                 
-                const currentButtons = buttonContainer.querySelectorAll('button');
+                const currentButtons = Context.dom.queryAll('button', {
+                    root: buttonContainer,
+                    context: `${this.id}.buttons`
+                });
                 let currentDuplicateBtn = null;
                 
                 currentButtons.forEach(btn => {
-                    const svg = btn.querySelector('svg');
+                    const svg = Context.dom.query('svg', {
+                        root: btn,
+                        context: `${this.id}.buttonSvg`
+                    });
                     if (svg) {
-                        const hasLine15 = svg.querySelector('line[x1="15"][y1="12"][y2="18"]');
-                        const hasRect = svg.querySelector('rect[width="14"][height="14"]');
+                        const hasLine15 = Context.dom.query('line[x1="15"][y1="12"][y2="18"]', {
+                            root: svg,
+                            context: `${this.id}.duplicateIconLine`
+                        });
+                        const hasRect = Context.dom.query('rect[width="14"][height="14"]', {
+                            root: svg,
+                            context: `${this.id}.duplicateIconRect`
+                        });
                         if (hasLine15 && hasRect) {
                             currentDuplicateBtn = btn;
                         }
@@ -110,16 +148,24 @@ const plugin = {
     },
     
     duplicateToolToEnd(card, duplicateBtn) {
-        const toolsContainer = document.querySelector(this.selectors.workflowToolsArea);
+        const toolsContainer = Context.dom.query(this.selectors.workflowToolsArea, {
+            context: `${this.id}.workflowToolsArea`
+        });
         if (!toolsContainer) {
             Logger.warn('Tools container missing during duplicate-to-end');
             return;
         }
         
-        const toolCardsBefore = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
+        const toolCardsBefore = Context.dom.queryAll('div.rounded-lg.border.transition-colors', {
+            root: toolsContainer,
+            context: `${this.id}.toolCards`
+        });
         const countBefore = toolCardsBefore.length;
         const toolCardsArray = Array.from(toolCardsBefore);
-        const currentIndex = toolCardsArray.indexOf(card.closest('div.rounded-lg.border.transition-colors') || card);
+        const resolvedCard = Context.dom.closest(card, 'div.rounded-lg.border.transition-colors', {
+            context: `${this.id}.toolCard`
+        }) || card;
+        const currentIndex = toolCardsArray.indexOf(resolvedCard);
         if (currentIndex === -1) {
             Logger.warn('Unable to resolve current tool index for duplicate-to-end');
             return;
@@ -128,7 +174,10 @@ const plugin = {
         duplicateBtn.click();
         
         const dupeObserver = new MutationObserver((mutations, obs) => {
-            const toolCardsAfter = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
+            const toolCardsAfter = Context.dom.queryAll('div.rounded-lg.border.transition-colors', {
+                root: toolsContainer,
+                context: `${this.id}.toolCards`
+            });
             
             if (toolCardsAfter.length > countBefore) {
                 obs.disconnect();
@@ -155,7 +204,10 @@ const plugin = {
     },
     
     moveToolToEndViaKeyboard(toolCard, movesNeeded) {
-        const dragHandle = toolCard.querySelector('div[role="button"][aria-roledescription="sortable"]');
+        const dragHandle = Context.dom.query('div[role="button"][aria-roledescription="sortable"]', {
+            root: toolCard,
+            context: `${this.id}.dragHandle`
+        });
         if (!dragHandle) {
             Logger.warn('Drag handle missing while moving tool to end');
             return;
@@ -197,7 +249,9 @@ const plugin = {
     },
     
     cleanupOrphanedButtons() {
-        const allDupToEndBtns = document.querySelectorAll('.wf-duplicate-to-end-btn');
+        const allDupToEndBtns = Context.dom.queryAll('.wf-duplicate-to-end-btn', {
+            context: `${this.id}.dupToEndButtons`
+        });
         let removed = 0;
         
         allDupToEndBtns.forEach(btn => {

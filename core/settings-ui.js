@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '1.1',
+    _version: '1.2',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -284,13 +284,22 @@ const plugin = {
         const self = this;
         
         // Close button
-        modal.querySelector('#wf-settings-close').addEventListener('click', () => {
-            self._closeModal();
+        const closeBtn = Context.dom.query('#wf-settings-close', {
+            root: modal,
+            context: `${this.id}.settingsClose`
         });
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                self._closeModal();
+            });
+        }
         
         // Close on click outside
         const handleOutsideClick = (e) => {
-            if (self._modalOpen && !modal.contains(e.target) && !e.target.closest('#wf-settings-btn')) {
+            const settingsButton = Context.dom.closest(e.target, '#wf-settings-btn', {
+                context: `${this.id}.settingsButton`
+            });
+            if (self._modalOpen && !modal.contains(e.target) && !settingsButton) {
                 self._closeModal();
                 document.removeEventListener('click', handleOutsideClick);
             }
@@ -311,7 +320,10 @@ const plugin = {
         this._attachPluginToggleListeners(modal, plugins);
         
         // Debug toggle
-        const debugToggle = modal.querySelector('#wf-debug-enabled');
+        const debugToggle = Context.dom.query('#wf-debug-enabled', {
+            root: modal,
+            context: `${this.id}.debugToggle`
+        });
         if (debugToggle) {
             debugToggle.addEventListener('change', (e) => {
                 this._handleToggleChange(e);
@@ -320,7 +332,10 @@ const plugin = {
         }
         
         // Verbose toggle
-        const verboseToggle = modal.querySelector('#wf-verbose-enabled');
+        const verboseToggle = Context.dom.query('#wf-verbose-enabled', {
+            root: modal,
+            context: `${this.id}.verboseToggle`
+        });
         if (verboseToggle) {
             verboseToggle.addEventListener('change', (e) => {
                 this._handleToggleChange(e);
@@ -329,7 +344,10 @@ const plugin = {
         }
 
         // Submodule logging toggle
-        const submoduleToggle = modal.querySelector('#wf-submodule-logging-enabled');
+        const submoduleToggle = Context.dom.query('#wf-submodule-logging-enabled', {
+            root: modal,
+            context: `${this.id}.submoduleToggle`
+        });
         if (submoduleToggle) {
             submoduleToggle.addEventListener('change', (e) => {
                 this._handleToggleChange(e);
@@ -340,7 +358,10 @@ const plugin = {
         }
         
         // Reload plugins link
-        const reloadLink = modal.querySelector('#wf-reload-plugins');
+        const reloadLink = Context.dom.query('#wf-reload-plugins', {
+            root: modal,
+            context: `${this.id}.reloadLink`
+        });
         if (reloadLink) {
             reloadLink.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -351,15 +372,23 @@ const plugin = {
     
     _handleToggleChange(e) {
         const slider = e.target.nextElementSibling;
-        const knob = slider.querySelector('span');
+        const knob = Context.dom.query('span', {
+            root: slider,
+            context: `${this.id}.toggleKnob`
+        });
         const isChecked = e.target.checked;
         
         slider.style.backgroundColor = isChecked ? 'var(--brand, #4f46e5)' : '#ccc';
-        knob.style.left = isChecked ? '23px' : '3px';
+        if (knob) {
+            knob.style.left = isChecked ? '23px' : '3px';
+        }
     },
 
     _renderPluginList(modal, plugins) {
-        const container = modal.querySelector('#wf-plugin-list');
+        const container = Context.dom.query('#wf-plugin-list', {
+            root: modal,
+            context: `${this.id}.pluginList`
+        });
         if (!container) return;
         if (!plugins || plugins.length === 0) {
             container.innerHTML = '<p style="color: #666; font-size: 13px; font-style: italic;">No plugins loaded for this page.</p>';
@@ -373,7 +402,10 @@ const plugin = {
 
     _attachPluginToggleListeners(modal, plugins) {
         plugins.forEach(plugin => {
-            const checkbox = modal.querySelector(`#wf-plugin-${plugin.id}`);
+            const checkbox = Context.dom.query(`#wf-plugin-${plugin.id}`, {
+                root: modal,
+                context: `${this.id}.pluginToggle`
+            });
             if (checkbox) {
                 checkbox.addEventListener('change', (e) => {
                     this._handleToggleChange(e);
@@ -381,7 +413,10 @@ const plugin = {
                     this._showMessage();
                 });
             }
-            const moduleCheckbox = modal.querySelector(`#wf-plugin-log-${plugin.id}`);
+            const moduleCheckbox = Context.dom.query(`#wf-plugin-log-${plugin.id}`, {
+                root: modal,
+                context: `${this.id}.pluginLogToggle`
+            });
             if (moduleCheckbox) {
                 moduleCheckbox.addEventListener('change', (e) => {
                     this._handleToggleChange(e);

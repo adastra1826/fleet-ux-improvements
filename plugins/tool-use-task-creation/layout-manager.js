@@ -3,7 +3,7 @@ const plugin = {
     id: 'layoutManager',
     name: 'Three Column Layout',
     description: 'Transforms the layout into three resizable columns with integrated notes',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false, missingLogged: false, structureMissingLogged: false },
@@ -27,7 +27,9 @@ const plugin = {
     onMutation(state, context) {
         if (state.applied) return;
 
-        const mainContainer = document.querySelector(this.selectors.mainContainer);
+        const mainContainer = Context.dom.query(this.selectors.mainContainer, {
+            context: `${this.id}.mainContainer`
+        });
         if (!mainContainer) {
             if (!state.missingLogged) {
                 Logger.debug('Main container not found for layout manager');
@@ -42,9 +44,16 @@ const plugin = {
             return;
         }
 
-        const leftColumn = document.querySelector(this.selectors.leftColumn);
-        const existingDivider = mainContainer.querySelector('div[data-resize-handle]');
-        const workflowColumn = document.querySelector(this.selectors.workflowColumn);
+        const leftColumn = Context.dom.query(this.selectors.leftColumn, {
+            context: `${this.id}.leftColumn`
+        });
+        const existingDivider = Context.dom.query('div[data-resize-handle]', {
+            root: mainContainer,
+            context: `${this.id}.existingDivider`
+        });
+        const workflowColumn = Context.dom.query(this.selectors.workflowColumn, {
+            context: `${this.id}.workflowColumn`
+        });
 
         if (!leftColumn || !workflowColumn || !existingDivider) {
             if (!state.structureMissingLogged) {
@@ -54,8 +63,14 @@ const plugin = {
             return;
         }
 
-        const topSection = leftColumn.querySelector('div.flex-shrink-0');
-        const bottomSection = leftColumn.querySelector('div.flex-1.min-h-0.overflow-hidden');
+        const topSection = Context.dom.query('div.flex-shrink-0', {
+            root: leftColumn,
+            context: `${this.id}.topSection`
+        });
+        const bottomSection = Context.dom.query('div.flex-1.min-h-0.overflow-hidden', {
+            root: leftColumn,
+            context: `${this.id}.bottomSection`
+        });
 
         if (!topSection || !bottomSection) {
             Logger.warn('Top or bottom section missing for layout manager');
@@ -146,7 +161,10 @@ const plugin = {
     reorganizeFirstColumnContent(wrapper, topSection) {
         const savedRatio = Storage.get(this.storageKeys.sectionSplitRatio, 60);
         
-        const existingSection = topSection.querySelector('div.p-3.border-b');
+        const existingSection = Context.dom.query('div.p-3.border-b', {
+            root: topSection,
+            context: `${this.id}.existingSection`
+        });
         if (!existingSection) {
             Logger.warn('Existing section not found for reorganization');
             return;
@@ -162,15 +180,24 @@ const plugin = {
         
         existingSection.className = 'p-3 border-b flex flex-col h-full';
         
-        const textareaWrapper = existingSection.querySelector('div.space-y-2.relative');
+        const textareaWrapper = Context.dom.query('div.space-y-2.relative', {
+            root: existingSection,
+            context: `${this.id}.textareaWrapper`
+        });
         if (textareaWrapper) {
             textareaWrapper.className = 'space-y-2 relative flex-1 flex flex-col';
             
-            const relativeDiv = textareaWrapper.querySelector('div.relative');
+            const relativeDiv = Context.dom.query('div.relative', {
+                root: textareaWrapper,
+                context: `${this.id}.relativeDiv`
+            });
             if (relativeDiv) {
                 relativeDiv.className = 'relative flex-1 flex flex-col';
                 
-                const textareaContainer = relativeDiv.querySelector('div.flex.flex-col');
+                const textareaContainer = Context.dom.query('div.flex.flex-col', {
+                    root: relativeDiv,
+                    context: `${this.id}.textareaContainer`
+                });
                 if (textareaContainer) {
                     textareaContainer.style.height = '100%';
                 }
@@ -233,7 +260,10 @@ const plugin = {
         `;
         
         // Set up auto-save for notes
-        const textarea = container.querySelector('#wf-notes-textarea');
+        const textarea = Context.dom.query('#wf-notes-textarea', {
+            root: container,
+            context: `${this.id}.notesTextarea`
+        });
         if (textarea) {
             let saveTimeout = null;
             textarea.addEventListener('input', () => {
@@ -375,7 +405,9 @@ const plugin = {
     saveColumnWidths() {
         const col1 = document.getElementById('wf-col-text');
         const col2 = document.getElementById('wf-col-tools');
-        const col3 = document.querySelector(this.selectors.workflowColumn);
+        const col3 = Context.dom.query(this.selectors.workflowColumn, {
+            context: `${this.id}.workflowColumn`
+        });
 
         const col1Size = col1 ? (parseFloat(col1.style.flex) || 25) : null;
         const col2Size = col2 ? (parseFloat(col2.style.flex) || 37.5) : null;

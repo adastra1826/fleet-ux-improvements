@@ -3,7 +3,7 @@ const plugin = {
     id: 'autoConfirmReexecute',
     name: 'Auto-Confirm Re-execute',
     description: 'Automatically confirms re-execute dialogs',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: {
@@ -11,13 +11,21 @@ const plugin = {
     },
     
     onMutation(state, context) {
-        const dialog = document.querySelector('div[role="alertdialog"][data-state="open"]');
+        const dialog = Context.dom.query('div[role="alertdialog"][data-state="open"]', {
+            context: `${this.id}.dialog`
+        });
         if (!dialog) return;
         
-        const heading = dialog.querySelector('h2');
+        const heading = Context.dom.query('h2', {
+            root: dialog,
+            context: `${this.id}.heading`
+        });
         if (!heading || !heading.textContent.includes('Re-execute this step')) return;
         
-        const buttons = dialog.querySelectorAll('button');
+        const buttons = Context.dom.queryAll('button', {
+            root: dialog,
+            context: `${this.id}.buttons`
+        });
         let confirmBtn = null;
         
         buttons.forEach(btn => {

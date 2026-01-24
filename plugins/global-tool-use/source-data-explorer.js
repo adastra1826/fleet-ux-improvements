@@ -5,7 +5,7 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button to open source data in new tab',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonAdded: false, missingLogged: false },
@@ -19,8 +19,12 @@ const plugin = {
     onMutation(state, context) {
         if (state.buttonAdded) return;
         
-        const toolbar = document.querySelector(this.selectors.toolbar);
-        const workflowIndicator = document.querySelector(this.selectors.workflowIndicator);
+        const toolbar = Context.dom.query(this.selectors.toolbar, {
+            context: `${this.id}.toolbar`
+        });
+        const workflowIndicator = Context.dom.query(this.selectors.workflowIndicator, {
+            context: `${this.id}.workflowIndicator`
+        });
         
         if (!toolbar || !workflowIndicator) {
             if (!state.missingLogged) {

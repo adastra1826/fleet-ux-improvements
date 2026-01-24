@@ -3,19 +3,21 @@ const plugin = {
     id: 'miniExecuteButtons',
     name: 'Mini Execute Buttons',
     description: 'Adds quick execute buttons to collapsed workflow tools',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
-        workflowToolsArea: '#\\:re\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
+        workflowToolsArea: '[id=":re:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
         toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
     },
     
     onMutation(state, context) {
-        const toolsContainer = document.querySelector(this.selectors.workflowToolsArea);
+        const toolsContainer = Context.dom.query(this.selectors.workflowToolsArea, {
+            context: `${this.id}.workflowToolsArea`
+        });
         if (!toolsContainer) {
             if (!state.missingLogged) {
                 Logger.debug('Tools container not found for mini execute buttons');
@@ -24,20 +26,35 @@ const plugin = {
             return;
         }
 
-        const toolCards = toolsContainer.querySelectorAll('div.rounded-lg.border.transition-colors');
+        const toolCards = Context.dom.queryAll('div.rounded-lg.border.transition-colors', {
+            root: toolsContainer,
+            context: `${this.id}.toolCards`
+        });
         let buttonsAdded = 0;
 
         toolCards.forEach(card => {
-            const collapsibleRoot = card.querySelector('div[data-state]');
+            const collapsibleRoot = Context.dom.query('div[data-state]', {
+                root: card,
+                context: `${this.id}.collapsibleRoot`
+            });
             if (!collapsibleRoot) return;
 
-            const header = card.querySelector(this.selectors.toolHeader);
+            const header = Context.dom.query(this.selectors.toolHeader, {
+                root: card,
+                context: `${this.id}.toolHeader`
+            });
             if (!header) return;
 
-            const buttonContainer = header.querySelector('div.flex.items-center.gap-1');
+            const buttonContainer = Context.dom.query('div.flex.items-center.gap-1', {
+                root: header,
+                context: `${this.id}.buttonContainer`
+            });
             if (!buttonContainer) return;
 
-            let miniExecBtn = buttonContainer.querySelector('.wf-mini-execute-btn');
+            let miniExecBtn = Context.dom.query('.wf-mini-execute-btn', {
+                root: buttonContainer,
+                context: `${this.id}.miniExecBtn`
+            });
             const isCollapsed = collapsibleRoot.getAttribute('data-state') === 'closed';
 
             if (!miniExecBtn) {
@@ -67,7 +84,10 @@ const plugin = {
     executeTool(card, header) {
         Logger.log('Mini execute triggered');
         
-        const collapsibleRoot = card.querySelector('div[data-state]');
+        const collapsibleRoot = Context.dom.query('div[data-state]', {
+            root: card,
+            context: `${this.id}.collapsibleRoot`
+        });
         if (!collapsibleRoot) {
             Logger.warn('No collapsible root found for mini execute');
             return;
@@ -79,10 +99,16 @@ const plugin = {
             header.click();
             
             const buttonObserver = new MutationObserver((mutations, obs) => {
-                const collapsibleContent = card.querySelector('div[data-state="open"] > div[id^="radix-"][data-state="open"]');
+                const collapsibleContent = Context.dom.query('div[data-state="open"] > div[id^="radix-"][data-state="open"]', {
+                    root: card,
+                    context: `${this.id}.collapsibleContent`
+                });
                 if (!collapsibleContent) return;
                 
-                const buttons = collapsibleContent.querySelectorAll('div.px-3.pb-3.space-y-3 > button');
+                const buttons = Context.dom.queryAll('div.px-3.pb-3.space-y-3 > button', {
+                    root: collapsibleContent,
+                    context: `${this.id}.executeButtons`
+                });
                 let executeBtn = null;
                 buttons.forEach(btn => {
                     const btnText = btn.textContent.trim();
@@ -108,9 +134,15 @@ const plugin = {
             
             setTimeout(() => buttonObserver.disconnect(), 5000);
         } else {
-            const collapsibleContent = card.querySelector('div[data-state="open"] > div[id^="radix-"][data-state="open"]');
+            const collapsibleContent = Context.dom.query('div[data-state="open"] > div[id^="radix-"][data-state="open"]', {
+                root: card,
+                context: `${this.id}.collapsibleContent`
+            });
             if (collapsibleContent) {
-                const buttons = collapsibleContent.querySelectorAll('div.px-3.pb-3.space-y-3 > button');
+                const buttons = Context.dom.queryAll('div.px-3.pb-3.space-y-3 > button', {
+                    root: collapsibleContent,
+                    context: `${this.id}.executeButtons`
+                });
                 let executeBtn = null;
                 buttons.forEach(btn => {
                     const btnText = btn.textContent.trim();
@@ -140,7 +172,10 @@ const plugin = {
                 obs.disconnect();
                 Logger.log('Tool execution completed with ' + (hasSuccess ? 'SUCCESS' : 'ERROR'));
                 
-                const collapsibleRoot = card.querySelector('div[data-state]');
+                const collapsibleRoot = Context.dom.query('div[data-state]', {
+                    root: card,
+                    context: `${this.id}.collapsibleRoot`
+                });
                 if (collapsibleRoot && collapsibleRoot.getAttribute('data-state') === 'open') {
                     header.click();
                     Logger.log('Collapsed tool after completion');

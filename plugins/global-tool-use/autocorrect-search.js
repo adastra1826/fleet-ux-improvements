@@ -3,7 +3,7 @@ const plugin = {
     id: 'autocorrectSearch',
     name: 'Disable Search Autocorrect',
     description: 'Disables autocorrect/autocomplete on the search input',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false, missingLogged: false },
@@ -11,7 +11,9 @@ const plugin = {
     onMutation(state, context) {
         if (state.applied) return;
 
-        const searchInput = document.querySelector('input[placeholder="Search tools, descriptions, parameters..."]');
+        const searchInput = Context.dom.query('input[placeholder="Search tools, descriptions, parameters..."]', {
+            context: `${this.id}.searchInput`
+        });
         if (!searchInput) {
             if (!state.missingLogged) {
                 Logger.debug('Search input not found for autocorrect disable');

@@ -44,7 +44,7 @@
     
     // Core plugins that load on every page
     const CORE_PLUGINS = [
-        { name: 'settings-ui.js', version: '1.1' }
+        { name: 'settings-ui.js', version: '1.2' }
     ];
 
     // ============= SHARED CONTEXT =============
@@ -485,6 +485,59 @@
         }
     };
 
+    // ============= DOM SELECTORS (SAFE) =============
+    const DomUtils = {
+        _invalidSelectorLog: new Set(),
+        
+        _resolveRoot(options) {
+            return (options && options.root) ? options.root : document;
+        },
+        
+        _logInvalidSelector(selector, error, contextLabel) {
+            const key = `${contextLabel || 'unknown'}::${selector}`;
+            if (this._invalidSelectorLog.has(key)) return;
+            this._invalidSelectorLog.add(key);
+            const contextSuffix = contextLabel ? ` (${contextLabel})` : '';
+            Logger.error(`Invalid selector${contextSuffix}: "${selector}"`, error);
+        },
+        
+        query(selector, options = {}) {
+            if (!selector) return null;
+            const root = this._resolveRoot(options);
+            if (!root || !root.querySelector) return null;
+            try {
+                return root.querySelector(selector);
+            } catch (error) {
+                this._logInvalidSelector(selector, error, options.context);
+                return null;
+            }
+        },
+        
+        queryAll(selector, options = {}) {
+            if (!selector) return [];
+            const root = this._resolveRoot(options);
+            if (!root || !root.querySelectorAll) return [];
+            try {
+                return Array.from(root.querySelectorAll(selector));
+            } catch (error) {
+                this._logInvalidSelector(selector, error, options.context);
+                return [];
+            }
+        },
+        
+        closest(element, selector, options = {}) {
+            if (!element || !selector || !element.closest) return null;
+            try {
+                return element.closest(selector);
+            } catch (error) {
+                this._logInvalidSelector(selector, error, options.context);
+                return null;
+            }
+        }
+    };
+    
+    Context.dom = DomUtils;
+
     // ============= ARCHETYPE MANAGER =============
     const ArchetypeManager = {
         archetypes: [],
@@ -622,7 +675,9 @@
                     
                     // Check if ALL disambiguation selectors are present
                     const allPresent = selectors.every(selector => {
-                        const exists = document.querySelector(selector) !== null;
+                        const exists = Context.dom.query(selector, {
+                            context: `archetype:${archetype.id}`
+                        }) !== null;
                         Logger.debug(`  [${archetype.id}] Selector "${selector}": ${exists ? '✓' : '✗'}`);
                         return exists;
                     });

@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite button to tools and sort favorites to top',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { initialized: false, missingLogged: false },
@@ -47,7 +47,9 @@ const plugin = {
     },
     
     onMutation(state, context) {
-        const toolsContainer = document.querySelector(this.selectors.toolsContainer);
+        const toolsContainer = Context.dom.query(this.selectors.toolsContainer, {
+            context: `${this.id}.toolsContainer`
+        });
         if (!toolsContainer) {
             if (!state.missingLogged) {
                 Logger.debug('Tools container not found for favorites');
@@ -59,11 +61,20 @@ const plugin = {
         const favoriteTools = new Set(Storage.get(this.storageKeys.favoriteTools, []));
         
         // Add favorite buttons to all tools
-        const toolHeaders = toolsContainer.querySelectorAll(this.selectors.toolHeader);
+        const toolHeaders = Context.dom.queryAll(this.selectors.toolHeader, {
+            root: toolsContainer,
+            context: `${this.id}.toolHeaders`
+        });
         toolHeaders.forEach(header => {
-            if (header.querySelector('.favorite-star')) return; // Already has star
+            if (Context.dom.query('.favorite-star', {
+                root: header,
+                context: `${this.id}.favoriteStar`
+            })) return; // Already has star
             
-            const toolName = header.querySelector(this.selectors.toolName)?.textContent;
+            const toolName = Context.dom.query(this.selectors.toolName, {
+                root: header,
+                context: `${this.id}.toolName`
+            })?.textContent;
             if (!toolName) return;
             
             const star = document.createElement('span');
@@ -105,8 +116,14 @@ const plugin = {
     sortTools(container, favoriteTools) {
         const tools = Array.from(container.children);
         tools.sort((a, b) => {
-            const aName = a.querySelector(this.selectors.toolName)?.textContent;
-            const bName = b.querySelector(this.selectors.toolName)?.textContent;
+            const aName = Context.dom.query(this.selectors.toolName, {
+                root: a,
+                context: `${this.id}.toolName`
+            })?.textContent;
+            const bName = Context.dom.query(this.selectors.toolName, {
+                root: b,
+                context: `${this.id}.toolName`
+            })?.textContent;
             const aFavorited = favoriteTools.has(aName);
             const bFavorited = favoriteTools.has(bName);
             
