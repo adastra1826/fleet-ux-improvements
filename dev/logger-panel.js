@@ -5,7 +5,7 @@ const plugin = {
     id: 'dev-logger-panel',
     name: 'Dev Logger Panel',
     description: 'Floating panel to view Fleet UX Enhancer logs without prefix',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'core',
 
@@ -14,12 +14,10 @@ const plugin = {
         logs: [],
         maxLogs: 500,
         isVisible: true,
-        isMinimized: false,
         isDragging: false,
         dragOffsetX: 0,
         dragOffsetY: 0,
         searchQuery: '',
-        previousHeight: null,
         originalConsole: null,
         unsubscribe: null
     },
@@ -148,29 +146,21 @@ const plugin = {
         document.body.appendChild(root);
         document.body.appendChild(toggleButton);
 
+        requestAnimationFrame(() => {
+            const rect = root.getBoundingClientRect();
+            root.style.left = `${rect.left}px`;
+            root.style.top = `${rect.top}px`;
+            root.style.right = 'auto';
+            root.style.bottom = 'auto';
+        });
+
         const updateVisibility = (visible) => {
             state.isVisible = visible;
             root.style.display = visible ? 'flex' : 'none';
             toggleButton.textContent = visible ? 'Hide Logs' : 'Show Logs';
         };
 
-        const updateMinimized = (minimized) => {
-            state.isMinimized = minimized;
-            if (minimized) {
-                state.previousHeight = root.style.height || `${root.getBoundingClientRect().height}px`;
-                body.style.display = 'none';
-                searchWrap.style.display = 'none';
-                root.style.height = '36px';
-                root.style.resize = 'none';
-                minimizeButton.textContent = 'Restore';
-            } else {
-                body.style.display = 'block';
-                searchWrap.style.display = 'block';
-                root.style.height = state.previousHeight || '240px';
-                root.style.resize = 'both';
-                minimizeButton.textContent = 'Minimize';
-            }
-        };
+        const onMinimize = () => updateVisibility(false);
 
         const addLogEntry = (level, message) => {
             const entry = document.createElement('div');
@@ -284,8 +274,6 @@ const plugin = {
         };
 
         const onToggle = () => updateVisibility(!state.isVisible);
-        const onMinimize = () => updateMinimized(!state.isMinimized);
-
         const onClear = () => {
             state.logs.forEach((log) => log.node && log.node.parentNode && log.node.parentNode.removeChild(log.node));
             state.logs = [];
@@ -308,7 +296,6 @@ const plugin = {
         searchInput.addEventListener('input', onSearch);
 
         updateVisibility(true);
-        updateMinimized(false);
         Logger.log('✓ Dev logger panel initialized');
     },
 
