@@ -3,7 +3,7 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.4',
+    _version: '1.6',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
@@ -13,6 +13,7 @@ const plugin = {
         toolbar: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1',
         toolsContainer: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
         workflowToolsIndicator: '[id="\:re\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div:nth-child(2)',
+        workflowToolsArea: '[id="\:re\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
         toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\:bg-muted\/30'
     },
     
@@ -75,16 +76,16 @@ const plugin = {
     },
     
     setAllToolsState(targetState) {
-        const toolsContainer = Context.dom.query(this.selectors.toolsContainer, {
-            context: `${this.id}.toolsContainer`
+        const workflowToolsArea = Context.dom.query(this.selectors.workflowToolsArea, {
+            context: `${this.id}.workflowToolsArea`
         });
-        if (!toolsContainer) {
-            Logger.log('⚠ Tools container not found for expand/collapse');
+        if (!workflowToolsArea) {
+            Logger.log('⚠ Workflow tools area not found for expand/collapse');
             return;
         }
 
         const toolHeaders = Context.dom.queryAll(this.selectors.toolHeader, {
-            root: toolsContainer,
+            root: workflowToolsArea,
             context: `${this.id}.toolHeaders`
         });
         let successCount = 0;
