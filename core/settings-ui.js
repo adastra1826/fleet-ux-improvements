@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '2.1',
+    _version: '2.3',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -326,19 +326,6 @@ const plugin = {
             });
         }
         
-        // Close on click outside
-        const handleOutsideClick = (e) => {
-            const settingsButton = Context.dom.closest(e.target, '#wf-settings-btn', {
-                context: `${this.id}.settingsButton`
-            });
-            if (self._modalOpen && !modal.contains(e.target) && !settingsButton) {
-                self._closeModal();
-                document.removeEventListener('click', handleOutsideClick);
-            }
-        };
-        // Delay adding listener to prevent immediate close
-        setTimeout(() => document.addEventListener('click', handleOutsideClick), 10);
-        
         // Close on Escape key
         const handleEscape = (e) => {
             if (e.key === 'Escape' && self._modalOpen) {
@@ -478,6 +465,9 @@ const plugin = {
 
         list.addEventListener('dragover', (e) => {
             e.preventDefault();
+            if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = 'move';
+            }
         });
 
         list.addEventListener('drop', (e) => {
@@ -488,7 +478,7 @@ const plugin = {
             });
             if (!targetItem) return;
             const targetId = targetItem.getAttribute('data-plugin-id');
-            const draggedId = this._draggingPluginId;
+            const draggedId = this._draggingPluginId || (e.dataTransfer ? e.dataTransfer.getData('text/plain') : null);
             if (!draggedId || draggedId === targetId) return;
 
             const order = this._getStoredPluginOrder(this._settingsArchetypeId, plugins);
@@ -504,23 +494,31 @@ const plugin = {
             this._updateSettingsMessage(modal, plugins);
         });
 
-        const handles = list.querySelectorAll('.wf-drag-handle');
-        handles.forEach(handle => {
-            if (handle.dataset.wfDragBound === 'true') return;
-            handle.dataset.wfDragBound = 'true';
-            handle.addEventListener('dragstart', (e) => {
-                const id = handle.getAttribute('data-plugin-id');
-                this._draggingPluginId = id;
-                if (e.dataTransfer) {
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', id);
-                }
-                handle.style.cursor = 'grabbing';
+        list.addEventListener('dragstart', (e) => {
+            const handle = Context.dom.closest(e.target, '.wf-drag-handle', {
+                root: list,
+                context: `${this.id}.pluginDragHandle`
             });
-            handle.addEventListener('dragend', () => {
-                this._draggingPluginId = null;
+            if (!handle || !list.contains(handle)) return;
+            const id = handle.getAttribute('data-plugin-id');
+            if (!id) return;
+            this._draggingPluginId = id;
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', id);
+            }
+            handle.style.cursor = 'grabbing';
+        });
+
+        list.addEventListener('dragend', (e) => {
+            const handle = Context.dom.closest(e.target, '.wf-drag-handle', {
+                root: list,
+                context: `${this.id}.pluginDragHandleEnd`
+            });
+            if (handle) {
                 handle.style.cursor = 'grab';
-            });
+            }
+            this._draggingPluginId = null;
         });
     },
 
