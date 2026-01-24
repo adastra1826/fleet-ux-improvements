@@ -5,7 +5,7 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button to open source data in new tab',
-    _version: '2.0',
+    _version: '2.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonAdded: false, missingLogged: false, interceptionInstalled: false },
@@ -28,9 +28,13 @@ const plugin = {
         
         if (!toolbar) {
             if (!state.missingLogged) {
-                Logger.debug('Toolbar or workflow indicator not found for Source Data Explorer');
+                Logger.debug('Toolbar not found for Source Data Explorer button');
                 state.missingLogged = true;
             }
+            return;
+        }
+
+        if (!context.source) {
             return;
         }
 
@@ -97,16 +101,17 @@ const plugin = {
     
     addSourceButton(toolbar, context) {
         const button = document.createElement('button');
-        button.className = 'ml-2 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors';
+        button.className = 'class="inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-sm pl-3 pr-3 gap-2 text-xs relative border-amber-300 dark:border-amber-700"';
         button.textContent = '📊 Source Data';
         button.title = 'Open source data in new tab';
         
         button.onclick = () => {
             if (context.source) {
-                window.open(context.source, '_blank');
-                Logger.log('Opening source data:', context.source);
+                const sourceUrl = context.source.replace('/mcp', '');
+                window.open(sourceUrl, '_blank');
+                Logger.log('Opening source data:', sourceUrl);
             } else {
-                alert('Source data URL not captured yet. Try refreshing the page and creating a workflow.');
+                alert('Source data URL not captured yet. Try refreshing the page.');
                 Logger.warn('Source URL not available');
             }
         };
