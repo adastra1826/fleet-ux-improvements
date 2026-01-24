@@ -3,14 +3,14 @@ const plugin = {
     id: 'miniExecuteButtons',
     name: 'Mini Execute Buttons',
     description: 'Adds quick execute buttons to collapsed workflow tools',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
-        workflowToolsArea: '#\\:rb\\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
+        workflowToolsArea: '#\:re\: > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
         toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
     },
     
