@@ -29,7 +29,7 @@
         },
         {
           "name": "source-data-explorer.js",
-          "version": "2.5"
+          "version": "2.6"
         },
         {
           "name": "favorites.js",
@@ -99,7 +99,7 @@
         },
         {
           "name": "source-data-explorer.js",
-          "version": "1.1"
+          "version": "1.2"
         },
         {
           "name": "panel-size-memory.js",
