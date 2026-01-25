@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.5',
+    _version: '2.6',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -40,6 +40,7 @@ const plugin = {
         verifierOutput: null,
         verifierObserver: null,
         verifierElement: null,
+        verifierChangeObserver: null,
         gradingObservers: new Map() // Map of modalId -> { observer, gradingButton }
     },
     
@@ -434,28 +435,88 @@ const plugin = {
     },
     
     watchVerifierOutput(state) {
-        // If we already have an observer set up, don't set up another one
+        // If we already have observers set up, don't set up another one
         if (state.verifierObserver) {
             return;
         }
         
-        // Find the verifier output element
-        const verifierPre = Context.dom.query('[id="\\:r2q\\:"] > div > div.flex-1.flex.flex-col.min-h-0.w-full.h-full.p-0 > div > div > div > div > div:nth-child(2) > div > div.overflow-x-auto.bg-background.border.rounded > pre', {
+        // First, check if container already exists
+        const verifierContainer = Context.dom.query('[id="\\:r2q\\:"]', {
+            context: `${this.id}.verifierContainer`
+        });
+        
+        if (verifierContainer) {
+            // Container exists, check for pre element
+            this.watchVerifierPreElement(state, verifierContainer);
+        } else {
+            // Container doesn't exist yet, watch for it to appear
+            const containerObserver = new MutationObserver((mutations) => {
+                const verifierContainer = Context.dom.query('[id="\\:r2q\\:"]', {
+                    context: `${this.id}.verifierContainer`
+                });
+                
+                if (verifierContainer) {
+                    // Container appeared, now watch for pre element
+                    containerObserver.disconnect();
+                    this.watchVerifierPreElement(state, verifierContainer);
+                }
+            });
+            
+            // Observe document body for new elements
+            containerObserver.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+            
+            state.verifierObserver = containerObserver;
+        }
+    },
+    
+    watchVerifierPreElement(state, container) {
+        // Find the pre element inside the container
+        const verifierPre = Context.dom.query('div.flex-1.flex.flex-col.min-h-0.w-full.h-full.p-0 > div > div > div > div > div:nth-child(2) > div > div.overflow-x-auto.bg-background.border.rounded > pre', {
+            root: container,
             context: `${this.id}.verifierPre`
         });
         
-        if (!verifierPre) {
-            return; // Verifier output not available yet
+        if (verifierPre && verifierPre.textContent.trim().length > 0) {
+            // Pre element exists and has content, save it
+            this.saveVerifierOutput(state, verifierPre);
+        } else {
+            // Pre element doesn't exist or is empty, watch for it
+            const preObserver = new MutationObserver((mutations) => {
+                const verifierPre = Context.dom.query('div.flex-1.flex.flex-col.min-h-0.w-full.h-full.p-0 > div > div > div > div > div:nth-child(2) > div > div.overflow-x-auto.bg-background.border.rounded > pre', {
+                    root: container,
+                    context: `${this.id}.verifierPre`
+                });
+                
+                if (verifierPre && verifierPre.textContent.trim().length > 0) {
+                    // Pre element appeared with content
+                    preObserver.disconnect();
+                    this.saveVerifierOutput(state, verifierPre);
+                }
+            });
+            
+            // Observe the container for new elements
+            preObserver.observe(container, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+            
+            state.verifierObserver = preObserver;
         }
-        
-        // Save the initial verifier output
+    },
+    
+    saveVerifierOutput(state, verifierPre) {
+        // Save the verifier output
         state.verifierOutput = verifierPre.textContent.trim();
         state.verifierElement = verifierPre;
         
         Logger.log(`✓ Verifier output saved (${state.verifierOutput.length} chars)`);
         
         // Set up MutationObserver to watch for changes (in case of regrading)
-        const observer = new MutationObserver((mutations) => {
+        const changeObserver = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 if (mutation.type === 'childList' || mutation.type === 'characterData') {
                     const newOutput = verifierPre.textContent.trim();
@@ -468,13 +529,14 @@ const plugin = {
         });
         
         // Observe changes to the pre element and its children
-        observer.observe(verifierPre, {
+        changeObserver.observe(verifierPre, {
             childList: true,
             subtree: true,
             characterData: true
         });
         
-        state.verifierObserver = observer;
+        // Store the change observer (we'll keep the original observer reference for cleanup)
+        state.verifierChangeObserver = changeObserver;
     },
     
     setupGradingButtonObserver(state, modal, modalId) {
