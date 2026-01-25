@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.3',
+    _version: '2.4',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -346,13 +346,15 @@ const plugin = {
         for (const button of buttons) {
             const buttonText = button.textContent.trim();
             if (buttonText === 'Task') {
-                // Verify it's in the issues section
-                const parent = button.closest('div');
-                if (parent) {
-                    const parentText = parent.textContent || '';
-                    if (parentText.includes('Where are the issues')) {
+                // Check if any ancestor contains "Where are the issues"
+                // (it's in a sibling div, not the immediate parent)
+                let ancestor = button.parentElement;
+                while (ancestor && ancestor !== modal) {
+                    const ancestorText = ancestor.textContent || '';
+                    if (ancestorText.includes('Where are the issues')) {
                         return button;
                     }
+                    ancestor = ancestor.parentElement;
                 }
             }
         }

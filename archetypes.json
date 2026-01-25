@@ -107,7 +107,7 @@
         },
         {
           "name": "request-revisions.js",
-          "version": "2.3"
+          "version": "2.4"
         },
         {
           "name": "auto-confirm-reexecute.js",
@@ -136,7 +136,7 @@
         },
         {
           "name": "request-revisions.js",
-          "version": "2.3"
+          "version": "2.4"
         }
       ]
     }
