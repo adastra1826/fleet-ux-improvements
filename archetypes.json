@@ -124,6 +124,10 @@
         {
           "name": "mini-execute-buttons.js",
           "version": "1.3"
+        },
+        {
+          "name": "expand-collapse-buttons.js",
+          "version": "1.9"
         }
       ]
     },
