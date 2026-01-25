@@ -13,7 +13,7 @@ const plugin = {
     id: 'qaPanelSizeMemory',
     name: 'Panel Size Memory',
     description: 'Persist and restore the main container split positions on QA Tool Use pages',
-    _version: '1.5',
+    _version: '1.6',
     enabledByDefault: true,
     phase: 'init',
     initialState: {
@@ -51,9 +51,12 @@ const plugin = {
             attempts++;
             const panels = this.getPanels();
 
-            // Need at least the outer panels to proceed
-            if (panels.outerLeft && panels.outerRight) {
-                Logger.log(`Panels found on attempt ${attempts}`);
+            // Need ALL panels: outer panels AND inner panels (tools/workflow)
+            const hasOuter = panels.outerLeft && panels.outerRight;
+            const hasInner = panels.innerTools && panels.innerWorkflow;
+            
+            if (hasOuter && hasInner) {
+                Logger.log(`All panels found on attempt ${attempts}`);
                 
                 // Apply saved sizes once
                 this.applySavedSizes(panels);
@@ -64,10 +67,13 @@ const plugin = {
                 return;
             }
 
-            if (attempts < maxAttempts) {
+            // If we have outer but not inner, keep waiting (inner panels load later)
+            if (hasOuter && !hasInner && attempts < maxAttempts) {
                 CleanupRegistry.registerTimeout(setTimeout(check, checkInterval));
-            } else {
-                Logger.warn('Panel Size Memory: panels not found after max attempts');
+            } else if (!hasOuter && attempts < maxAttempts) {
+                CleanupRegistry.registerTimeout(setTimeout(check, checkInterval));
+            } else if (attempts >= maxAttempts) {
+                Logger.warn(`Panel Size Memory: missing panels after ${maxAttempts} attempts. outerLeft=${!!panels.outerLeft}, outerRight=${!!panels.outerRight}, innerTools=${!!panels.innerTools}, innerWorkflow=${!!panels.innerWorkflow}`);
             }
         };
 
@@ -94,7 +100,10 @@ const plugin = {
     setupPanelWatchers(state, panels) {
         // Watch each panel for data-panel-size changes
         const watchPanel = (panel, name) => {
-            if (!panel) return;
+            if (!panel) {
+                Logger.warn(`Cannot watch ${name} - panel not found`);
+                return;
+            }
             
             const observer = new MutationObserver(() => {
                 // Debounce saves
@@ -112,6 +121,11 @@ const plugin = {
 
         watchPanel(panels.outerLeft, 'outerLeft');
         watchPanel(panels.innerTools, 'innerTools');
+        
+        // Also watch innerWorkflow to catch changes there too
+        if (panels.innerWorkflow) {
+            watchPanel(panels.innerWorkflow, 'innerWorkflow');
+        }
     },
 
     scheduleSave(state) {
@@ -172,7 +186,7 @@ const plugin = {
             Storage.set(this.storageKeys.innerTools, innerTools);
         }
 
-        Logger.log(`✓ Saved: outerLeft=${outerLeft}, innerTools=${innerTools}`);
+        Logger.log(`✓ Saved: outerLeft=${outerLeft}, innerTools=${innerTools} (panels: outerLeft=${!!panels.outerLeft}, innerTools=${!!panels.innerTools}, innerWorkflow=${!!panels.innerWorkflow})`);
     },
 
     readPanelSize(panelEl) {
