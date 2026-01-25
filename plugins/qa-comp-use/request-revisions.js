@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.7',
+    _version: '2.8',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -441,7 +441,7 @@ const plugin = {
         }
         
         // First, check if container already exists
-        const verifierContainer = Context.dom.query('[id="\\:r2q\\:"]', {
+        const verifierContainer = Context.dom.query('[id="\\:r2l\\:"]', {
             context: `${this.id}.verifierContainer`
         });
         
@@ -452,7 +452,7 @@ const plugin = {
         } else {
             // Container doesn't exist yet, watch for it to appear
             const containerObserver = new MutationObserver((mutations) => {
-                const verifierContainer = Context.dom.query('[id="\\:r2q\\:"]', {
+                const verifierContainer = Context.dom.query('[id="\\:r2l\\:"]', {
                     context: `${this.id}.verifierContainer`
                 });
                 
