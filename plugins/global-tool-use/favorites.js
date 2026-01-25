@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '3.0',
+    _version: '3.1',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -15,6 +15,7 @@ const plugin = {
         workflowToolsArea: '[id="\:re\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
         workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30',
         workflowToolName: 'div.flex-1.min-w-0',
+        workflowToolStatusDot: 'div.size-4.rounded-full.border-2.border-muted-foreground\\/30',
         toolsContainer: '[id^="\:r"] > div.flex-1.min-h-0.overflow-hidden > div > div > div.flex-1.overflow-y-auto > div',
         toolHeader: 'button > span.min-w-0.flex-1.overflow-hidden.flex.gap-2.items-start',
         toolName: 'span',
@@ -32,39 +33,39 @@ const plugin = {
         style.textContent = `
             .favorite-star {
                 cursor: pointer;
-                margin-right: 4px;
+                margin-right: 6px;
                 transition: all 0.2s;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 16px;
-                height: 16px;
-                min-width: 16px;
-                min-height: 16px;
-                max-width: 16px;
-                max-height: 16px;
-                flex: 0 0 16px;
+                width: 14px;
+                height: 14px;
+                min-width: 14px;
+                min-height: 14px;
+                max-width: 14px;
+                max-height: 14px;
+                flex: 0 0 14px;
                 opacity: 0.7;
             }
             .favorite-star.inline {
-                margin-right: 4px;
-                width: 16px;
-                height: 16px;
-                min-width: 16px;
-                min-height: 16px;
-                max-width: 16px;
-                max-height: 16px;
-                flex: 0 0 16px;
+                margin-right: 6px;
+                width: 14px;
+                height: 14px;
+                min-width: 14px;
+                min-height: 14px;
+                max-width: 14px;
+                max-height: 14px;
+                flex: 0 0 14px;
                 display: inline-flex;
                 align-items: center;
             }
             .favorite-star svg {
-                width: 16px;
-                height: 16px;
-                min-width: 16px;
-                min-height: 16px;
-                max-width: 16px;
-                max-height: 16px;
+                width: 14px;
+                height: 14px;
+                min-width: 14px;
+                min-height: 14px;
+                max-width: 14px;
+                max-height: 14px;
                 display: block;
             }
             .favorite-star:hover {
@@ -164,8 +165,8 @@ const plugin = {
     createStarSvg(isFavorite) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
-        svg.setAttribute('width', '16');
-        svg.setAttribute('height', '16');
+        svg.setAttribute('width', '14');
+        svg.setAttribute('height', '14');
         svg.setAttribute('aria-hidden', 'true');
         svg.setAttribute('focusable', 'false');
         svg.classList.add('favorite-star-icon');
@@ -237,7 +238,7 @@ const plugin = {
             if (!toolName) return;
 
             const isFavorite = favoriteTools.has(toolName);
-            let starWrapper = nameContainer.querySelector('.favorite-star.inline.workflow');
+            let starWrapper = header.querySelector('.favorite-star.inline.workflow');
 
             if (!isFavorite) {
                 if (starWrapper) {
@@ -249,10 +250,14 @@ const plugin = {
             if (!starWrapper) {
                 starWrapper = this.createStarElement(toolName, favoriteTools, { inline: true, tagName: 'div' });
                 starWrapper.classList.add('workflow');
-                if (nameTextSpan) {
-                    nameContainer.insertBefore(starWrapper, nameTextSpan);
+                const statusDot = Context.dom.query(this.selectors.workflowToolStatusDot, {
+                    root: header,
+                    context: `${this.id}.workflowToolStatusDot`
+                });
+                if (statusDot?.parentElement === header) {
+                    header.insertBefore(starWrapper, nameContainer);
                 } else {
-                    nameContainer.insertBefore(starWrapper, nameContainer.firstChild);
+                    header.insertBefore(starWrapper, nameContainer);
                 }
             }
 
