@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.6',
+    _version: '2.7',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -447,6 +447,7 @@ const plugin = {
         
         if (verifierContainer) {
             // Container exists, check for pre element
+            Logger.log('✓ Verifier container detected');
             this.watchVerifierPreElement(state, verifierContainer);
         } else {
             // Container doesn't exist yet, watch for it to appear
@@ -457,6 +458,7 @@ const plugin = {
                 
                 if (verifierContainer) {
                     // Container appeared, now watch for pre element
+                    Logger.log('✓ Verifier container detected');
                     containerObserver.disconnect();
                     this.watchVerifierPreElement(state, verifierContainer);
                 }
