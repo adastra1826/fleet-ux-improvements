@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.2',
+    _version: '2.3',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -30,7 +30,7 @@ const plugin = {
         missingLogged: false,
         promptText: null,
         promptSaved: false,
-        taskIssueProcessed: new Set() // Track which modals have had Task issue processed
+        taskObservers: new Map() // Map of modalId -> { observer, taskButton }
     },
     
     onMutation(state, context) {
@@ -39,9 +39,9 @@ const plugin = {
             state.processedModals = new Set();
         }
         
-        // Ensure taskIssueProcessed Set exists
-        if (!state.taskIssueProcessed || !(state.taskIssueProcessed instanceof Set)) {
-            state.taskIssueProcessed = new Set();
+        // Ensure taskObservers Map exists
+        if (!state.taskObservers || !(state.taskObservers instanceof Map)) {
+            state.taskObservers = new Map();
         }
         
         // Save prompt text if not already saved and the feature is enabled
@@ -56,12 +56,11 @@ const plugin = {
         });
         
         if (dialogs.length === 0) {
+            // Clean up observers when no dialogs are open
+            this.cleanupTaskObservers(state);
             // Reset processed set when no dialogs are open
             if (state.processedModals.size > 0) {
                 state.processedModals.clear();
-            }
-            if (state.taskIssueProcessed.size > 0) {
-                state.taskIssueProcessed.clear();
             }
             return;
         }
@@ -116,9 +115,9 @@ const plugin = {
             }
         }
         
-        // Handle Task issue prompt pasting (check continuously, not just once)
-        if (autoPastePromptEnabled && state.promptText) {
-            this.handleTaskIssuePaste(state, requestRevisionsModal, modalId);
+        // Set up Task button observer if not already set up and feature is enabled
+        if (autoPastePromptEnabled && state.promptText && !state.taskObservers.has(modalId)) {
+            this.setupTaskButtonObserver(state, requestRevisionsModal, modalId);
         }
     },
     
@@ -280,13 +279,87 @@ const plugin = {
         }
     },
     
-    handleTaskIssuePaste(state, modal, modalId) {
-        // Check if we've already processed Task issue for this modal
-        if (state.taskIssueProcessed.has(modalId)) {
-            Logger.debug('Task issue already processed for this modal');
+    setupTaskButtonObserver(state, modal, modalId) {
+        // Find the Task button
+        const taskButton = this.findTaskIssueButton(modal);
+        if (!taskButton) {
+            Logger.debug('Task button not found, will retry on next mutation');
             return;
         }
         
+        // Check if already processed (button is already clicked)
+        if (this.isTaskButtonSelected(taskButton)) {
+            // Button is already selected, wait a bit for textarea to appear, then paste
+            setTimeout(() => {
+                this.handleTaskIssuePaste(state, modal, modalId);
+            }, 100);
+            // Mark as having observer (even though we won't set one up) to prevent retries
+            state.taskObservers.set(modalId, { observer: null, taskButton });
+            return;
+        }
+        
+        // Set up MutationObserver to watch for class changes on the Task button
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    if (this.isTaskButtonSelected(taskButton)) {
+                        // Task button was clicked, wait a bit for textarea to appear, then paste
+                        setTimeout(() => {
+                            this.handleTaskIssuePaste(state, modal, modalId);
+                        }, 100);
+                        // Disconnect observer after detecting click
+                        observer.disconnect();
+                        state.taskObservers.delete(modalId);
+                        break;
+                    }
+                }
+            }
+        });
+        
+        // Observe class attribute changes on the Task button
+        observer.observe(taskButton, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+        
+        // Store observer info
+        state.taskObservers.set(modalId, { observer, taskButton });
+        
+        Logger.debug('Task button observer set up');
+    },
+    
+    isTaskButtonSelected(button) {
+        // Check if button has the selected state classes
+        return button.classList.contains('border-brand') || 
+               button.classList.contains('bg-brand') ||
+               button.querySelector('.border-brand') !== null ||
+               button.querySelector('.bg-brand') !== null;
+    },
+    
+    findTaskIssueButton(modal) {
+        // Find button with "Task" text in the issues section
+        const buttons = Context.dom.queryAll('button', {
+            root: modal,
+            context: `${this.id}.issueButtons`
+        });
+        
+        for (const button of buttons) {
+            const buttonText = button.textContent.trim();
+            if (buttonText === 'Task') {
+                // Verify it's in the issues section
+                const parent = button.closest('div');
+                if (parent) {
+                    const parentText = parent.textContent || '';
+                    if (parentText.includes('Where are the issues')) {
+                        return button;
+                    }
+                }
+            }
+        }
+        return null;
+    },
+    
+    handleTaskIssuePaste(state, modal, modalId) {
         // Find the Task feedback textarea - it only exists when Task is selected
         const taskFeedbackTextarea = Context.dom.query('textarea#feedback-Task', {
             root: modal,
@@ -294,18 +367,14 @@ const plugin = {
         });
         
         if (!taskFeedbackTextarea) {
-            Logger.debug('Task feedback textarea not found (Task not selected yet)');
-            return; // Textarea doesn't exist yet (Task is not selected)
+            Logger.debug('Task feedback textarea not found yet, waiting...');
+            return; // Textarea doesn't exist yet (might appear slightly after button click)
         }
-        
-        Logger.debug(`Found Task feedback textarea, current value length: ${taskFeedbackTextarea.value ? taskFeedbackTextarea.value.length : 0}`);
         
         // Check if textarea already has content (trim to handle whitespace-only content)
         const currentValue = taskFeedbackTextarea.value ? taskFeedbackTextarea.value.trim() : '';
         if (currentValue.length > 0) {
             Logger.debug(`Task issue textarea already has content (${currentValue.length} chars), skipping paste`);
-            // Mark as processed even if we skip, so we don't keep checking
-            state.taskIssueProcessed.add(modalId);
             return; // Don't overwrite existing content
         }
         
@@ -322,10 +391,17 @@ const plugin = {
         // Apply the value using the same method that worked for workflow copy
         this.applyTextareaValue(taskFeedbackTextarea, formattedPrompt);
         
-        // Mark as processed for this modal
-        state.taskIssueProcessed.add(modalId);
-        
         Logger.log('✓ Prompt text pasted to Task issue box');
+    },
+    
+    cleanupTaskObservers(state) {
+        // Clean up all Task button observers
+        for (const [modalId, observerInfo] of state.taskObservers.entries()) {
+            if (observerInfo.observer) {
+                observerInfo.observer.disconnect();
+            }
+        }
+        state.taskObservers.clear();
     },
     
     getReactFiber(element) {
