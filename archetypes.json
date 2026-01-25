@@ -116,6 +116,10 @@
         {
           "name": "autocorrect-search.js",
           "version": "1.3"
+        },
+        {
+          "name": "duplicate-to-end.js",
+          "version": "1.15"
         }
       ]
     },
