@@ -13,7 +13,7 @@ const plugin = {
     id: 'qaPanelSizeMemory',
     name: 'Panel Size Memory',
     description: 'Persist and restore the main container split positions on QA Tool Use pages',
-    _version: '1.7',
+    _version: '1.8',
     enabledByDefault: true,
     phase: 'init',
     initialState: {
@@ -45,7 +45,7 @@ const plugin = {
 
     waitForPanelsAndApply(state) {
         let attempts = 0;
-        const maxAttempts = 50;
+        const maxAttempts = 150;
         const checkInterval = 100;
 
         const check = () => {
@@ -69,6 +69,11 @@ const plugin = {
                 this.applyInnerSplit(panels);
                 this.setupPanelWatchers(state, { innerTools: panels.innerTools, innerWorkflow: panels.innerWorkflow });
                 state.innerApplied = true;
+            }
+
+            // Log progress for inner panels if not found yet (every 10 attempts to avoid spam)
+            if (!hasInner && !state.innerApplied && attempts % 10 === 0) {
+                Logger.debug(`Still waiting for inner panels (attempt ${attempts}/${maxAttempts}): innerTools=${!!panels.innerTools}, innerWorkflow=${!!panels.innerWorkflow}`);
             }
 
             // Continue checking if we haven't found everything yet
@@ -169,8 +174,15 @@ const plugin = {
     applyInnerSplit(panels) {
         const savedInnerTools = Storage.get(this.storageKeys.innerTools, null);
 
+        Logger.log(`applyInnerSplit: savedInnerTools=${savedInnerTools}, innerTools panel=${!!panels.innerTools}, innerWorkflow panel=${!!panels.innerWorkflow}`);
+
         if (savedInnerTools != null && panels.innerTools && panels.innerWorkflow) {
             const innerWorkflow = 100 - savedInnerTools;
+
+            // Log current values before applying
+            const currentToolsSize = this.readPanelSize(panels.innerTools);
+            const currentWorkflowSize = this.readPanelSize(panels.innerWorkflow);
+            Logger.log(`Current inner sizes before apply: tools=${currentToolsSize}, workflow=${currentWorkflowSize}`);
 
             panels.innerTools.style.flex = `${savedInnerTools} 1 0px`;
             panels.innerTools.setAttribute('data-panel-size', savedInnerTools.toString());
@@ -178,9 +190,12 @@ const plugin = {
             panels.innerWorkflow.style.flex = `${innerWorkflow} 1 0px`;
             panels.innerWorkflow.setAttribute('data-panel-size', innerWorkflow.toString());
 
-            Logger.log(`✓ Applied inner split: ${savedInnerTools} / ${innerWorkflow}`);
+            // Verify values were set
+            const appliedToolsSize = this.readPanelSize(panels.innerTools);
+            const appliedWorkflowSize = this.readPanelSize(panels.innerWorkflow);
+            Logger.log(`✓ Applied inner split: ${savedInnerTools} / ${innerWorkflow} (verified: tools=${appliedToolsSize}, workflow=${appliedWorkflowSize})`);
         } else {
-            Logger.log(`No saved inner split to apply (saved=${savedInnerTools}, panels=${!!panels.innerTools && !!panels.innerWorkflow})`);
+            Logger.log(`No saved inner split to apply (saved=${savedInnerTools}, innerTools panel=${!!panels.innerTools}, innerWorkflow panel=${!!panels.innerWorkflow})`);
         }
     },
 
