@@ -5,7 +5,7 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button to open source data in new tab',
-    _version: '2.3',
+    _version: '2.4',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonAdded: false, missingLogged: false, interceptionInstalled: false },
@@ -64,9 +64,13 @@ const plugin = {
                 }
 
                 if (url.pathname === '/mcp' && config && config.method === 'POST') {
-                    if (context.source === null) {
+                    const previousSource = context.source;
+                    if (previousSource === null) {
                         context.source = url.href;
                         Logger.log(`✓ Source URL captured (fetch): ${url.href}`);
+                    } else if (previousSource !== url.href) {
+                        context.source = url.href;
+                        Logger.log(`✓ Source URL updated (fetch): ${previousSource} → ${url.href}`);
                     }
                 }
                 return originalFetch.apply(this, args);
@@ -84,9 +88,13 @@ const plugin = {
 
         pageWindow.XMLHttpRequest.prototype.send = function(body) {
             if (this._interceptedMethod === 'POST' && this._interceptedURL && this._interceptedURL.includes('/mcp')) {
-                if (context.source === null) {
+                const previousSource = context.source;
+                if (previousSource === null) {
                     context.source = this._interceptedURL;
                     Logger.log(`✓ Source URL captured (XHR): ${this._interceptedURL}`);
+                } else if (previousSource !== this._interceptedURL) {
+                    context.source = this._interceptedURL;
+                    Logger.log(`✓ Source URL updated (XHR): ${previousSource} → ${this._interceptedURL}`);
                 }
             }
             return originalXHRSend.apply(this, [body]);

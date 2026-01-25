@@ -1327,7 +1327,39 @@
         }
     }
     
+    /**
+     * Extract a specific query parameter from a URL
+     * @param {string} url - The full URL
+     * @param {string} param - The parameter name to extract
+     * @returns {string|null} - The parameter value or null if not found
+     */
+    function getQueryParam(url, param) {
+        try {
+            const urlObj = new URL(url);
+            return urlObj.searchParams.get(param);
+        } catch (e) {
+            return null;
+        }
+    }
+    
     async function handleNavigation(newUrl, previousUrl) {
+        Logger.log('Handling navigation, checking URL diff...');
+
+        if (newUrl === previousUrl) {
+            Logger.log('URL is the same, skipping...');
+            return;
+        }
+        
+        // Check if task_project_target_id matches - if so, don't reload
+        // This prevents reload when only instance_id changes (e.g., backend reset)
+        const previousProjectId = getQueryParam(previousUrl, 'task_project_target_id');
+        const newProjectId = getQueryParam(newUrl, 'task_project_target_id');
+        
+        if (previousProjectId && newProjectId && previousProjectId === newProjectId) {
+            Logger.log(`Navigation has same task_project_target_id (${newProjectId}), skipping reload...`);
+            return;
+        }
+
         Logger.log('Handling navigation, checking archetype match...');
         
         try {
