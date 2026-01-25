@@ -11,9 +11,9 @@
 // 3. Never re-apply or fight React's panel library during interaction
 const plugin = {
     id: 'qaPanelSizeMemory',
-    name: 'QA Panel Size Memory',
+    name: 'Panel Size Memory',
     description: 'Persist and restore the main container split positions on QA Tool Use pages',
-    _version: '1.3',
+    _version: '1.4',
     enabledByDefault: true,
     phase: 'init',
     initialState: {
