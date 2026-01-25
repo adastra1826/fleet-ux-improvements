@@ -13,7 +13,7 @@ const plugin = {
     id: 'qaPanelSizeMemory',
     name: 'QA Panel Size Memory',
     description: 'Persist and restore the main container split positions on QA Tool Use pages',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'init',
     initialState: {
@@ -37,16 +37,17 @@ const plugin = {
         if (state.installed) return;
         state.installed = true;
 
-        // Track resize start
+        // Track resize start - check if target or any ancestor is a resize handle
         CleanupRegistry.registerEventListener(
             document,
             'mousedown',
             (e) => {
-                const handle = Context.dom.closest(e.target, this.selectors.resizeHandle, {
-                    context: `${this.id}.mousedown.handle`
-                });
+                const target = e.target;
+                // Check if target itself or an ancestor has data-resize-handle attribute
+                const handle = target.closest ? target.closest('[data-resize-handle]') : null;
                 if (handle) {
                     state.isResizing = true;
+                    Logger.log('Panel resize started');
                 }
             },
             { capture: true }
@@ -60,6 +61,7 @@ const plugin = {
                 if (state.isResizing) {
                     state.isResizing = false;
                     this.saveCurrentSizes();
+                    Logger.log('Panel resize ended, sizes saved');
                 }
             },
             { capture: true }
@@ -118,6 +120,8 @@ const plugin = {
         const savedOuterLeft = Storage.get(this.storageKeys.outerLeft, null);
         const savedInnerTools = Storage.get(this.storageKeys.innerTools, null);
 
+        Logger.log(`Restoring saved sizes: outerLeft=${savedOuterLeft}, innerTools=${savedInnerTools}`);
+
         // Apply outer split (left panel size determines right)
         if (savedOuterLeft != null && panels.outerLeft && panels.outerRight) {
             const outerRight = 100 - savedOuterLeft;
@@ -128,7 +132,7 @@ const plugin = {
             panels.outerRight.style.flex = `${outerRight} 1 0px`;
             panels.outerRight.setAttribute('data-panel-size', outerRight.toString());
 
-            Logger.debug(`Applied outer split: ${savedOuterLeft} / ${outerRight}`);
+            Logger.log(`✓ Applied outer split: ${savedOuterLeft} / ${outerRight}`);
         }
 
         // Apply inner split (tools panel size determines workflow)
@@ -141,18 +145,21 @@ const plugin = {
             panels.innerWorkflow.style.flex = `${innerWorkflow} 1 0px`;
             panels.innerWorkflow.setAttribute('data-panel-size', innerWorkflow.toString());
 
-            Logger.debug(`Applied inner split: ${savedInnerTools} / ${innerWorkflow}`);
+            Logger.log(`✓ Applied inner split: ${savedInnerTools} / ${innerWorkflow}`);
         }
     },
 
     saveCurrentSizes() {
         const panels = this.getPanels();
+        let savedOuter = null;
+        let savedInner = null;
 
         // Save outer left panel size
         if (panels.outerLeft) {
             const outerLeftSize = this.readPanelSize(panels.outerLeft);
             if (outerLeftSize != null) {
                 Storage.set(this.storageKeys.outerLeft, outerLeftSize);
+                savedOuter = outerLeftSize;
             }
         }
 
@@ -161,10 +168,11 @@ const plugin = {
             const innerToolsSize = this.readPanelSize(panels.innerTools);
             if (innerToolsSize != null) {
                 Storage.set(this.storageKeys.innerTools, innerToolsSize);
+                savedInner = innerToolsSize;
             }
         }
 
-        Logger.debug('Saved QA panel sizes');
+        Logger.log(`✓ Saved QA panel sizes: outerLeft=${savedOuter}, innerTools=${savedInner}`);
     },
 
     readPanelSize(panelEl) {
