@@ -79,7 +79,7 @@ const plugin = {
         document.head.appendChild(style);
         Logger.log('✓ Favorites styles injected');
     },
-    
+
     onMutation(state, context) {
         const toolsContainer = Context.dom.query(this.selectors.toolsContainer, {
             context: `${this.id}.toolsContainer`
