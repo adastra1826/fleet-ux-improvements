@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools list',
-    _version: '3.3',
+    _version: '3.4',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -13,6 +13,7 @@ const plugin = {
     // Plugin-specific selectors
     selectors: {
         toolsContainer: '[id^="\:r"] > div.flex-1.min-h-0.overflow-hidden > div > div > div.flex-1.overflow-y-auto > div',
+        toolsContainerFallback: '[id="wf-col-tools"] > div > div > div > div.flex-1.overflow-y-auto > div',
         toolHeader: 'button > span.min-w-0.flex-1.overflow-hidden.flex.gap-2.items-start',
         toolName: 'span',
         toolTitleSpan: 'div.flex.flex-col.items-start.gap-0\\.5.text-left.min-w-0.flex-1 > span.text-xs.font-medium.text-foreground'
@@ -80,6 +81,8 @@ const plugin = {
     onMutation(state, context) {
         const toolsContainer = Context.dom.query(this.selectors.toolsContainer, {
             context: `${this.id}.toolsContainer`
+        }) || Context.dom.query(this.selectors.toolsContainerFallback, {
+            context: `${this.id}.toolsContainerFallback`
         });
         if (!toolsContainer) {
             if (!state.missingLogged) {
