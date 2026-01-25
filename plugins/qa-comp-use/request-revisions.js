@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '1.0',
+    _version: '2.0',
     enabledByDefault: true,
     phase: 'mutation',
     

@@ -84,8 +84,7 @@
       "description": "Main dashboard page",
       "urlPattern": "work/create",
       "disambiguationSelectors": [],
-      "plugins": [
-      ]
+      "plugins": []
     },
     {
       "id": "qa-tool-use",
@@ -108,7 +107,7 @@
         },
         {
           "name": "request-revisions.js",
-          "version": "1.0"
+          "version": "2.0"
         }
       ]
     },
@@ -125,7 +124,7 @@
         },
         {
           "name": "request-revisions.js",
-          "version": "1.0"
+          "version": "2.0"
         }
       ]
     }
