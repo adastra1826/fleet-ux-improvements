@@ -21,13 +21,19 @@ const plugin = {
     
     initialState: {
         processedModals: new Set(),
-        missingLogged: false
+        missingLogged: false,
+        textareaWatchers: new Map() // Map of textarea ID -> { desiredValue, observer, interval }
     },
     
     onMutation(state, context) {
         // Ensure processedModals Set exists
         if (!state.processedModals || !(state.processedModals instanceof Set)) {
             state.processedModals = new Set();
+        }
+        
+        // Ensure textareaWatchers Map exists
+        if (!state.textareaWatchers || !(state.textareaWatchers instanceof Map)) {
+            state.textareaWatchers = new Map();
         }
         
         // Look for the Request Revisions modal
@@ -40,6 +46,8 @@ const plugin = {
             if (state.processedModals.size > 0) {
                 state.processedModals.clear();
             }
+            // Clean up watchers when modal closes
+            this.cleanupWatchers(state, context);
             return;
         }
         
@@ -97,7 +105,7 @@ const plugin = {
         state.processedModals.add(modalId);
         
         // Click the button and paste into textarea
-        this.handleAutoCopy(copyWorkflowButton, attemptedActionsTextarea);
+        this.handleAutoCopy(state, copyWorkflowButton, attemptedActionsTextarea);
     },
     
     findCopyWorkflowButton(modal) {
@@ -131,7 +139,7 @@ const plugin = {
         return null;
     },
     
-    async handleAutoCopy(copyButton, textarea) {
+    async handleAutoCopy(state, copyButton, textarea) {
         try {
             Logger.log('Auto-copying workflow to "What did you try?" field');
             
@@ -160,20 +168,98 @@ const plugin = {
                 return;
             }
             
-            // Set the textarea value
-            textarea.value = clipboardText;
+            // Apply the value using React-compatible method
+            this.applyTextareaValue(textarea, clipboardText);
             
-            // Trigger input event so React/other frameworks detect the change
-            const inputEvent = new Event('input', { bubbles: true });
-            textarea.dispatchEvent(inputEvent);
-            
-            // Also trigger change event
-            const changeEvent = new Event('change', { bubbles: true });
-            textarea.dispatchEvent(changeEvent);
+            // Set up a watcher to re-apply the value if React resets it
+            this.setupTextareaWatcher(state, textarea, clipboardText);
             
             Logger.log('✓ Workflow copied to "What did you try?" field');
         } catch (error) {
             Logger.error('Error during auto-copy:', error);
+        }
+    },
+    
+    applyTextareaValue(textarea, value) {
+        // Use native value setter
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype,
+            'value'
+        )?.set;
+        
+        if (nativeInputValueSetter) {
+            nativeInputValueSetter.call(textarea, value);
+        } else {
+            textarea.value = value;
+        }
+        
+        // Create and dispatch InputEvent (more React-compatible than Event)
+        const inputEvent = new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            inputType: 'insertText',
+            data: value
+        });
+        textarea.dispatchEvent(inputEvent);
+        
+        // Also trigger change event
+        const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+        textarea.dispatchEvent(changeEvent);
+    },
+    
+    setupTextareaWatcher(state, textarea, desiredValue) {
+        const textareaId = textarea.id;
+        if (!textareaId) return;
+        
+        // Clean up existing watcher for this textarea if any
+        this.cleanupWatcherForTextarea(state, textareaId);
+        
+        // Set up interval to check and re-apply value if it gets reset
+        const interval = setInterval(() => {
+            // Check if textarea still exists
+            if (!document.contains(textarea)) {
+                this.cleanupWatcherForTextarea(state, textareaId);
+                return;
+            }
+            
+            // If value was reset (empty or different), re-apply
+            if (textarea.value !== desiredValue) {
+                this.applyTextareaValue(textarea, desiredValue);
+            }
+        }, 100); // Check every 100ms
+        
+        // Store watcher info
+        state.textareaWatchers.set(textareaId, {
+            desiredValue,
+            interval,
+            textarea
+        });
+        
+        // Clean up after 30 seconds (modal should be submitted by then)
+        setTimeout(() => {
+            this.cleanupWatcherForTextarea(state, textareaId);
+        }, 30000);
+    },
+    
+    cleanupWatcherForTextarea(state, textareaId) {
+        const watcher = state.textareaWatchers.get(textareaId);
+        if (watcher) {
+            if (watcher.interval) {
+                clearInterval(watcher.interval);
+            }
+            state.textareaWatchers.delete(textareaId);
+        }
+    },
+    
+    cleanupWatchers(state, context) {
+        // Clean up all watchers
+        if (state.textareaWatchers && state.textareaWatchers instanceof Map) {
+            for (const [textareaId, watcher] of state.textareaWatchers.entries()) {
+                if (watcher.interval) {
+                    clearInterval(watcher.interval);
+                }
+            }
+            state.textareaWatchers.clear();
         }
     }
 };
