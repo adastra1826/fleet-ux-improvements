@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.0.1
+// @version      3.0.2
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/*
@@ -26,7 +26,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.0.1';
+    const VERSION = '3.0.2';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -153,9 +153,9 @@
          * @returns {RegExp} - Compiled regex
          */
         patternToRegex(pattern) {
-            // Escape special regex characters except *
+            // Escape special regex characters (including '*', which we re-expand below)
             let regexStr = pattern
-                .replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+                .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             
             // Handle wildcards:
             // /* at segment boundaries = match one segment (no slashes)
