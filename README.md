@@ -13,12 +13,12 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 - Added "Duplicate to End of Workflow" button (duplicates the current tool and puts it all the way at the end)
 - Added mini tool execution button (allows tool execution while collapsed)
 - Added source data explorer button. Use this to visually explore the source data. (Not guaranteed to work)
+- Config UI for this extension
 
 #### Planned Features:
 - JSON explorer
 - Putting the starred tools in their own spot
 - UX improvements to the tools in the current workflow
-- Config UI for this extension
 - Save specific notes per environment
 - Ability to collapse a tool but still show the output (ie, hide all input parameters)
 - Display current environment name/codename in the task creation page
@@ -28,6 +28,3 @@ Custom userscript to enhance the web UX for Fleet problem creation.
 - Add prompt diff viewer for QA
 
 #### Known Bugs
-- Script does not activate on task page unless the page is refreshed
-- Duplicate to end button icon makes no sense
-- Autocorrect is disabled in the prompt field, which may not be desirable for all (will add a toggle for this)
