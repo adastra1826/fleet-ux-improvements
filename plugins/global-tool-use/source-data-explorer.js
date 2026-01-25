@@ -5,14 +5,15 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button to open source data in new tab',
-    _version: '2.4',
+    _version: '2.5',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonAdded: false, missingLogged: false, interceptionInstalled: false },
     
     // Plugin-specific selectors
     selectors: {
-        toolbar: '[id="\:r7\:"] > div.flex-shrink-0 > div > div.flex.items-center.gap-2.mt-2'
+        toolbar: 'body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > div.w-full.h-full.bg-background.rounded-sm.relative.flex.flex-col.min-w-0.overflow-hidden.border-\\[0\\.5px\\].shadow-\\[0_0_15px_rgba\\(0\\,0\\,0\\,0\\.05\\)\\] > div > div.flex.items-center.gap-2.px-4.py-2.border-b',
+        flexSpacer: '.flex-1'
     },
     
     onMutation(state, context) {
@@ -34,11 +35,20 @@ const plugin = {
             return;
         }
 
+        const flexSpacer = toolbar.querySelector(this.selectors.flexSpacer);
+        if (!flexSpacer) {
+            if (!state.missingLogged) {
+                Logger.debug('Flex spacer not found for Source Data Explorer button');
+                state.missingLogged = true;
+            }
+            return;
+        }
+
         if (!context.source) {
             return;
         }
 
-        this.addSourceButton(toolbar, context);
+        this.addSourceButton(flexSpacer, context);
         state.buttonAdded = true;
     },
 
@@ -107,9 +117,9 @@ const plugin = {
         Logger.log('✓ Network interception installed');
     },
     
-    addSourceButton(toolbar, context) {
+    addSourceButton(flexSpacer, context) {
         const button = document.createElement('button');
-        button.className = 'class="inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-sm pl-3 pr-3 gap-2 text-xs relative border-amber-300 dark:border-amber-700"';
+        button.className = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-sm pl-3 pr-3 gap-2 text-xs relative border-amber-300 dark:border-amber-700';
         button.textContent = '📊 Source Data';
         button.title = 'Open source data in new tab';
         
@@ -124,7 +134,8 @@ const plugin = {
             }
         };
         
-        toolbar.appendChild(button);
+        // Insert after the flex spacer
+        flexSpacer.insertAdjacentElement('afterend', button);
         Logger.log('✓ Source Data Explorer button added');
     }
 };
