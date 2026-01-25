@@ -1,16 +1,19 @@
 
 // ==UserScript==
-// @name         [MODULAR] Fleet Workflow Builder UX Enhancer
+// @name         Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      2.x.x
+// @version      3.0.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
-// @author       You
+// @author       Nicholas Doherty
 // @match        https://fleetai.com/*
+// @icon         https://fleetai.com/favicon.ico
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
 // @run-at       document-start
+// @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
+// @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
 // ==/UserScript==
 
 (function() {
@@ -34,7 +37,7 @@
     const GITHUB_CONFIG = {
         owner: 'adastra1826',
         repo: 'fleet-ux-improvements',
-        branch: 'dev',
+        branch: 'main',
         pluginsPath: 'plugins',
         corePath: 'core',
         devPath: 'dev',
@@ -49,7 +52,7 @@
         initialized: false,
         currentArchetype: null,
         currentPath: null,
-        outdatedPlugins: [], // Track plugins that couldn't be updated
+        outdatedPlugins: [],
         logPrefix: LOG_PREFIX,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
     };
