@@ -108,6 +108,10 @@
         {
           "name": "request-revisions.js",
           "version": "2.3"
+        },
+        {
+          "name": "auto-confirm-reexecute.js",
+          "version": "1.3"
         }
       ]
     },
