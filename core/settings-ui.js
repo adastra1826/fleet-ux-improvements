@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '2.5',
+    _version: '2.6',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -137,12 +137,13 @@ const plugin = {
             background: var(--background, white);
             border: 1px solid var(--border, #e5e5e5);
             border-radius: 12px;
-            padding: 24px;
             width: 520px;
             max-height: 80vh;
-            overflow-y: auto;
+            overflow: hidden;
             z-index: 10000;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            display: flex;
+            flex-direction: column;
         `;
         
         // Get current state
@@ -168,9 +169,9 @@ const plugin = {
             : '';
         
         modal.innerHTML = `
-            <div>
-                <!-- Header -->
-                <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px;">
+            <!-- Sticky Header -->
+            <div style="flex-shrink: 0; padding: 24px 24px 16px 24px; background: var(--background, white); border-bottom: 1px solid var(--border, #e5e5e5);">
+                <div style="display: flex; align-items: flex-start; justify-content: space-between;">
                     <div>
                         <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 4px 0;">Fleet Enhancer Settings</h2>
                         <p style="font-size: 13px; color: var(--muted-foreground, #666); margin: 0;">
@@ -195,7 +196,10 @@ const plugin = {
                         </svg>
                     </button>
                 </div>
-                
+            </div>
+            
+            <!-- Scrollable Content -->
+            <div style="flex: 1; overflow-y: auto; padding: 20px 24px 24px 24px;">
                 <!-- Global Toggle -->
                 <div style="margin-bottom: 20px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; background: var(--card, #fafafa);">
@@ -681,8 +685,17 @@ const plugin = {
                 color: #92400e;
                 z-index: 10001;
             `;
-            msg.textContent = 'Settings changed. Refresh the page for changes to take effect.';
+            msg.innerHTML = 'Settings changed. <a href="#" id="wf-settings-refresh-link" style="color: #92400e; font-weight: 600;">Refresh</a> the page for changes to take effect.';
             document.body.appendChild(msg);
+            
+            // Attach click listener for the refresh link
+            const refreshLink = msg.querySelector('#wf-settings-refresh-link');
+            if (refreshLink) {
+                refreshLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    window.location.reload();
+                });
+            }
         }
         this._positionMessage(modal, msg);
         return msg;
