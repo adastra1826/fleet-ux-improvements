@@ -2,7 +2,7 @@
   "corePlugins": [
     {
       "name": "settings-ui.js",
-      "version": "2.7"
+      "version": "2.8"
     }
   ],
   "devPlugins": [

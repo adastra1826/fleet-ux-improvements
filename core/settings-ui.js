@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '2.7',
+    _version: '2.8',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -137,13 +137,12 @@ const plugin = {
             background: var(--background, white);
             border: 1px solid var(--border, #e5e5e5);
             border-radius: 12px;
+            padding: 24px;
             width: 520px;
             max-height: 80vh;
-            overflow: hidden;
+            overflow-y: auto;
             z-index: 10000;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            display: flex;
-            flex-direction: column;
         `;
         
         // Get current state
@@ -170,7 +169,7 @@ const plugin = {
         
         modal.innerHTML = `
             <!-- Sticky Header -->
-            <div style="flex-shrink: 0; padding: 24px 24px 16px 24px; background: var(--background, white); border-bottom: 1px solid var(--border, #e5e5e5);">
+            <div style="position: sticky; top: -24px; margin: -24px -24px 20px -24px; padding: 24px 24px 16px 24px; background: var(--background, white); border-bottom: 1px solid var(--border, #e5e5e5); z-index: 1;">
                 <div style="display: flex; align-items: flex-start; justify-content: space-between;">
                     <div>
                         <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 4px 0;">Fleet Enhancer Settings</h2>
@@ -198,51 +197,48 @@ const plugin = {
                 </div>
             </div>
             
-            <!-- Scrollable Content -->
-            <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 24px 24px;">
-                <!-- Global Toggle -->
-                <div style="margin-bottom: 20px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; background: var(--card, #fafafa);">
-                        <div>
-                            <div style="font-size: 14px; font-weight: 600; color: var(--foreground, #333);">Enable Plugins</div>
-                            <div style="font-size: 12px; color: var(--muted-foreground, #666); margin-top: 4px;">
-                                Disables all plugins on refresh when turned off.
-                            </div>
+            <!-- Global Toggle -->
+            <div style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; background: var(--card, #fafafa);">
+                    <div>
+                        <div style="font-size: 14px; font-weight: 600; color: var(--foreground, #333);">Enable Plugins</div>
+                        <div style="font-size: 12px; color: var(--muted-foreground, #666); margin-top: 4px;">
+                            Disables all plugins on refresh when turned off.
                         </div>
-                        ${this._createSwitchHTML('wf-global-enabled', globalEnabled)}
                     </div>
+                    ${this._createSwitchHTML('wf-global-enabled', globalEnabled)}
                 </div>
+            </div>
 
-                <!-- Outdated Plugins Warning -->
-                ${outdatedPluginsHTML}
-                
-                <!-- Plugins Section -->
-                <div style="margin-bottom: 20px;">
-                    <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: var(--foreground, #333);">
-                        Plugins (${archetypePlugins.length})
-                    </h3>
-                    <div id="wf-plugin-list">
-                        ${pluginTogglesHTML}
-                    </div>
+            <!-- Outdated Plugins Warning -->
+            ${outdatedPluginsHTML}
+            
+            <!-- Plugins Section -->
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: var(--foreground, #333);">
+                    Plugins (${archetypePlugins.length})
+                </h3>
+                <div id="wf-plugin-list">
+                    ${pluginTogglesHTML}
                 </div>
-                
-                <!-- Debug Section -->
-                <div style="border-top: 1px solid var(--border, #e5e5e5); padding-top: 16px; margin-bottom: 16px;">
-                    <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: var(--foreground, #333);">
-                        Debug Options
-                    </h3>
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
-                        ${this._createToggleHTML('wf-debug-enabled', 'Enable Debug Logging', Logger.isDebugEnabled())}
-                        ${this._createToggleHTML('wf-verbose-enabled', 'Enable Verbose Logging', Logger.isVerboseEnabled())}
-                        ${this._createToggleHTML('wf-submodule-logging-enabled', 'Enable Submodule Logging', submoduleLoggingEnabled)}
-                    </div>
+            </div>
+            
+            <!-- Debug Section -->
+            <div style="border-top: 1px solid var(--border, #e5e5e5); padding-top: 16px; margin-bottom: 16px;">
+                <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: var(--foreground, #333);">
+                    Debug Options
+                </h3>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    ${this._createToggleHTML('wf-debug-enabled', 'Enable Debug Logging', Logger.isDebugEnabled())}
+                    ${this._createToggleHTML('wf-verbose-enabled', 'Enable Verbose Logging', Logger.isVerboseEnabled())}
+                    ${this._createToggleHTML('wf-submodule-logging-enabled', 'Enable Submodule Logging', submoduleLoggingEnabled)}
                 </div>
-                
-                <!-- Footer -->
-                <div style="font-size: 11px; color: var(--muted-foreground, #888); text-align: center; padding-top: 12px; border-top: 1px solid var(--border, #e5e5e5);">
-                    Fleet Workflow Enhancer · 
-                    <a href="#" id="wf-reload-plugins" style="color: var(--brand, #4f46e5); text-decoration: none;">Reload Plugins</a>
-                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="font-size: 11px; color: var(--muted-foreground, #888); text-align: center; padding-top: 12px; border-top: 1px solid var(--border, #e5e5e5);">
+                Fleet Workflow Enhancer · 
+                <a href="#" id="wf-reload-plugins" style="color: var(--brand, #4f46e5); text-decoration: none;">Reload Plugins</a>
             </div>
         `;
         
