@@ -3,16 +3,16 @@ const plugin = {
     id: 'layoutManager',
     name: 'Three Column Layout',
     description: 'Transforms the layout into three resizable columns with integrated notes',
-    _version: '1.3',
+    _version: '1.4',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false, missingLogged: false, structureMissingLogged: false },
     
     // Plugin-specific selectors
     selectors: {
-        mainContainer: 'body > div.group\/sidebar-wrapper.flex.min-h-svh.w-full.has-\[\[data-variant\=inset\]\]\:bg-sidebar > main > div > div > div > div.w-full.h-full.bg-background.rounded-sm.relative.flex.flex-col.min-w-0.overflow-hidden.border-\[0\.5px\].shadow-\[0_0_15px_rgba\(0\,0\,0\,0\.05\)\] > div > div.flex-1.flex.overflow-hidden.min-h-0 > div',
-        leftColumn: '[id="\:r7\:"]',
-        workflowColumn: '[id="\:re\:"]'
+        mainContainer: 'body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > div.w-full.h-full.bg-background.rounded-sm.relative.flex.flex-col.min-w-0.overflow-hidden.border-\\[0\\.5px\\].shadow-\\[0_0_15px_rgba\\(0\\,0\\,0\\,0\\.05\\)\\] > div > div.flex-1.flex.overflow-hidden.min-h-0 > div',
+        leftColumn: '[id="\\:r7\\:"]',
+        workflowColumn: '[id="\\:re\\:"]'
     },
     
     // Plugin-specific storage keys
