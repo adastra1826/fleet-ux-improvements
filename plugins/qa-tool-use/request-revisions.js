@@ -21,19 +21,13 @@ const plugin = {
     
     initialState: {
         processedModals: new Set(),
-        missingLogged: false,
-        textareaWatchers: new Map() // Map of textarea ID -> { desiredValue, observer, interval }
+        missingLogged: false
     },
     
     onMutation(state, context) {
         // Ensure processedModals Set exists
         if (!state.processedModals || !(state.processedModals instanceof Set)) {
             state.processedModals = new Set();
-        }
-        
-        // Ensure textareaWatchers Map exists
-        if (!state.textareaWatchers || !(state.textareaWatchers instanceof Map)) {
-            state.textareaWatchers = new Map();
         }
         
         // Look for the Request Revisions modal
@@ -46,8 +40,6 @@ const plugin = {
             if (state.processedModals.size > 0) {
                 state.processedModals.clear();
             }
-            // Clean up watchers when modal closes
-            this.cleanupWatchers(state, context);
             return;
         }
         
@@ -171,9 +163,6 @@ const plugin = {
             // Apply the value using React-compatible method
             this.applyTextareaValue(textarea, clipboardText);
             
-            // Set up a watcher to re-apply the value if React resets it
-            this.setupTextareaWatcher(state, textarea, clipboardText);
-            
             Logger.log('✓ Workflow copied to "What did you try?" field');
         } catch (error) {
             Logger.error('Error during auto-copy:', error);
@@ -181,85 +170,103 @@ const plugin = {
     },
     
     applyTextareaValue(textarea, value) {
-        // Use native value setter
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        // Try to find React's onChange handler and call it directly
+        // This is the proper way to work with React controlled components
+        const reactFiber = this.getReactFiber(textarea);
+        if (reactFiber) {
+            const props = reactFiber.memoizedProps || reactFiber.pendingProps;
+            if (props && props.onChange) {
+                // Create a synthetic event object that React expects
+                const syntheticEvent = {
+                    target: textarea,
+                    currentTarget: textarea,
+                    bubbles: true,
+                    cancelable: true,
+                    defaultPrevented: false,
+                    eventPhase: 2, // AT_TARGET
+                    isTrusted: false,
+                    nativeEvent: new Event('input', { bubbles: true }),
+                    preventDefault: () => {},
+                    stopPropagation: () => {},
+                    timeStamp: Date.now(),
+                    type: 'change'
+                };
+                
+                // Set the value using native setter first
+                const nativeValueSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLTextAreaElement.prototype,
+                    'value'
+                )?.set;
+                
+                if (nativeValueSetter) {
+                    nativeValueSetter.call(textarea, value);
+                } else {
+                    textarea.value = value;
+                }
+                
+                // Call React's onChange handler directly
+                try {
+                    props.onChange(syntheticEvent);
+                    Logger.debug('Called React onChange handler directly');
+                    return;
+                } catch (error) {
+                    Logger.warn('Error calling React onChange:', error);
+                    // Fall through to event dispatch method
+                }
+            }
+        }
+        
+        // Fallback: Use native value setter and dispatch events
+        // This should work for most React versions
+        const nativeValueSetter = Object.getOwnPropertyDescriptor(
             window.HTMLTextAreaElement.prototype,
             'value'
         )?.set;
         
-        if (nativeInputValueSetter) {
-            nativeInputValueSetter.call(textarea, value);
+        if (nativeValueSetter) {
+            nativeValueSetter.call(textarea, value);
         } else {
             textarea.value = value;
         }
         
-        // Create and dispatch InputEvent (more React-compatible than Event)
-        const inputEvent = new InputEvent('input', {
-            bubbles: true,
-            cancelable: true,
-            inputType: 'insertText',
-            data: value
-        });
+        // Focus the textarea first (React sometimes needs this)
+        textarea.focus();
+        
+        // Dispatch input event (React listens to this)
+        const inputEvent = new Event('input', { bubbles: true, cancelable: true });
         textarea.dispatchEvent(inputEvent);
         
-        // Also trigger change event
+        // Also dispatch change event
         const changeEvent = new Event('change', { bubbles: true, cancelable: true });
         textarea.dispatchEvent(changeEvent);
+        
+        // Blur and refocus to ensure React processes the change
+        textarea.blur();
+        textarea.focus();
     },
     
-    setupTextareaWatcher(state, textarea, desiredValue) {
-        const textareaId = textarea.id;
-        if (!textareaId) return;
-        
-        // Clean up existing watcher for this textarea if any
-        this.cleanupWatcherForTextarea(state, textareaId);
-        
-        // Set up interval to check and re-apply value if it gets reset
-        const interval = setInterval(() => {
-            // Check if textarea still exists
-            if (!document.contains(textarea)) {
-                this.cleanupWatcherForTextarea(state, textareaId);
-                return;
+    getReactFiber(element) {
+        // Try different React internal property names
+        // React 16+: __reactInternalInstance or __reactFiber
+        // React 17+: __reactFiber$<random>
+        // React 18+: __reactFiber$<random> or __reactInternalInstance$<random>
+        const keys = Object.keys(element);
+        for (const key of keys) {
+            if (key.startsWith('__reactFiber') || key.startsWith('__reactInternalInstance')) {
+                return element[key];
             }
-            
-            // If value was reset (empty or different), re-apply
-            if (textarea.value !== desiredValue) {
-                this.applyTextareaValue(textarea, desiredValue);
-            }
-        }, 100); // Check every 100ms
-        
-        // Store watcher info
-        state.textareaWatchers.set(textareaId, {
-            desiredValue,
-            interval,
-            textarea
-        });
-        
-        // Clean up after 30 seconds (modal should be submitted by then)
-        setTimeout(() => {
-            this.cleanupWatcherForTextarea(state, textareaId);
-        }, 30000);
-    },
-    
-    cleanupWatcherForTextarea(state, textareaId) {
-        const watcher = state.textareaWatchers.get(textareaId);
-        if (watcher) {
-            if (watcher.interval) {
-                clearInterval(watcher.interval);
-            }
-            state.textareaWatchers.delete(textareaId);
         }
-    },
-    
-    cleanupWatchers(state, context) {
-        // Clean up all watchers
-        if (state.textareaWatchers && state.textareaWatchers instanceof Map) {
-            for (const [textareaId, watcher] of state.textareaWatchers.entries()) {
-                if (watcher.interval) {
-                    clearInterval(watcher.interval);
+        
+        // Also check for React 18's alternate fiber
+        for (const key of keys) {
+            if (key.includes('reactFiber') || key.includes('reactInternalInstance')) {
+                const fiber = element[key];
+                if (fiber && (fiber.memoizedProps || fiber.pendingProps)) {
+                    return fiber;
                 }
             }
-            state.textareaWatchers.clear();
         }
+        
+        return null;
     }
 };
