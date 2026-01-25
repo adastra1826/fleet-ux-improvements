@@ -101,12 +101,16 @@
         {
           "name": "global/bug-report-expand.js",
           "version": "1.2"
+        },
+        {
+          "name": "source-data-explorer.js",
+          "version": "1.1"
         }
       ]
     },
     {
       "id": "qa-comp-use",
-      "name": "Computer Use Task Creation Page" ,
+      "name": "Computer Use Task Creation Page",
       "description": "Page for  reviewing and approving tasks",
       "urlPattern": "work/problems/qa/*",
       "disambiguationSelectors": [],
