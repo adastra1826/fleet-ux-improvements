@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '2.6',
+    _version: '2.7',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -199,7 +199,7 @@ const plugin = {
             </div>
             
             <!-- Scrollable Content -->
-            <div style="flex: 1; overflow-y: auto; padding: 20px 24px 24px 24px;">
+            <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 24px 24px;">
                 <!-- Global Toggle -->
                 <div style="margin-bottom: 20px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; background: var(--card, #fafafa);">
@@ -685,7 +685,7 @@ const plugin = {
                 color: #92400e;
                 z-index: 10001;
             `;
-            msg.innerHTML = 'Settings changed. <a href="#" id="wf-settings-refresh-link" style="color: #92400e; font-weight: 600;">Refresh</a> the page for changes to take effect.';
+            msg.innerHTML = 'Settings changed. <a href="#" id="wf-settings-refresh-link" style="color: #92400e; text-decoration: underline;">Refresh</a> the page for changes to take effect.';
             document.body.appendChild(msg);
             
             // Attach click listener for the refresh link
