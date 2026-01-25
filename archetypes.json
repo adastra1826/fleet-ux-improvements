@@ -2,7 +2,7 @@
   "corePlugins": [
     {
       "name": "settings-ui.js",
-      "version": "2.8"
+      "version": "3.0"
     }
   ],
   "devPlugins": [
@@ -58,6 +58,10 @@
         {
           "name": "layout-manager.js",
           "version": "1.4"
+        },
+        {
+          "name": "dummy-module-with-sub-options.js",
+          "version": "1.0"
         }
       ]
     },
@@ -75,6 +79,10 @@
         {
           "name": "remove-textarea-gradient.js",
           "version": "1.2"
+        },
+        {
+          "name": "dummy-module-with-sub-options.js",
+          "version": "1.0"
         }
       ]
     },
@@ -88,6 +96,10 @@
         {
           "name": "dummy-module.js",
           "version": "1.1"
+        },
+        {
+          "name": "dummy-module-with-sub-options.js",
+          "version": "1.0"
         }
       ]
     },
@@ -109,6 +121,10 @@
         {
           "name": "panel-size-memory.js",
           "version": "1.2"
+        },
+        {
+          "name": "dummy-module-with-sub-options.js",
+          "version": "1.0"
         }
       ]
     },
@@ -122,6 +138,10 @@
         {
           "name": "bug-report-expand.js",
           "version": "1.2"
+        },
+        {
+          "name": "dummy-module-with-sub-options.js",
+          "version": "1.0"
         }
       ]
     }

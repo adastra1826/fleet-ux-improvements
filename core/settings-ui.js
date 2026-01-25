@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '2.8',
+    _version: '3.0',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -256,6 +256,10 @@ const plugin = {
         const isEnabled = PluginManager.isEnabled(plugin.id);
         const isDisabled = !globalEnabled;
         const moduleLoggingEnabled = Logger.isModuleLoggingEnabled(plugin.id);
+        
+        // Build sub-options HTML if plugin has them
+        const subOptionsHTML = this._createSubOptionsHTML(plugin, isEnabled, isDisabled);
+        
         const moduleToggleHTML = submoduleLoggingEnabled && isEnabled ? `
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border, #e5e5e5);">
                     <label style="font-size: 12px; color: var(--muted-foreground, #666);" for="wf-plugin-log-${plugin.id}">
@@ -284,7 +288,47 @@ const plugin = {
                 <div style="font-size: 12px; color: var(--muted-foreground, #666); margin-top: 6px; line-height: 1.4;">
                     ${plugin.description || 'No description available'}
                 </div>
+                ${subOptionsHTML}
                 ${moduleToggleHTML}
+            </div>
+        `;
+    },
+    
+    _createSubOptionsHTML(plugin, pluginEnabled, globalDisabled) {
+        if (!plugin.subOptions || !Array.isArray(plugin.subOptions) || plugin.subOptions.length === 0) {
+            return '';
+        }
+        
+        // Only show sub-options when the plugin is enabled
+        if (!pluginEnabled) {
+            return '';
+        }
+        
+        const subOptionItems = plugin.subOptions.map(subOption => {
+            const subOptionId = `wf-suboption-${plugin.id}-${subOption.id}`;
+            const defaultValue = subOption.enabledByDefault !== false;
+            const isSubOptionEnabled = Storage.getSubOptionEnabled(plugin.id, subOption.id, defaultValue);
+            const isDisabled = globalDisabled;
+            
+            return `
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0;">
+                    <div style="flex: 1; min-width: 0;">
+                        <label style="font-size: 12px; font-weight: 500; color: var(--foreground, #333); cursor: pointer;" for="${subOptionId}">
+                            ${subOption.name || subOption.id}
+                        </label>
+                        ${subOption.description ? `<div style="font-size: 11px; color: var(--muted-foreground, #888); margin-top: 2px;">${subOption.description}</div>` : ''}
+                    </div>
+                    ${this._createSwitchHTML(subOptionId, isSubOptionEnabled, null, isDisabled)}
+                </div>
+            `;
+        }).join('');
+        
+        return `
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border, #e5e5e5);">
+                <div style="font-size: 11px; font-weight: 600; color: var(--muted-foreground, #888); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Sub-options
+                </div>
+                ${subOptionItems}
             </div>
         `;
     },
@@ -486,6 +530,24 @@ const plugin = {
                     this._updateSettingsMessage(modal, plugins);
                 });
             }
+            
+            // Attach sub-option toggle listeners
+            if (plugin.subOptions && Array.isArray(plugin.subOptions)) {
+                plugin.subOptions.forEach(subOption => {
+                    const subOptionCheckbox = Context.dom.query(`#wf-suboption-${plugin.id}-${subOption.id}`, {
+                        root: modal,
+                        context: `${this.id}.subOptionToggle`
+                    });
+                    if (subOptionCheckbox) {
+                        subOptionCheckbox.addEventListener('change', (e) => {
+                            this._handleToggleChange(e);
+                            Storage.setSubOptionEnabled(plugin.id, subOption.id, e.target.checked);
+                            this._updateSettingsMessage(modal, plugins);
+                        });
+                    }
+                });
+            }
+            
             const moduleCheckbox = Context.dom.query(`#wf-plugin-log-${plugin.id}`, {
                 root: modal,
                 context: `${this.id}.pluginLogToggle`
@@ -618,11 +680,21 @@ const plugin = {
             debug: Logger.isDebugEnabled(),
             verbose: Logger.isVerboseEnabled(),
             submoduleLogging: Logger.isSubmoduleLoggingEnabled(),
-            pluginStates: sortedPlugins.map(plugin => ({
-                id: plugin.id,
-                enabled: PluginManager.isEnabled(plugin.id),
-                moduleLogging: Logger.isModuleLoggingEnabled(plugin.id)
-            })),
+            pluginStates: sortedPlugins.map(plugin => {
+                const state = {
+                    id: plugin.id,
+                    enabled: PluginManager.isEnabled(plugin.id),
+                    moduleLogging: Logger.isModuleLoggingEnabled(plugin.id)
+                };
+                // Include sub-option states if plugin has them
+                if (plugin.subOptions && Array.isArray(plugin.subOptions)) {
+                    state.subOptions = plugin.subOptions.map(subOption => ({
+                        id: subOption.id,
+                        enabled: Storage.getSubOptionEnabled(plugin.id, subOption.id, subOption.enabledByDefault !== false)
+                    }));
+                }
+                return state;
+            }),
             pluginOrder: this._getStoredPluginOrder(archetypeId, plugins)
         };
     },

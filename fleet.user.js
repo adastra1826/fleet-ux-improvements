@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.1.0
+// @version      3.2.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://fleetai.com/*
@@ -26,7 +26,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.1.0';
+    const VERSION = '3.2.0';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -337,6 +337,13 @@
         },
         setModuleLoggingEnabled(moduleId, enabled) {
             this.set(`module-logging-${moduleId}`, enabled);
+        },
+        // Sub-option storage
+        getSubOptionEnabled(pluginId, subOptionId, defaultValue = true) {
+            return this.get(`suboption-${pluginId}-${subOptionId}`, defaultValue);
+        },
+        setSubOptionEnabled(pluginId, subOptionId, enabled) {
+            this.set(`suboption-${pluginId}-${subOptionId}`, enabled);
         }
     };
 
