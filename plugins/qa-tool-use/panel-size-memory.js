@@ -14,16 +14,18 @@ const plugin = {
     id: 'qaPanelSizeMemory',
     name: 'QA Panel Size Memory',
     description: 'Persist and restore the main container split positions on QA Tool Use pages',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'init',
     initialState: {
         installed: false,
         appliedAtLeastOnce: false,
         lastUserInputTs: 0,
+        isResizing: false,
+        lastSyncTs: 0,
+        syncTimeoutId: null,
         lastAppliedTs: 0,
         saveTimeoutId: null,
-        syncQueued: false,
         panelObserversInstalled: false,
         lastSaved: { outerLeft: null, innerWorkflow: null }
     },
@@ -40,18 +42,7 @@ const plugin = {
         if (state.installed) return;
         state.installed = true;
 
-        const scheduleSync = () => {
-            if (state.syncQueued) return;
-            state.syncQueued = true;
-            requestAnimationFrame(() => {
-                state.syncQueued = false;
-                try {
-                    this.sync(state, context);
-                } catch (e) {
-                    Logger.error('QA Panel Size Memory sync failed:', e);
-                }
-            });
-        };
+        const scheduleSync = (reason) => this.scheduleSync(state, context, reason);
 
         // Track resize interactions so we don't fight the user's drag.
         CleanupRegistry.registerEventListener(
@@ -61,41 +52,100 @@ const plugin = {
                 const handle = Context.dom.closest(e.target, this.selectors.resizeHandle, {
                     context: `${this.id}.pointerdown.closestHandle`
                 });
-                if (handle) state.lastUserInputTs = Date.now();
+                if (handle) {
+                    state.lastUserInputTs = Date.now();
+                    state.isResizing = true;
+                }
             },
             { capture: true }
         );
 
         // Save after likely resize completions.
-        const maybeSave = () => this.scheduleSave(state, context);
-        CleanupRegistry.registerEventListener(document, 'pointerup', maybeSave, { capture: true });
-        CleanupRegistry.registerEventListener(document, 'mouseup', maybeSave, { capture: true });
+        const endResize = () => {
+            if (state.isResizing) {
+                state.isResizing = false;
+                // Trailing save+sync after resize ends.
+                this.scheduleSave(state, context);
+                scheduleSync('resize-end');
+            }
+        };
+        CleanupRegistry.registerEventListener(document, 'pointerup', endResize, { capture: true });
+        CleanupRegistry.registerEventListener(document, 'mouseup', endResize, { capture: true });
         CleanupRegistry.registerEventListener(
             document,
             'keyup',
             (e) => {
                 // Keyboard resizing updates aria-valuenow; treat arrow keys as a "resize end" hint.
                 if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-                    maybeSave();
+                    state.lastUserInputTs = Date.now();
+                    // Don't spam while key-repeat is happening; just treat keyup as end.
+                    endResize();
                 }
             },
             { capture: true }
         );
 
         // Observe DOM remounts/attribute churn and re-apply as needed.
-        const observer = new MutationObserver(() => scheduleSync());
+        const observer = new MutationObserver((mutations) => {
+            // During active dragging, ignore attribute churn entirely; we only care about remounts,
+            // and we already do a trailing sync/save on pointerup/mouseup.
+            if (state.isResizing) return;
+
+            // Only react if the mutation is plausibly relevant to our panels.
+            const relevant = mutations.some((m) => {
+                if (m.type === 'childList') return true;
+                if (m.type !== 'attributes') return false;
+                const t = /** @type {Element|null} */ (m.target);
+                if (!t || !t.getAttribute) return false;
+                const id = t.getAttribute('id');
+                return id === ':re:' || id === ':rh:' || id === ':rp:' || id === ':rs:';
+            });
+            if (!relevant) return;
+
+            scheduleSync('dom-mutation');
+        });
         CleanupRegistry.registerObserver(observer);
         observer.observe(document.body, {
             childList: true,
             subtree: true,
-            attributes: true,
-            attributeFilter: ['style', 'data-panel-size', 'data-panel-group-id', 'data-resize-handle-state']
+            // Avoid observing style/data-panel-size changes globally; that causes heavy churn during resizes.
+            // We only need to detect remounts / panel re-creation via childList.
+            attributes: false
         });
 
         // Kick once immediately.
-        scheduleSync();
+        scheduleSync('init');
 
         Logger.log('✓ QA Panel Size Memory initialized');
+    },
+
+    scheduleSync(state, context, reason) {
+        // If we're actively resizing, never run sync (it does DOM queries) — use a trailing sync on end.
+        if (state.isResizing) return;
+
+        const now = Date.now();
+        const throttleMs = 250;
+        const sinceLast = now - (state.lastSyncTs || 0);
+        const delay = sinceLast >= throttleMs ? 0 : (throttleMs - sinceLast);
+
+        if (state.syncTimeoutId) return;
+
+        state.syncTimeoutId = CleanupRegistry.registerTimeout(
+            setTimeout(() => {
+                state.syncTimeoutId = null;
+                state.lastSyncTs = Date.now();
+                try {
+                    this.sync(state, context);
+                } catch (e) {
+                    Logger.error('QA Panel Size Memory sync failed:', e);
+                }
+            }, delay)
+        );
+
+        // Optional debug hook (only visible when module logging is enabled)
+        if (Logger && typeof Logger.debug === 'function' && Logger.isVerboseEnabled && Logger.isVerboseEnabled()) {
+            Logger.debug(`scheduleSync(${reason || 'unknown'}) in ${delay}ms`);
+        }
     },
 
     sync(state, context) {
@@ -152,7 +202,11 @@ const plugin = {
     installPanelObservers(state, panels) {
         const watch = (el) => {
             if (!el) return;
-            const obs = new MutationObserver(() => this.scheduleSave(state));
+            const obs = new MutationObserver(() => {
+                // Avoid any work during active dragging; we'll do a trailing save on pointerup.
+                if (state.isResizing) return;
+                this.scheduleSave(state);
+            });
             CleanupRegistry.registerObserver(obs);
             obs.observe(el, {
                 attributes: true,
