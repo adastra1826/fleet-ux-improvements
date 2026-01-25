@@ -3,7 +3,7 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.9',
+    _version: '1.10',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
@@ -66,10 +66,8 @@ const plugin = {
             container.appendChild(collapseBtn);
             container.appendChild(trailingDivider);
 
-            const insertBeforeTarget = toolsIndicator && toolsIndicator.parentElement === toolbar
-                ? toolsIndicator.nextSibling
-                : toolbar.firstChild;
-            toolbar.insertBefore(container, insertBeforeTarget);
+            // Insert at the beginning of the toolbar (before Clear button)
+            toolbar.insertBefore(container, toolbar.firstChild);
             state.added = true;
             Logger.log('✓ Expand/Collapse buttons added to toolbar');
         }
