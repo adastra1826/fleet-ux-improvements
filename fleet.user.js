@@ -735,7 +735,7 @@
          * Load plugin code from URL (but don't cache yet - version verification happens first)
          * @param {string} url - URL to fetch plugin from
          * @param {string} filename - Plugin filename
-         * @param {string} sourcePath - Full path for caching (e.g., "global/plugin.js")
+         * @param {string} sourcePath - Full path for caching (e.g., "qa-tool-use/plugin.js")
          * @param {string} version - Expected version (for logging only - actual verification happens later)
          * @returns {Promise<{code: string, version: string}>}
          */
@@ -954,51 +954,22 @@
         
         /**
          * Load an archetype plugin with versioning support
-         * @param {string} filename - The plugin filename or path (e.g., "network-interception.js" or "global/network-interception.js")
+         * @param {string} filename - The plugin filename (e.g., "source-data-explorer.js")
          * @param {string} version - Required version (e.g., "1.0")
          * @param {string} archetypeId - The archetype ID (e.g., "k-taskCreation")
          * @returns {Promise} - Resolves with the plugin object
          */
         async loadArchetypePlugin(filename, version, archetypeId) {
-            // Check if filename contains an explicit folder path (e.g., "global/plugin.js" or "shared/plugin.js")
-            const pathParts = filename.split('/');
-            let sourcePath, url;
-            
-            if (pathParts.length > 1) {
-                // Explicit folder path specified, use it directly
-                const folderPath = pathParts.slice(0, -1).join('/');
-                const actualFilename = pathParts[pathParts.length - 1];
-                sourcePath = `${folderPath}/${actualFilename}`;
-                url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
-                
-                Logger.debug(`Loading plugin from explicit path: ${sourcePath} v${version}`);
-            } else {
-                // No explicit path, use default resolution: check global first, then archetype folder
-                const globalPath = `global/${filename}`;
-                const globalUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${globalPath}`;
-                
-                // Try to load from global first (with versioning)
-                try {
-                    const code = await this.loadPluginCode(filename, globalPath, version, globalUrl);
-                    const plugin = this.parsePluginCode(code, filename, { useModuleLogger: true });
-                    this._loadedPluginFiles.add(globalPath);
-                    Logger.debug(`Loaded ${filename} v${version} from global folder`);
-                    return plugin;
-                } catch (error) {
-                    // If global fails (404 or other), try archetype folder
-                    if (error.message && error.message.includes('404')) {
-                        Logger.debug(`Plugin ${filename} not found in global, trying archetype folder: ${archetypeId}`);
-                    } else {
-                        Logger.warn(`Error loading ${filename} from global, trying archetype folder:`, error);
-                    }
-                    
-                    // Fall through to archetype folder
-                    sourcePath = `${archetypeId}/${filename}`;
-                    url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
-                }
+            // Archetype plugins must always live under: plugins/<archetypeId>/<filename>
+            if (filename.includes('/')) {
+                throw new Error(
+                    `Invalid archetype plugin name "${filename}". Plugin names must be filenames only (no folder paths).`
+                );
             }
-            
-            // Load from determined path (explicit or archetype folder)
+
+            const sourcePath = `${archetypeId}/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
+
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
             const plugin = this.parsePluginCode(code, filename, { useModuleLogger: true });
             this._loadedPluginFiles.add(sourcePath);
@@ -1079,29 +1050,20 @@
                     Logger.error('Invalid plugin definition:', pluginDef);
                     continue;
                 }
+
+                if (filename.includes('/')) {
+                    Logger.error(
+                        `Invalid archetype plugin name "${filename}". Plugin names must be filenames only (no folder paths).`
+                    );
+                    continue;
+                }
                 
                 // Check if already loaded
-                // First check by source file (handles explicit paths like "global/plugin.js")
                 const existingPlugins = PluginManager.getAll();
                 const alreadyLoadedByFile = existingPlugins.some(p => p._sourceFile === filename);
                 
-                // Also check if the resolved path is already loaded (for implicit paths that resolved to a location)
-                let alreadyLoadedByPath = false;
-                if (!alreadyLoadedByFile) {
-                    // Determine what path this would resolve to
-                    const pathParts = filename.split('/');
-                    if (pathParts.length > 1) {
-                        // Explicit path - check if this exact path was loaded
-                        const explicitPath = filename;
-                        alreadyLoadedByPath = this._loadedPluginFiles.has(explicitPath);
-                    } else {
-                        // Implicit path - check both global and archetype locations
-                        const globalPath = `global/${filename}`;
-                        const archetypePath = `${archetypeId}/${filename}`;
-                        alreadyLoadedByPath = this._loadedPluginFiles.has(globalPath) || 
-                                            this._loadedPluginFiles.has(archetypePath);
-                    }
-                }
+                const sourcePath = `${archetypeId}/${filename}`;
+                const alreadyLoadedByPath = this._loadedPluginFiles.has(sourcePath);
                 
                 if (alreadyLoadedByFile || alreadyLoadedByPath) {
                     Logger.debug(`Plugin ${filename} already loaded, skipping fetch`);
@@ -1395,6 +1357,7 @@
         
         // Clear archetype plugins
         PluginManager.clearArchetypePlugins();
+        PluginLoader._loadedPluginFiles.clear();
         
         // Small delay to let SPA finish its DOM updates
         await new Promise(resolve => setTimeout(resolve, 100));

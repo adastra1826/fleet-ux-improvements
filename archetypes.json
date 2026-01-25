@@ -69,11 +69,11 @@
       "disambiguationSelectors": [],
       "plugins": [
         {
-          "name": "tool-use-task-creation/autocorrect-textareas.js",
+          "name": "autocorrect-textareas.js",
           "version": "1.2"
         },
         {
-          "name": "tool-use-task-creation/remove-textarea-gradient.js",
+          "name": "remove-textarea-gradient.js",
           "version": "1.2"
         }
       ]
@@ -86,7 +86,7 @@
       "disambiguationSelectors": [],
       "plugins": [
         {
-          "name": "global/dummy-module.js",
+          "name": "dummy-module.js",
           "version": "1.1"
         }
       ]
@@ -99,7 +99,7 @@
       "disambiguationSelectors": [],
       "plugins": [
         {
-          "name": "global/bug-report-expand.js",
+          "name": "bug-report-expand.js",
           "version": "1.2"
         },
         {
@@ -120,7 +120,7 @@
       "disambiguationSelectors": [],
       "plugins": [
         {
-          "name": "global/bug-report-expand.js",
+          "name": "bug-report-expand.js",
           "version": "1.2"
         }
       ]
