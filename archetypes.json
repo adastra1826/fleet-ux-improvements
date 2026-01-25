@@ -58,10 +58,6 @@
         {
           "name": "layout-manager.js",
           "version": "1.4"
-        },
-        {
-          "name": "dummy-module-with-sub-options.js",
-          "version": "1.0"
         }
       ]
     },
@@ -79,10 +75,6 @@
         {
           "name": "remove-textarea-gradient.js",
           "version": "1.2"
-        },
-        {
-          "name": "dummy-module-with-sub-options.js",
-          "version": "1.0"
         }
       ]
     },
@@ -93,14 +85,6 @@
       "urlPattern": "work/create",
       "disambiguationSelectors": [],
       "plugins": [
-        {
-          "name": "dummy-module.js",
-          "version": "1.1"
-        },
-        {
-          "name": "dummy-module-with-sub-options.js",
-          "version": "1.0"
-        }
       ]
     },
     {
@@ -125,10 +109,6 @@
         {
           "name": "request-revisions.js",
           "version": "1.0"
-        },
-        {
-          "name": "dummy-module-with-sub-options.js",
-          "version": "1.0"
         }
       ]
     },
@@ -145,10 +125,6 @@
         },
         {
           "name": "request-revisions.js",
-          "version": "1.0"
-        },
-        {
-          "name": "dummy-module-with-sub-options.js",
           "version": "1.0"
         }
       ]
