@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.4',
+    _version: '2.5',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -22,6 +22,12 @@ const plugin = {
             name: 'Auto-paste prompt to Task issue',
             description: 'Saves the prompt text on page load and automatically pastes it into the Task issue box when Task is selected',
             enabledByDefault: true
+        },
+        {
+            id: 'auto-paste-verifier-to-grading',
+            name: 'Auto-paste verifier output to Grading issue',
+            description: 'Saves the verifier output when grading completes and automatically pastes it into the Grading issue box when Grading is selected',
+            enabledByDefault: true
         }
     ],
     
@@ -30,7 +36,11 @@ const plugin = {
         missingLogged: false,
         promptText: null,
         promptSaved: false,
-        taskObservers: new Map() // Map of modalId -> { observer, taskButton }
+        taskObservers: new Map(), // Map of modalId -> { observer, taskButton }
+        verifierOutput: null,
+        verifierObserver: null,
+        verifierElement: null,
+        gradingObservers: new Map() // Map of modalId -> { observer, gradingButton }
     },
     
     onMutation(state, context) {
@@ -44,10 +54,21 @@ const plugin = {
             state.taskObservers = new Map();
         }
         
+        // Ensure gradingObservers Map exists
+        if (!state.gradingObservers || !(state.gradingObservers instanceof Map)) {
+            state.gradingObservers = new Map();
+        }
+        
         // Save prompt text if not already saved and the feature is enabled
         const autoPastePromptEnabled = Storage.getSubOptionEnabled(this.id, 'auto-paste-prompt-to-task', true);
         if (autoPastePromptEnabled && !state.promptSaved) {
             this.savePromptText(state);
+        }
+        
+        // Watch for verifier output if feature is enabled
+        const autoPasteVerifierEnabled = Storage.getSubOptionEnabled(this.id, 'auto-paste-verifier-to-grading', true);
+        if (autoPasteVerifierEnabled) {
+            this.watchVerifierOutput(state);
         }
         
         // Look for the Request Revisions modal
@@ -58,6 +79,7 @@ const plugin = {
         if (dialogs.length === 0) {
             // Clean up observers when no dialogs are open
             this.cleanupTaskObservers(state);
+            this.cleanupGradingObservers(state);
             // Reset processed set when no dialogs are open
             if (state.processedModals.size > 0) {
                 state.processedModals.clear();
@@ -118,6 +140,11 @@ const plugin = {
         // Set up Task button observer if not already set up and feature is enabled
         if (autoPastePromptEnabled && state.promptText && !state.taskObservers.has(modalId)) {
             this.setupTaskButtonObserver(state, requestRevisionsModal, modalId);
+        }
+        
+        // Set up Grading button observer if not already set up and feature is enabled
+        if (autoPasteVerifierEnabled && state.verifierOutput && !state.gradingObservers.has(modalId)) {
+            this.setupGradingButtonObserver(state, requestRevisionsModal, modalId);
         }
     },
     
@@ -404,6 +431,175 @@ const plugin = {
             }
         }
         state.taskObservers.clear();
+    },
+    
+    watchVerifierOutput(state) {
+        // If we already have an observer set up, don't set up another one
+        if (state.verifierObserver) {
+            return;
+        }
+        
+        // Find the verifier output element
+        const verifierPre = Context.dom.query('[id="\\:r2q\\:"] > div > div.flex-1.flex.flex-col.min-h-0.w-full.h-full.p-0 > div > div > div > div > div:nth-child(2) > div > div.overflow-x-auto.bg-background.border.rounded > pre', {
+            context: `${this.id}.verifierPre`
+        });
+        
+        if (!verifierPre) {
+            return; // Verifier output not available yet
+        }
+        
+        // Save the initial verifier output
+        state.verifierOutput = verifierPre.textContent.trim();
+        state.verifierElement = verifierPre;
+        
+        Logger.log(`✓ Verifier output saved (${state.verifierOutput.length} chars)`);
+        
+        // Set up MutationObserver to watch for changes (in case of regrading)
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                    const newOutput = verifierPre.textContent.trim();
+                    if (newOutput !== state.verifierOutput && newOutput.length > 0) {
+                        state.verifierOutput = newOutput;
+                        Logger.log(`✓ Verifier output updated (${state.verifierOutput.length} chars)`);
+                    }
+                }
+            }
+        });
+        
+        // Observe changes to the pre element and its children
+        observer.observe(verifierPre, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+        
+        state.verifierObserver = observer;
+    },
+    
+    setupGradingButtonObserver(state, modal, modalId) {
+        // Find the Grading button
+        const gradingButton = this.findGradingIssueButton(modal);
+        if (!gradingButton) {
+            Logger.debug('Grading button not found, will retry on next mutation');
+            return;
+        }
+        
+        // Check if already processed (button is already clicked)
+        if (this.isGradingButtonSelected(gradingButton)) {
+            // Button is already selected, wait a bit for textarea to appear, then paste
+            setTimeout(() => {
+                this.handleGradingIssuePaste(state, modal, modalId);
+            }, 100);
+            // Mark as having observer (even though we won't set one up) to prevent retries
+            state.gradingObservers.set(modalId, { observer: null, gradingButton });
+            return;
+        }
+        
+        // Set up MutationObserver to watch for class changes on the Grading button
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    if (this.isGradingButtonSelected(gradingButton)) {
+                        // Grading button was clicked, wait a bit for textarea to appear, then paste
+                        setTimeout(() => {
+                            this.handleGradingIssuePaste(state, modal, modalId);
+                        }, 100);
+                        // Disconnect observer after detecting click
+                        observer.disconnect();
+                        state.gradingObservers.delete(modalId);
+                        break;
+                    }
+                }
+            }
+        });
+        
+        // Observe class attribute changes on the Grading button
+        observer.observe(gradingButton, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+        
+        // Store observer info
+        state.gradingObservers.set(modalId, { observer, gradingButton });
+        
+        Logger.debug('Grading button observer set up');
+    },
+    
+    isGradingButtonSelected(button) {
+        // Check if button has the selected state classes
+        return button.classList.contains('border-brand') || 
+               button.classList.contains('bg-brand') ||
+               button.querySelector('.border-brand') !== null ||
+               button.querySelector('.bg-brand') !== null;
+    },
+    
+    findGradingIssueButton(modal) {
+        // Find button with "Grading" text in the issues section
+        const buttons = Context.dom.queryAll('button', {
+            root: modal,
+            context: `${this.id}.issueButtons`
+        });
+        
+        for (const button of buttons) {
+            const buttonText = button.textContent.trim();
+            if (buttonText === 'Grading') {
+                // Check if any ancestor contains "Where are the issues"
+                // (it's in a sibling div, not the immediate parent)
+                let ancestor = button.parentElement;
+                while (ancestor && ancestor !== modal) {
+                    const ancestorText = ancestor.textContent || '';
+                    if (ancestorText.includes('Where are the issues')) {
+                        return button;
+                    }
+                    ancestor = ancestor.parentElement;
+                }
+            }
+        }
+        return null;
+    },
+    
+    handleGradingIssuePaste(state, modal, modalId) {
+        // Find the Grading feedback textarea - it only exists when Grading is selected
+        const gradingFeedbackTextarea = Context.dom.query('textarea#feedback-Grading', {
+            root: modal,
+            context: `${this.id}.gradingFeedbackTextarea`
+        });
+        
+        if (!gradingFeedbackTextarea) {
+            Logger.debug('Grading feedback textarea not found yet, waiting...');
+            return; // Textarea doesn't exist yet (might appear slightly after button click)
+        }
+        
+        // Check if textarea already has content (trim to handle whitespace-only content)
+        const currentValue = gradingFeedbackTextarea.value ? gradingFeedbackTextarea.value.trim() : '';
+        if (currentValue.length > 0) {
+            Logger.debug(`Grading issue textarea already has content (${currentValue.length} chars), skipping paste`);
+            return; // Don't overwrite existing content
+        }
+        
+        if (!state.verifierOutput) {
+            Logger.warn('Verifier output not available for pasting');
+            return;
+        }
+        
+        Logger.log(`Pasting verifier output to Grading issue box (${state.verifierOutput.length} chars)`);
+        
+        // Apply the value using the same method that worked for workflow copy
+        // No dashes around the verifier output (unlike prompt)
+        this.applyTextareaValue(gradingFeedbackTextarea, state.verifierOutput);
+        
+        Logger.log('✓ Verifier output pasted to Grading issue box');
+    },
+    
+    cleanupGradingObservers(state) {
+        // Clean up all Grading button observers
+        for (const [modalId, observerInfo] of state.gradingObservers.entries()) {
+            if (observerInfo.observer) {
+                observerInfo.observer.disconnect();
+            }
+        }
+        state.gradingObservers.clear();
     },
     
     getReactFiber(element) {
