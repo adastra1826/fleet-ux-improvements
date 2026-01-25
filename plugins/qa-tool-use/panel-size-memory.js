@@ -13,12 +13,13 @@ const plugin = {
     id: 'qaPanelSizeMemory',
     name: 'Panel Size Memory',
     description: 'Persist and restore the main container split positions on QA Tool Use pages',
-    _version: '1.6',
+    _version: '1.7',
     enabledByDefault: true,
     phase: 'init',
     initialState: {
         installed: false,
-        applied: false,
+        outerApplied: false,
+        innerApplied: false,
         saveTimeoutId: null
     },
     storageKeys: {
@@ -51,29 +52,32 @@ const plugin = {
             attempts++;
             const panels = this.getPanels();
 
-            // Need ALL panels: outer panels AND inner panels (tools/workflow)
             const hasOuter = panels.outerLeft && panels.outerRight;
             const hasInner = panels.innerTools && panels.innerWorkflow;
             
-            if (hasOuter && hasInner) {
-                Logger.log(`All panels found on attempt ${attempts}`);
-                
-                // Apply saved sizes once
-                this.applySavedSizes(panels);
-                state.applied = true;
-                
-                // Set up watchers to save when sizes change
-                this.setupPanelWatchers(state, panels);
-                return;
+            // Phase 1: Apply outer split immediately when outer panels are found
+            if (hasOuter && !state.outerApplied) {
+                Logger.log(`Outer panels found on attempt ${attempts}`);
+                this.applyOuterSplit(panels);
+                this.setupPanelWatchers(state, { outerLeft: panels.outerLeft });
+                state.outerApplied = true;
             }
 
-            // If we have outer but not inner, keep waiting (inner panels load later)
-            if (hasOuter && !hasInner && attempts < maxAttempts) {
-                CleanupRegistry.registerTimeout(setTimeout(check, checkInterval));
-            } else if (!hasOuter && attempts < maxAttempts) {
-                CleanupRegistry.registerTimeout(setTimeout(check, checkInterval));
-            } else if (attempts >= maxAttempts) {
-                Logger.warn(`Panel Size Memory: missing panels after ${maxAttempts} attempts. outerLeft=${!!panels.outerLeft}, outerRight=${!!panels.outerRight}, innerTools=${!!panels.innerTools}, innerWorkflow=${!!panels.innerWorkflow}`);
+            // Phase 2: Apply inner split when inner panels appear
+            if (hasInner && !state.innerApplied) {
+                Logger.log(`Inner panels found on attempt ${attempts}`);
+                this.applyInnerSplit(panels);
+                this.setupPanelWatchers(state, { innerTools: panels.innerTools, innerWorkflow: panels.innerWorkflow });
+                state.innerApplied = true;
+            }
+
+            // Continue checking if we haven't found everything yet
+            if ((!hasOuter || !state.outerApplied) || (!hasInner || !state.innerApplied)) {
+                if (attempts < maxAttempts) {
+                    CleanupRegistry.registerTimeout(setTimeout(check, checkInterval));
+                } else {
+                    Logger.warn(`Panel Size Memory: missing panels after ${maxAttempts} attempts. outerLeft=${!!panels.outerLeft}, outerRight=${!!panels.outerRight}, innerTools=${!!panels.innerTools}, innerWorkflow=${!!panels.innerWorkflow}`);
+                }
             }
         };
 
@@ -99,6 +103,7 @@ const plugin = {
 
     setupPanelWatchers(state, panels) {
         // Watch each panel for data-panel-size changes
+        // Only watch panels that are provided (allows partial watching)
         const watchPanel = (panel, name) => {
             if (!panel) {
                 Logger.warn(`Cannot watch ${name} - panel not found`);
@@ -119,10 +124,13 @@ const plugin = {
             Logger.log(`Watching ${name} for size changes`);
         };
 
-        watchPanel(panels.outerLeft, 'outerLeft');
-        watchPanel(panels.innerTools, 'innerTools');
-        
-        // Also watch innerWorkflow to catch changes there too
+        // Watch only the panels that were provided
+        if (panels.outerLeft) {
+            watchPanel(panels.outerLeft, 'outerLeft');
+        }
+        if (panels.innerTools) {
+            watchPanel(panels.innerTools, 'innerTools');
+        }
         if (panels.innerWorkflow) {
             watchPanel(panels.innerWorkflow, 'innerWorkflow');
         }
@@ -140,13 +148,9 @@ const plugin = {
         }, 500);
     },
 
-    applySavedSizes(panels) {
+    applyOuterSplit(panels) {
         const savedOuterLeft = Storage.get(this.storageKeys.outerLeft, null);
-        const savedInnerTools = Storage.get(this.storageKeys.innerTools, null);
 
-        Logger.log(`Restoring: outerLeft=${savedOuterLeft}, innerTools=${savedInnerTools}`);
-
-        // Apply outer split
         if (savedOuterLeft != null && panels.outerLeft && panels.outerRight) {
             const outerRight = 100 - savedOuterLeft;
 
@@ -156,10 +160,15 @@ const plugin = {
             panels.outerRight.style.flex = `${outerRight} 1 0px`;
             panels.outerRight.setAttribute('data-panel-size', outerRight.toString());
 
-            Logger.log(`✓ Applied outer: ${savedOuterLeft} / ${outerRight}`);
+            Logger.log(`✓ Applied outer split: ${savedOuterLeft} / ${outerRight}`);
+        } else {
+            Logger.log(`No saved outer split to apply (saved=${savedOuterLeft}, panels=${!!panels.outerLeft && !!panels.outerRight})`);
         }
+    },
 
-        // Apply inner split
+    applyInnerSplit(panels) {
+        const savedInnerTools = Storage.get(this.storageKeys.innerTools, null);
+
         if (savedInnerTools != null && panels.innerTools && panels.innerWorkflow) {
             const innerWorkflow = 100 - savedInnerTools;
 
@@ -169,7 +178,9 @@ const plugin = {
             panels.innerWorkflow.style.flex = `${innerWorkflow} 1 0px`;
             panels.innerWorkflow.setAttribute('data-panel-size', innerWorkflow.toString());
 
-            Logger.log(`✓ Applied inner: ${savedInnerTools} / ${innerWorkflow}`);
+            Logger.log(`✓ Applied inner split: ${savedInnerTools} / ${innerWorkflow}`);
+        } else {
+            Logger.log(`No saved inner split to apply (saved=${savedInnerTools}, panels=${!!panels.innerTools && !!panels.innerWorkflow})`);
         }
     },
 
