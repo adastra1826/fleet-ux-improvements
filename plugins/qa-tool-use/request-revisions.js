@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.0',
+    _version: '2.1',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -16,18 +16,38 @@ const plugin = {
             name: 'Auto-copy workflow to "What did you try?"',
             description: 'Automatically copies workflow steps to the "What did you try?" field when the modal opens',
             enabledByDefault: true
+        },
+        {
+            id: 'auto-paste-prompt-to-task',
+            name: 'Auto-paste prompt to Task issue',
+            description: 'Saves the prompt text on page load and automatically pastes it into the Task issue box when Task is selected',
+            enabledByDefault: true
         }
     ],
     
     initialState: {
         processedModals: new Set(),
-        missingLogged: false
+        missingLogged: false,
+        promptText: null,
+        promptSaved: false,
+        taskIssueProcessed: new Set() // Track which modals have had Task issue processed
     },
     
     onMutation(state, context) {
         // Ensure processedModals Set exists
         if (!state.processedModals || !(state.processedModals instanceof Set)) {
             state.processedModals = new Set();
+        }
+        
+        // Ensure taskIssueProcessed Set exists
+        if (!state.taskIssueProcessed || !(state.taskIssueProcessed instanceof Set)) {
+            state.taskIssueProcessed = new Set();
+        }
+        
+        // Save prompt text if not already saved and the feature is enabled
+        const autoPastePromptEnabled = Storage.getSubOptionEnabled(this.id, 'auto-paste-prompt-to-task', true);
+        if (autoPastePromptEnabled && !state.promptSaved) {
+            this.savePromptText(state);
         }
         
         // Look for the Request Revisions modal
@@ -39,6 +59,9 @@ const plugin = {
             // Reset processed set when no dialogs are open
             if (state.processedModals.size > 0) {
                 state.processedModals.clear();
+            }
+            if (state.taskIssueProcessed.size > 0) {
+                state.taskIssueProcessed.clear();
             }
             return;
         }
@@ -69,35 +92,34 @@ const plugin = {
         
         // Get modal ID to track if we've already processed it
         const modalId = requestRevisionsModal.id;
-        if (state.processedModals.has(modalId)) {
-            return; // Already processed this modal instance
+        
+        // Handle workflow copy (only once per modal)
+        if (!state.processedModals.has(modalId)) {
+            const autoCopyEnabled = Storage.getSubOptionEnabled(this.id, 'auto-copy-workflow', true);
+            if (autoCopyEnabled) {
+                // Find the "Copy Workflow" button
+                const copyWorkflowButton = this.findCopyWorkflowButton(requestRevisionsModal);
+                if (copyWorkflowButton) {
+                    // Find the "What did you try?" textarea
+                    const attemptedActionsTextarea = this.findAttemptedActionsTextarea(requestRevisionsModal);
+                    if (attemptedActionsTextarea) {
+                        // Mark this modal as processed for workflow copy
+                        state.processedModals.add(modalId);
+                        
+                        // Click the button and paste into textarea
+                        this.handleAutoCopy(state, copyWorkflowButton, attemptedActionsTextarea);
+                    }
+                }
+            } else {
+                // Mark as processed even if feature is disabled, to avoid repeated checks
+                state.processedModals.add(modalId);
+            }
         }
         
-        // Check if auto-copy-workflow sub-option is enabled
-        const autoCopyEnabled = Storage.getSubOptionEnabled(this.id, 'auto-copy-workflow', true);
-        if (!autoCopyEnabled) {
-            return;
+        // Handle Task issue prompt pasting (check continuously, not just once)
+        if (autoPastePromptEnabled && state.promptText) {
+            this.handleTaskIssuePaste(state, requestRevisionsModal, modalId);
         }
-        
-        // Find the "Copy Workflow" button
-        const copyWorkflowButton = this.findCopyWorkflowButton(requestRevisionsModal);
-        if (!copyWorkflowButton) {
-            // Button doesn't exist (no workflow steps), which is fine
-            return;
-        }
-        
-        // Find the "What did you try?" textarea
-        const attemptedActionsTextarea = this.findAttemptedActionsTextarea(requestRevisionsModal);
-        if (!attemptedActionsTextarea) {
-            Logger.warn('Copy Workflow button found but "What did you try?" textarea not found');
-            return;
-        }
-        
-        // Mark this modal as processed
-        state.processedModals.add(modalId);
-        
-        // Click the button and paste into textarea
-        this.handleAutoCopy(state, copyWorkflowButton, attemptedActionsTextarea);
     },
     
     findCopyWorkflowButton(modal) {
@@ -243,6 +265,92 @@ const plugin = {
         // Blur and refocus to ensure React processes the change
         textarea.blur();
         textarea.focus();
+    },
+    
+    savePromptText(state) {
+        // Find the prompt text element
+        const promptElement = Context.dom.query('[id="\\:re\\:"] > div > div.flex-1.flex.flex-col.min-h-0.w-full.h-full.p-3 > div > div > div:nth-child(2) > div.text-sm.whitespace-pre-wrap', {
+            context: `${this.id}.promptElement`
+        });
+        
+        if (promptElement) {
+            state.promptText = promptElement.textContent.trim();
+            state.promptSaved = true;
+            Logger.log(`✓ Prompt text saved (${state.promptText.length} chars)`);
+        }
+    },
+    
+    handleTaskIssuePaste(state, modal, modalId) {
+        // Check if we've already processed Task issue for this modal
+        if (state.taskIssueProcessed.has(modalId)) {
+            return;
+        }
+        
+        // Find the Task issue button
+        const taskButton = this.findTaskIssueButton(modal);
+        if (!taskButton) {
+            return;
+        }
+        
+        // Check if Task button is selected (has border-brand class or similar indicator)
+        const isTaskSelected = taskButton.classList.contains('border-brand') || 
+                              taskButton.querySelector('.border-brand') !== null ||
+                              taskButton.classList.contains('bg-brand') ||
+                              taskButton.querySelector('.bg-brand') !== null;
+        
+        if (!isTaskSelected) {
+            return; // Task is not selected yet
+        }
+        
+        // Find the Task feedback textarea
+        const taskFeedbackTextarea = Context.dom.query('textarea#feedback-Task', {
+            root: modal,
+            context: `${this.id}.taskFeedbackTextarea`
+        });
+        
+        if (!taskFeedbackTextarea) {
+            return; // Textarea doesn't exist yet (might appear after selection)
+        }
+        
+        // Check if textarea already has content
+        if (taskFeedbackTextarea.value && taskFeedbackTextarea.value.trim().length > 0) {
+            return; // Don't overwrite existing content
+        }
+        
+        // Format the prompt text
+        const formattedPrompt = `---\n${state.promptText}\n---`;
+        
+        // Apply the value using the same method that worked for workflow copy
+        this.applyTextareaValue(taskFeedbackTextarea, formattedPrompt);
+        
+        // Mark as processed for this modal
+        state.taskIssueProcessed.add(modalId);
+        
+        Logger.log('✓ Prompt text pasted to Task issue box');
+    },
+    
+    findTaskIssueButton(modal) {
+        // Find buttons in the "Where are the issues?" section
+        // Look for button containing "Task" text
+        const buttons = Context.dom.queryAll('button', {
+            root: modal,
+            context: `${this.id}.issueButtons`
+        });
+        
+        for (const button of buttons) {
+            const buttonText = button.textContent.trim();
+            if (buttonText === 'Task') {
+                // Verify it's in the issues section by checking for nearby text
+                const parent = button.closest('div');
+                if (parent) {
+                    const parentText = parent.textContent || '';
+                    if (parentText.includes('Where are the issues')) {
+                        return button;
+                    }
+                }
+            }
+        }
+        return null;
     },
     
     getReactFiber(element) {
