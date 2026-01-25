@@ -5,21 +5,21 @@
 // - Outer split:  [id=":re:"] (left)  <->  [id=":rh:"] (right)
 // - Inner split:  [id=":rp:"] (tools) <->  [id=":rs:"] (workflow)
 //
-// Approach (mirrors layout-manager.js):
+// Approach:
 // 1. Apply saved sizes ONCE when panels first appear
-// 2. Save sizes only when user finishes resizing (mouseup)
-// 3. Never re-apply or fight React's panel library during interaction
+// 2. Watch panel elements for attribute changes and save (debounced)
+// 3. Never re-apply after init - this avoids fighting React
 const plugin = {
     id: 'qaPanelSizeMemory',
     name: 'Panel Size Memory',
     description: 'Persist and restore the main container split positions on QA Tool Use pages',
-    _version: '1.4',
+    _version: '1.5',
     enabledByDefault: true,
     phase: 'init',
     initialState: {
         installed: false,
         applied: false,
-        isResizing: false
+        saveTimeoutId: null
     },
     storageKeys: {
         outerLeft: 'qa-panel-outer-left',
@@ -29,48 +29,17 @@ const plugin = {
         outerLeftPanel: '[id=":re:"][data-panel]',
         outerRightPanel: '[id=":rh:"][data-panel]',
         innerToolsPanel: '[id=":rp:"][data-panel]',
-        innerWorkflowPanel: '[id=":rs:"][data-panel]',
-        resizeHandle: '[data-resize-handle]'
+        innerWorkflowPanel: '[id=":rs:"][data-panel]'
     },
 
     init(state, context) {
         if (state.installed) return;
         state.installed = true;
 
-        // Track resize start - check if target or any ancestor is a resize handle
-        CleanupRegistry.registerEventListener(
-            document,
-            'mousedown',
-            (e) => {
-                const target = e.target;
-                // Check if target itself or an ancestor has data-resize-handle attribute
-                const handle = target.closest ? target.closest('[data-resize-handle]') : null;
-                if (handle) {
-                    state.isResizing = true;
-                    Logger.log('Panel resize started');
-                }
-            },
-            { capture: true }
-        );
-
-        // Save sizes when resize ends
-        CleanupRegistry.registerEventListener(
-            document,
-            'mouseup',
-            () => {
-                if (state.isResizing) {
-                    state.isResizing = false;
-                    this.saveCurrentSizes();
-                    Logger.log('Panel resize ended, sizes saved');
-                }
-            },
-            { capture: true }
-        );
-
-        // Wait for panels to appear, then apply saved sizes once
+        // Wait for panels to appear, then apply saved sizes once and set up watchers
         this.waitForPanelsAndApply(state);
 
-        Logger.log('✓ QA Panel Size Memory initialized');
+        Logger.log('✓ Panel Size Memory initialized');
     },
 
     waitForPanelsAndApply(state) {
@@ -82,17 +51,23 @@ const plugin = {
             attempts++;
             const panels = this.getPanels();
 
+            // Need at least the outer panels to proceed
             if (panels.outerLeft && panels.outerRight) {
-                // Panels found - apply saved sizes once
+                Logger.log(`Panels found on attempt ${attempts}`);
+                
+                // Apply saved sizes once
                 this.applySavedSizes(panels);
                 state.applied = true;
+                
+                // Set up watchers to save when sizes change
+                this.setupPanelWatchers(state, panels);
                 return;
             }
 
             if (attempts < maxAttempts) {
                 CleanupRegistry.registerTimeout(setTimeout(check, checkInterval));
             } else {
-                Logger.debug('QA Panel Size Memory: panels not found after max attempts');
+                Logger.warn('Panel Size Memory: panels not found after max attempts');
             }
         };
 
@@ -116,13 +91,48 @@ const plugin = {
         };
     },
 
+    setupPanelWatchers(state, panels) {
+        // Watch each panel for data-panel-size changes
+        const watchPanel = (panel, name) => {
+            if (!panel) return;
+            
+            const observer = new MutationObserver(() => {
+                // Debounce saves
+                this.scheduleSave(state);
+            });
+            
+            CleanupRegistry.registerObserver(observer);
+            observer.observe(panel, {
+                attributes: true,
+                attributeFilter: ['data-panel-size']
+            });
+            
+            Logger.log(`Watching ${name} for size changes`);
+        };
+
+        watchPanel(panels.outerLeft, 'outerLeft');
+        watchPanel(panels.innerTools, 'innerTools');
+    },
+
+    scheduleSave(state) {
+        // Debounce: wait 500ms after last change before saving
+        if (state.saveTimeoutId) {
+            clearTimeout(state.saveTimeoutId);
+        }
+        
+        state.saveTimeoutId = setTimeout(() => {
+            state.saveTimeoutId = null;
+            this.saveCurrentSizes();
+        }, 500);
+    },
+
     applySavedSizes(panels) {
         const savedOuterLeft = Storage.get(this.storageKeys.outerLeft, null);
         const savedInnerTools = Storage.get(this.storageKeys.innerTools, null);
 
-        Logger.log(`Restoring saved sizes: outerLeft=${savedOuterLeft}, innerTools=${savedInnerTools}`);
+        Logger.log(`Restoring: outerLeft=${savedOuterLeft}, innerTools=${savedInnerTools}`);
 
-        // Apply outer split (left panel size determines right)
+        // Apply outer split
         if (savedOuterLeft != null && panels.outerLeft && panels.outerRight) {
             const outerRight = 100 - savedOuterLeft;
 
@@ -132,10 +142,10 @@ const plugin = {
             panels.outerRight.style.flex = `${outerRight} 1 0px`;
             panels.outerRight.setAttribute('data-panel-size', outerRight.toString());
 
-            Logger.log(`✓ Applied outer split: ${savedOuterLeft} / ${outerRight}`);
+            Logger.log(`✓ Applied outer: ${savedOuterLeft} / ${outerRight}`);
         }
 
-        // Apply inner split (tools panel size determines workflow)
+        // Apply inner split
         if (savedInnerTools != null && panels.innerTools && panels.innerWorkflow) {
             const innerWorkflow = 100 - savedInnerTools;
 
@@ -145,48 +155,35 @@ const plugin = {
             panels.innerWorkflow.style.flex = `${innerWorkflow} 1 0px`;
             panels.innerWorkflow.setAttribute('data-panel-size', innerWorkflow.toString());
 
-            Logger.log(`✓ Applied inner split: ${savedInnerTools} / ${innerWorkflow}`);
+            Logger.log(`✓ Applied inner: ${savedInnerTools} / ${innerWorkflow}`);
         }
     },
 
     saveCurrentSizes() {
         const panels = this.getPanels();
-        let savedOuter = null;
-        let savedInner = null;
+        
+        const outerLeft = panels.outerLeft ? this.readPanelSize(panels.outerLeft) : null;
+        const innerTools = panels.innerTools ? this.readPanelSize(panels.innerTools) : null;
 
-        // Save outer left panel size
-        if (panels.outerLeft) {
-            const outerLeftSize = this.readPanelSize(panels.outerLeft);
-            if (outerLeftSize != null) {
-                Storage.set(this.storageKeys.outerLeft, outerLeftSize);
-                savedOuter = outerLeftSize;
-            }
+        if (outerLeft != null) {
+            Storage.set(this.storageKeys.outerLeft, outerLeft);
+        }
+        if (innerTools != null) {
+            Storage.set(this.storageKeys.innerTools, innerTools);
         }
 
-        // Save inner tools panel size
-        if (panels.innerTools) {
-            const innerToolsSize = this.readPanelSize(panels.innerTools);
-            if (innerToolsSize != null) {
-                Storage.set(this.storageKeys.innerTools, innerToolsSize);
-                savedInner = innerToolsSize;
-            }
-        }
-
-        Logger.log(`✓ Saved QA panel sizes: outerLeft=${savedOuter}, innerTools=${savedInner}`);
+        Logger.log(`✓ Saved: outerLeft=${outerLeft}, innerTools=${innerTools}`);
     },
 
     readPanelSize(panelEl) {
         if (!panelEl) return null;
 
-        // Prefer data-panel-size attribute (React panel library keeps this updated)
         const attr = panelEl.getAttribute('data-panel-size');
         if (attr != null && attr !== '') {
             const parsed = parseFloat(attr);
             if (Number.isFinite(parsed)) return parsed;
         }
 
-        // Fallback to flex style
-        const flex = panelEl.style && panelEl.style.flex ? parseFloat(panelEl.style.flex) : NaN;
-        return Number.isFinite(flex) ? flex : null;
+        return null;
     }
 };
