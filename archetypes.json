@@ -33,7 +33,7 @@
         },
         {
           "name": "global-tool-use/favorites.js",
-          "version": "3.1"
+          "version": "3.2"
         },
         {
           "name": "global-tool-use/expand-collapse-buttons.js",
@@ -61,7 +61,7 @@
         },
         {
           "name": "tool-use-task-creation/layout-manager.js",
-          "version": "1.2"
+          "version": "1.3"
         }
       ]
     },
