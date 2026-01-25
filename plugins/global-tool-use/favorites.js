@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools and workflow list',
-    _version: '3.1',
+    _version: '3.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -123,11 +123,13 @@ const plugin = {
             });
             
             if (titleSpan) {
-                const innerSpan = titleSpan.querySelector('span');
+                const innerSpan = this.getToolNameSpanFromTitle(titleSpan);
                 if (innerSpan) {
+                    star.style.marginRight = '6px';
                     titleSpan.insertBefore(star, innerSpan);
                     titleSpan.style.display = 'inline-flex';
                     titleSpan.style.alignItems = 'center';
+                    titleSpan.style.gap = '6px';
                     return;
                 }
             }
@@ -148,11 +150,28 @@ const plugin = {
     },
 
     getToolNameFromHeader(header) {
-        const nameSpan = Context.dom.query('span:not(.favorite-star)', {
+        const titleSpan = Context.dom.query(this.selectors.toolTitleSpan, {
+            root: header,
+            context: `${this.id}.toolTitleSpan`
+        });
+        if (titleSpan) {
+            const nameSpan = this.getToolNameSpanFromTitle(titleSpan);
+            const text = nameSpan?.textContent?.trim();
+            if (text) return text;
+        }
+
+        const fallbackSpan = Context.dom.query('span:not(.favorite-star)', {
             root: header,
             context: `${this.id}.toolName`
         });
-        return nameSpan?.textContent?.trim() || null;
+        return fallbackSpan?.textContent?.trim() || null;
+    },
+
+    getToolNameSpanFromTitle(titleSpan) {
+        return titleSpan.querySelector('span span:nth-child(2) span')
+            || titleSpan.querySelector('span span span')
+            || titleSpan.querySelector('span span')
+            || titleSpan.querySelector('span');
     },
 
     createStarElement(toolName, favoriteTools, { inline = false, tagName = 'span' } = {}) {
