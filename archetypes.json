@@ -107,7 +107,7 @@
         },
         {
           "name": "request-revisions.js",
-          "version": "2.1"
+          "version": "2.2"
         }
       ]
     },
@@ -124,7 +124,7 @@
         },
         {
           "name": "request-revisions.js",
-          "version": "2.1"
+          "version": "2.2"
         }
       ]
     }

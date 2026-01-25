@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.1',
+    _version: '2.2',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -283,42 +283,41 @@ const plugin = {
     handleTaskIssuePaste(state, modal, modalId) {
         // Check if we've already processed Task issue for this modal
         if (state.taskIssueProcessed.has(modalId)) {
+            Logger.debug('Task issue already processed for this modal');
             return;
         }
         
-        // Find the Task issue button
-        const taskButton = this.findTaskIssueButton(modal);
-        if (!taskButton) {
-            return;
-        }
-        
-        // Check if Task button is selected (has border-brand class or similar indicator)
-        const isTaskSelected = taskButton.classList.contains('border-brand') || 
-                              taskButton.querySelector('.border-brand') !== null ||
-                              taskButton.classList.contains('bg-brand') ||
-                              taskButton.querySelector('.bg-brand') !== null;
-        
-        if (!isTaskSelected) {
-            return; // Task is not selected yet
-        }
-        
-        // Find the Task feedback textarea
+        // Find the Task feedback textarea - it only exists when Task is selected
         const taskFeedbackTextarea = Context.dom.query('textarea#feedback-Task', {
             root: modal,
             context: `${this.id}.taskFeedbackTextarea`
         });
         
         if (!taskFeedbackTextarea) {
-            return; // Textarea doesn't exist yet (might appear after selection)
+            Logger.debug('Task feedback textarea not found (Task not selected yet)');
+            return; // Textarea doesn't exist yet (Task is not selected)
         }
         
-        // Check if textarea already has content
-        if (taskFeedbackTextarea.value && taskFeedbackTextarea.value.trim().length > 0) {
+        Logger.debug(`Found Task feedback textarea, current value length: ${taskFeedbackTextarea.value ? taskFeedbackTextarea.value.length : 0}`);
+        
+        // Check if textarea already has content (trim to handle whitespace-only content)
+        const currentValue = taskFeedbackTextarea.value ? taskFeedbackTextarea.value.trim() : '';
+        if (currentValue.length > 0) {
+            Logger.debug(`Task issue textarea already has content (${currentValue.length} chars), skipping paste`);
+            // Mark as processed even if we skip, so we don't keep checking
+            state.taskIssueProcessed.add(modalId);
             return; // Don't overwrite existing content
+        }
+        
+        if (!state.promptText) {
+            Logger.warn('Prompt text not available for pasting');
+            return;
         }
         
         // Format the prompt text
         const formattedPrompt = `---\n${state.promptText}\n---`;
+        
+        Logger.log(`Pasting prompt text to Task issue box (${formattedPrompt.length} chars)`);
         
         // Apply the value using the same method that worked for workflow copy
         this.applyTextareaValue(taskFeedbackTextarea, formattedPrompt);
@@ -327,30 +326,6 @@ const plugin = {
         state.taskIssueProcessed.add(modalId);
         
         Logger.log('✓ Prompt text pasted to Task issue box');
-    },
-    
-    findTaskIssueButton(modal) {
-        // Find buttons in the "Where are the issues?" section
-        // Look for button containing "Task" text
-        const buttons = Context.dom.queryAll('button', {
-            root: modal,
-            context: `${this.id}.issueButtons`
-        });
-        
-        for (const button of buttons) {
-            const buttonText = button.textContent.trim();
-            if (buttonText === 'Task') {
-                // Verify it's in the issues section by checking for nearby text
-                const parent = button.closest('div');
-                if (parent) {
-                    const parentText = parent.textContent || '';
-                    if (parentText.includes('Where are the issues')) {
-                        return button;
-                    }
-                }
-            }
-        }
-        return null;
     },
     
     getReactFiber(element) {
