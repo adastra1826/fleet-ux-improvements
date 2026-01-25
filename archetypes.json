@@ -107,6 +107,19 @@
           "version": "1.2"
         }
       ]
+    },
+    {
+      "id": "qa-comp-use",
+      "name": "Computer Use Task Creation Page" ,
+      "description": "Page for  reviewing and approving tasks",
+      "urlPattern": "work/problems/qa/*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "global/bug-report-expand.js",
+          "version": "1.2"
+        }
+      ]
     }
   ]
 }
