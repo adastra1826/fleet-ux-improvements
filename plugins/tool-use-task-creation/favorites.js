@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools list',
-    _version: '3.6',
+    _version: '3.7',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false, containerSelector: null },
