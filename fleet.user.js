@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1
+// @version      3.3.2
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -27,7 +27,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.3.1';
+    const VERSION = '3.3.2';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -571,6 +571,8 @@
             const timestamp = Date.now();
             const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.archetypesPath}?t=${timestamp}`;
             
+            Logger.debug(`🔍 Fetching archetypes from branch: ${GITHUB_CONFIG.branch} (${url})`);
+            
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
@@ -587,7 +589,7 @@
                                 this.archetypes = config.archetypes || [];
                                 this.corePlugins = config.corePlugins || [];
                                 this.devPlugins = config.devPlugins || [];
-                                Logger.log(`✓ Loaded ${this.archetypes.length} archetypes`);
+                                Logger.log(`✓ Loaded ${this.archetypes.length} archetypes from branch: ${GITHUB_CONFIG.branch}`);
                                 resolve(config);
                             } catch (e) {
                                 Logger.error('Failed to parse archetypes config:', e);
