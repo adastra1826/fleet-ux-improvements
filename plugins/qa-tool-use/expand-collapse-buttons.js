@@ -3,40 +3,63 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '2.1',
+    _version: '2.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
     
-    // Find panel by ID pattern (data-panel-id like :r1b:)
+    // Find panel by ID pattern (like :rd:, :rs:, etc.)
     findPanel() {
-        // Strategy 1: Find by data-panel-id attribute pattern
-        const panels = document.querySelectorAll('[data-panel-id]');
-        Logger.debug(`[${this.id}] Searching for panel: found ${panels.length} elements with data-panel-id`);
+        const idPattern = /^:[a-zA-Z0-9]+:$/;
+        
+        // Strategy 0: Direct ID lookup for known common IDs
+        const commonIds = [':rd:', ':rs:', ':r1b:', ':rp:'];
+        for (const testId of commonIds) {
+            const panel = document.getElementById(testId) || document.querySelector(`[id="${testId}"]`);
+            if (panel) {
+                const hasWorkflowText = Array.from(panel.querySelectorAll('*')).some(el => 
+                    el.textContent && el.textContent.trim() === 'Workflow'
+                );
+                if (hasWorkflowText) {
+                    const panelId = panel.getAttribute('id');
+                    const dataPanel = panel.getAttribute('data-panel');
+                    const dataPanelId = panel.getAttribute('data-panel-id');
+                    Logger.log(`✓ [${this.id}] Found panel via Strategy 0 (direct ID): id="${panelId}", data-panel="${dataPanel}", data-panel-id="${dataPanelId}"`);
+                    return panel;
+                } else {
+                    Logger.debug(`[${this.id}] Panel with id="${testId}" found but lacks "Workflow" text`);
+                }
+            }
+        }
+        
+        // Strategy 1: Find by data-panel attribute (matching other plugins like panel-size-memory.js)
+        const panels = document.querySelectorAll('[data-panel]');
+        Logger.debug(`[${this.id}] Strategy 0 failed, trying Strategy 1: found ${panels.length} elements with data-panel`);
         
         for (const panel of panels) {
-            const panelId = panel.getAttribute('data-panel-id');
-            Logger.debug(`[${this.id}] Checking panel with data-panel-id="${panelId}"`);
+            const panelId = panel.getAttribute('id');
+            const dataPanel = panel.getAttribute('data-panel');
+            Logger.debug(`[${this.id}] Checking panel with id="${panelId}", data-panel="${dataPanel}"`);
             
             // Check if ID matches pattern (starts with : and contains alphanumeric)
-            if (panelId && /^:[a-zA-Z0-9]+:$/.test(panelId)) {
+            if (panelId && idPattern.test(panelId)) {
                 // Verify it has the workflow structure by checking for "Workflow" text
                 const hasWorkflowText = Array.from(panel.querySelectorAll('*')).some(el => 
                     el.textContent && el.textContent.trim() === 'Workflow'
                 );
                 if (hasWorkflowText) {
-                    Logger.debug(`[${this.id}] Found panel with ID pattern and "Workflow" text: ${panelId}`);
+                    const dataPanelId = panel.getAttribute('data-panel-id');
+                    Logger.log(`✓ [${this.id}] Found panel via Strategy 1 (data-panel): id="${panelId}", data-panel="${dataPanel}", data-panel-id="${dataPanelId}"`);
                     return panel;
                 } else {
                     Logger.debug(`[${this.id}] Panel ${panelId} matched ID pattern but lacks "Workflow" text`);
                 }
             } else {
-                Logger.debug(`[${this.id}] Panel ${panelId} does not match ID pattern /^:[a-zA-Z0-9]+:$/`);
+                Logger.debug(`[${this.id}] Panel id="${panelId}" does not match ID pattern /^:[a-zA-Z0-9]+:$/`);
             }
         }
         
-        // Strategy 2: Find by ID pattern directly
-        const idPattern = /^:[a-zA-Z0-9]+:$/;
+        // Strategy 2: Find by ID pattern directly with data-panel attribute
         const allElements = document.querySelectorAll('[id]');
         Logger.debug(`[${this.id}] Strategy 1 failed, trying Strategy 2: checking ${allElements.length} elements with [id]`);
         
@@ -47,13 +70,31 @@ const plugin = {
                     inner.textContent && inner.textContent.trim() === 'Workflow'
                 );
                 if (hasWorkflowText) {
-                    Logger.debug(`[${this.id}] Found panel via Strategy 2: id="${id}"`);
+                    const dataPanel = el.getAttribute('data-panel');
+                    Logger.log(`✓ [${this.id}] Found panel via Strategy 2 (id + data-panel): id="${id}", data-panel="${dataPanel}"`);
                     return el;
                 }
             }
         }
         
-        Logger.log(`⚠ [${this.id}] Panel not found: Tried ${panels.length} elements with data-panel-id, ${allElements.length} elements with [id]. None matched ID pattern with "Workflow" text.`);
+        // Strategy 3: Fallback - any element with matching ID pattern that contains "Workflow" text
+        Logger.debug(`[${this.id}] Strategy 2 failed, trying Strategy 3: checking all elements with matching ID pattern`);
+        for (const el of allElements) {
+            const id = el.getAttribute('id');
+            if (id && idPattern.test(id)) {
+                const hasWorkflowText = Array.from(el.querySelectorAll('*')).some(inner => 
+                    inner.textContent && inner.textContent.trim() === 'Workflow'
+                );
+                if (hasWorkflowText) {
+                    const dataPanel = el.getAttribute('data-panel');
+                    const dataPanelId = el.getAttribute('data-panel-id');
+                    Logger.log(`✓ [${this.id}] Found panel via Strategy 3 (fallback): id="${id}", data-panel="${dataPanel}", data-panel-id="${dataPanelId}"`);
+                    return el;
+                }
+            }
+        }
+        
+        Logger.log(`⚠ [${this.id}] Panel not found: Tried direct IDs (${commonIds.length}), ${panels.length} elements with data-panel, ${allElements.length} elements with [id]. None matched ID pattern with "Workflow" text.`);
         return null;
     },
     
@@ -64,12 +105,82 @@ const plugin = {
             return null;
         }
         
-        // Find the header bar with border-b and h-9 classes
-        const headerBar = panel.querySelector('.border-b.h-9');
+        // Strategy 1: Find element with both border-b and h-9 classes (CSS selector)
+        let headerBar = panel.querySelector('.border-b.h-9');
+        if (headerBar) {
+            Logger.debug(`[${this.id}] Found header bar via Strategy 1 (.border-b.h-9)`);
+        } else {
+            // Strategy 2: Find .border-b, then check if it has h-9 class
+            const borderB = Array.from(panel.querySelectorAll('.border-b'));
+            Logger.debug(`[${this.id}] Strategy 1 failed, trying Strategy 2: found ${borderB.length} .border-b elements`);
+            
+            for (const el of borderB) {
+                if (el.classList.contains('h-9')) {
+                    headerBar = el;
+                    Logger.debug(`[${this.id}] Found header bar via Strategy 2 (border-b with h-9 class)`);
+                    break;
+                }
+            }
+        }
+        
         if (!headerBar) {
+            // Strategy 3: Find element with both classes using classList.contains() check
+            const allElements = Array.from(panel.querySelectorAll('*'));
+            Logger.debug(`[${this.id}] Strategy 2 failed, trying Strategy 3: checking ${allElements.length} elements`);
+            
+            for (const el of allElements) {
+                if (el.classList.contains('border-b') && el.classList.contains('h-9')) {
+                    headerBar = el;
+                    Logger.debug(`[${this.id}] Found header bar via Strategy 3 (classList.contains check)`);
+                    break;
+                }
+            }
+        }
+        
+        if (!headerBar) {
+            // Strategy 4: Find by structure - look for header bar containing "Workflow" text, then verify classes
+            Logger.debug(`[${this.id}] Strategy 3 failed, trying Strategy 4: searching by structure`);
+            const allElements = Array.from(panel.querySelectorAll('*'));
+            for (const el of allElements) {
+                const hasWorkflow = Array.from(el.querySelectorAll('*')).some(inner => 
+                    inner.textContent && inner.textContent.trim() === 'Workflow'
+                );
+                if (hasWorkflow) {
+                    // Check if this element or a parent has the right classes
+                    let candidate = el;
+                    let depth = 0;
+                    while (candidate && candidate !== panel && depth < 5) {
+                        if (candidate.classList.contains('border-b') || candidate.classList.contains('h-9')) {
+                            // Check if it has both classes or is close to having both
+                            const hasBorderB = candidate.classList.contains('border-b');
+                            const hasH9 = candidate.classList.contains('h-9');
+                            if (hasBorderB && hasH9) {
+                                headerBar = candidate;
+                                Logger.debug(`[${this.id}] Found header bar via Strategy 4 (structure search) at depth ${depth}`);
+                                break;
+                            }
+                        }
+                        candidate = candidate.parentElement;
+                        depth++;
+                    }
+                    if (headerBar) break;
+                }
+            }
+        }
+        
+        if (!headerBar) {
+            // Log diagnostic information
             const borderB = panel.querySelectorAll('.border-b');
             const h9 = panel.querySelectorAll('.h-9');
-            Logger.log(`⚠ [${this.id}] Toolbar header not found: Found ${borderB.length} .border-b elements, ${h9.length} .h-9 elements, but none with both classes`);
+            const borderBClasses = Array.from(borderB).slice(0, 3).map(el => {
+                const classes = Array.from(el.classList).join(' ');
+                return `[${classes.substring(0, 100)}]`;
+            });
+            const h9Classes = Array.from(h9).slice(0, 3).map(el => {
+                const classes = Array.from(el.classList).join(' ');
+                return `[${classes.substring(0, 100)}]`;
+            });
+            Logger.log(`⚠ [${this.id}] Toolbar header not found after all strategies: Found ${borderB.length} .border-b elements, ${h9.length} .h-9 elements. Sample .border-b classes: ${borderBClasses.join(', ')}. Sample .h-9 classes: ${h9Classes.join(', ')}`);
             return null;
         }
         
@@ -82,14 +193,15 @@ const plugin = {
             btn.textContent && btn.textContent.trim().includes('Clear')
         );
         
-        Logger.debug(`[${this.id}] Header bar found: hasWorkflow=${hasWorkflow}, hasClear=${hasClear}, buttons=${buttons.length}`);
+        const headerClasses = Array.from(headerBar.classList).join(' ');
+        Logger.debug(`[${this.id}] Header bar found: hasWorkflow=${hasWorkflow}, hasClear=${hasClear}, buttons=${buttons.length}, classes="${headerClasses.substring(0, 150)}"`);
         
         if (hasWorkflow && hasClear) {
             return headerBar;
         }
         
         const buttonTexts = buttons.map(btn => btn.textContent.trim()).filter(t => t);
-        Logger.log(`⚠ [${this.id}] Toolbar header found but validation failed: hasWorkflow=${hasWorkflow}, hasClear=${hasClear}, button texts=[${buttonTexts.join(', ')}]`);
+        Logger.log(`⚠ [${this.id}] Toolbar header found but validation failed: hasWorkflow=${hasWorkflow}, hasClear=${hasClear}, button texts=[${buttonTexts.join(', ')}], classes="${headerClasses.substring(0, 150)}"`);
         return null;
     },
     
@@ -187,7 +299,7 @@ const plugin = {
         const panel = this.findPanel();
         if (!panel) {
             if (!state.missingLogged) {
-                Logger.log(`⚠ [${this.id}] Plugin cannot run: Panel not found. This plugin requires a panel with data-panel-id matching pattern /^:[a-zA-Z0-9]+:$/ and containing "Workflow" text.`);
+                Logger.log(`⚠ [${this.id}] Plugin cannot run: Panel not found. Tried direct ID lookup, [data-panel] attribute, [id] with data-panel, and fallback pattern matching. Panel must have id matching /^:[a-zA-Z0-9]+:$/ and contain "Workflow" text.`);
                 state.missingLogged = true;
             }
             return;
@@ -197,7 +309,7 @@ const plugin = {
         const headerBar = this.findToolbarHeader(panel);
         if (!headerBar) {
             if (!state.missingLogged) {
-                Logger.log(`⚠ [${this.id}] Plugin cannot run: Toolbar header not found. Panel found but header bar with .border-b.h-9 containing both "Workflow" text and "Clear" button is missing.`);
+                Logger.log(`⚠ [${this.id}] Plugin cannot run: Toolbar header not found. Panel found (id="${panel.getAttribute('id')}") but header bar with .border-b and .h-9 classes containing both "Workflow" text and "Clear" button is missing. Check logs above for diagnostic details.`);
                 state.missingLogged = true;
             }
             return;
