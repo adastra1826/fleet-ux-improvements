@@ -2,10 +2,11 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.2.1
+// @version      3.3.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
+// @match        https://fleetai.com/*
 // @icon         https://www.fleetai.com/favicon.ico
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -26,7 +27,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.2.1';
+    const VERSION = '3.3.0';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -123,14 +124,28 @@
     // ============= URL PATTERN MATCHER =============
     const UrlMatcher = {
         /**
+         * Normalize URL by removing www subdomain for consistent matching
+         * @param {string} url - The URL to normalize
+         * @returns {string} - Normalized URL without www
+         */
+        _normalizeUrl(url) {
+            return url.replace(/^https:\/\/www\./, 'https://');
+        },
+        
+        /**
          * Extract the path portion after the base URL
+         * Works with both www and non-www URLs
          * @param {string} fullUrl - The complete URL
          * @returns {string} - The path after BASE_URL
          */
         getPathFromUrl(fullUrl) {
-            if (fullUrl.startsWith(BASE_URL)) {
+            // Normalize both URLs to handle www/non-www variations
+            const normalizedBase = this._normalizeUrl(BASE_URL);
+            const normalizedUrl = this._normalizeUrl(fullUrl);
+            
+            if (normalizedUrl.startsWith(normalizedBase)) {
                 // Remove base URL and any query string/hash
-                let path = fullUrl.slice(BASE_URL.length);
+                let path = normalizedUrl.slice(normalizedBase.length);
                 path = path.split('?')[0].split('#')[0];
                 // Remove trailing slash for consistent matching
                 if (path.endsWith('/') && path.length > 1) {
