@@ -3,34 +3,48 @@ const plugin = {
     id: 'removeTextareaGradient',
     name: 'Remove Textarea Gradient',
     description: 'Removes the gradient fade overlay from the prompt textarea',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { removed: false, missingLogged: false, overlayMissingLogged: false },
     
-    // Plugin-specific selectors
-    selectors: {
-        promptTextareaContainer: '#\\:r7\\: > div.flex-shrink-0 > div > div.space-y-2.relative > div.relative > div'
-    },
-    
     onMutation(state, context) {
         if (state.removed) return;
 
-        const container = Context.dom.query(this.selectors.promptTextareaContainer, {
-            context: `${this.id}.promptTextareaContainer`
+        // Start from stable textarea ID (semantic approach)
+        const textarea = Context.dom.query('#prompt-editor', {
+            context: `${this.id}.promptTextarea`
         });
-        if (!container) {
+        if (!textarea) {
             if (!state.missingLogged) {
-                Logger.debug('Prompt textarea container not found for gradient removal');
+                Logger.debug('Prompt textarea not found for gradient removal');
                 state.missingLogged = true;
             }
             return;
         }
 
-        const gradientOverlay = Context.dom.query('div.bg-gradient-to-b', {
+        // Navigate to parent container
+        const container = textarea.parentElement;
+        if (!container) {
+            if (!state.missingLogged) {
+                Logger.debug('Textarea container not found for gradient removal');
+                state.missingLogged = true;
+            }
+            return;
+        }
+
+        // Find gradient overlay semantically: absolutely positioned div with gradient class
+        // that is a sibling of the textarea (or child of same container)
+        const gradientOverlay = Array.from(container.children).find(el => 
+            el.tagName === 'DIV' &&
+            el.classList.contains('bg-gradient-to-b') &&
+            el.classList.contains('absolute') &&
+            el.classList.contains('pointer-events-none')
+        ) || Context.dom.query('div.bg-gradient-to-b.absolute.pointer-events-none', {
             root: container,
             context: `${this.id}.gradientOverlay`
         });
+
         if (gradientOverlay) {
             gradientOverlay.style.background = 'none';
             gradientOverlay.style.pointerEvents = 'none';
