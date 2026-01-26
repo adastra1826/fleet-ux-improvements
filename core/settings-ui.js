@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '3.0',
+    _version: '3.1',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -50,7 +50,7 @@ const plugin = {
             height: 48px;
             border-radius: 50%;
             background: var(--background, white);
-            border: 1px solid var(--border, #e5e5e5);
+            border: 1px solid #fcd34d;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             display: flex;
             align-items: center;
