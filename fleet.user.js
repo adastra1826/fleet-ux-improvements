@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.3.2
+// @version      3.3.3
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -27,7 +27,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.3.2';
+    const VERSION = '3.3.3';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -1030,6 +1030,8 @@
                     continue;
                 }
                 
+                Logger.debug(`🔍 archetypes.json requests ${normalizedType} plugin ${filename} v${version}`);
+                
                 try {
                     const plugin = await loader(filename, version);
                     const loadedVersion = plugin._version || plugin.version || version;
@@ -1075,6 +1077,8 @@
                     Logger.error('Invalid plugin definition:', pluginDef);
                     continue;
                 }
+
+                Logger.debug(`🔍 archetypes.json requests archetype plugin ${filename} v${version} for ${archetypeId}`);
 
                 if (filename.includes('/')) {
                     Logger.error(
