@@ -3,16 +3,16 @@ const plugin = {
     id: 'layoutManager',
     name: 'Three Column Layout',
     description: 'Transforms the layout into three resizable columns with integrated notes',
-    _version: '1.4',
+    _version: '2.4',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false, missingLogged: false, structureMissingLogged: false },
     
-    // Plugin-specific selectors
+    // Plugin-specific selectors - using IDs first, with semantic fallbacks
     selectors: {
         mainContainer: 'body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > div.w-full.h-full.bg-background.rounded-sm.relative.flex.flex-col.min-w-0.overflow-hidden.border-\\[0\\.5px\\].shadow-\\[0_0_15px_rgba\\(0\\,0\\,0\\,0\\.05\\)\\] > div > div.flex-1.flex.overflow-hidden.min-h-0 > div',
-        leftColumn: '[id="\\:r7\\:"]',
-        workflowColumn: '[id="\\:re\\:"]'
+        leftColumn: '[id="\\:r6\\:"]',
+        workflowColumn: '[id="\\:rd\\:"]'
     },
     
     // Plugin-specific storage keys
@@ -44,16 +44,66 @@ const plugin = {
             return;
         }
 
-        const leftColumn = Context.dom.query(this.selectors.leftColumn, {
+        // Try to find left column by ID first, then fallback to semantic search
+        let leftColumn = Context.dom.query(this.selectors.leftColumn, {
             context: `${this.id}.leftColumn`
         });
+        
+        // Fallback: Find panel with data-panel-size around 30 (left panel)
+        if (!leftColumn && mainContainer) {
+            const panels = Array.from(mainContainer.children).filter(child => 
+                child.hasAttribute('data-panel') && child.hasAttribute('data-panel-size')
+            );
+            for (const panel of panels) {
+                const size = parseFloat(panel.getAttribute('data-panel-size'));
+                if (size >= 25 && size <= 35) {
+                    leftColumn = panel;
+                    break;
+                }
+            }
+        }
+        
+        // Fallback: Find first panel in horizontal group (direct child)
+        if (!leftColumn && mainContainer) {
+            const firstPanel = Array.from(mainContainer.children).find(child => 
+                child.hasAttribute('data-panel')
+            );
+            if (firstPanel) leftColumn = firstPanel;
+        }
+        
         const existingDivider = Context.dom.query('div[data-resize-handle]', {
             root: mainContainer,
             context: `${this.id}.existingDivider`
         });
-        const workflowColumn = Context.dom.query(this.selectors.workflowColumn, {
+        
+        // Try to find workflow column by ID first, then fallback to semantic search
+        let workflowColumn = Context.dom.query(this.selectors.workflowColumn, {
             context: `${this.id}.workflowColumn`
         });
+        
+        // Fallback: Find panel with data-panel-size around 70 (right panel)
+        if (!workflowColumn && mainContainer) {
+            const panels = Array.from(mainContainer.children).filter(child => 
+                child.hasAttribute('data-panel') && child.hasAttribute('data-panel-size')
+            );
+            for (const panel of panels) {
+                const size = parseFloat(panel.getAttribute('data-panel-size'));
+                if (size >= 60 && size <= 80) {
+                    workflowColumn = panel;
+                    break;
+                }
+            }
+        }
+        
+        // Fallback: Find last panel in horizontal group (direct child)
+        if (!workflowColumn && mainContainer) {
+            const panels = Array.from(mainContainer.children).filter(child => 
+                child.hasAttribute('data-panel')
+            );
+            if (panels.length >= 2) {
+                workflowColumn = panels[panels.length - 1];
+            }
+        }
 
         if (!leftColumn || !workflowColumn || !existingDivider) {
             if (!state.structureMissingLogged) {
@@ -77,7 +127,15 @@ const plugin = {
             return;
         }
 
-        const panelGroupId = mainContainer.getAttribute('data-panel-group-id') || ':r6:';
+        // Get panel group ID from main container (which is the panel group itself)
+        let panelGroupId = mainContainer.getAttribute('data-panel-group-id');
+        if (!panelGroupId && leftColumn) {
+            panelGroupId = leftColumn.getAttribute('data-panel-group-id');
+        }
+        if (!panelGroupId && workflowColumn) {
+            panelGroupId = workflowColumn.getAttribute('data-panel-group-id');
+        }
+        panelGroupId = panelGroupId || ':r5:';
         
         const preservedElements = {
             leftColumn: leftColumn.parentNode.removeChild(leftColumn),
