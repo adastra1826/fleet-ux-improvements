@@ -16,7 +16,32 @@ This script requires a userscript manager browser extension. **Tampermonkey** is
 - [Safari](https://apps.apple.com/app/tampermonkey/id1482490089)
 - [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
 
-### Step 2: Install the Script
+### Step 2: Enable Developer Mode (If Required)
+
+Some browsers require developer mode to be enabled and may prompt for Tampermonkey permissions. Follow the instructions for your browser:
+
+**Chrome:**
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Toggle **Developer mode** on (switch in the top-right corner)
+3. If Tampermonkey requires permissions, grant them here
+
+**Firefox:**
+- Firefox does not require developer mode for installing extensions from the official add-on store
+- If you need to install unsigned extensions, go to `about:config` and set `xpinstall.signatures.required` to `false` (not recommended for security reasons)
+
+**Microsoft Edge:**
+1. Open Edge and navigate to `edge://extensions/`
+2. Toggle **Developer mode** on (switch in the left sidebar)
+3. If Tampermonkey requires permissions, grant them here
+
+**Safari:**
+1. Open Safari and go to **Safari** → **Settings** (or **Preferences** on older versions)
+2. Click the **Advanced** tab
+3. Check the box for **Show Develop menu in menu bar**
+4. Go to **Develop** → **Allow Unsigned Extensions** (if needed)
+5. Note: Safari extensions must be installed from the Mac App Store or signed by a developer
+
+### Step 3: Install the Script
 
 **Option A: Direct Install (Recommended)**
 
@@ -33,7 +58,7 @@ Tampermonkey will open an installation prompt. Click **Install** to add the scri
 4. Copy the contents of `fleet.user.js` and paste it into the editor
 5. Press `Ctrl+S` (or `Cmd+S` on Mac) to save
 
-### Step 3: Grant Permissions
+### Step 4: Grant Permissions
 
 When you first visit a Fleet page with the script active, Tampermonkey may ask for additional permissions:
 
