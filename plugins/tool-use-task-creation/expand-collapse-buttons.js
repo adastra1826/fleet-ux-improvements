@@ -3,7 +3,7 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '2.8',
+    _version: '2.9',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonsAdded: false, panelId: null, missingLogged: false },
@@ -106,9 +106,10 @@ const plugin = {
             Logger.log('✓ Expand/Collapse buttons added to workflow toolbar');
         }
         
-        // Step 5: Show/hide buttons based on whether tools exist
-        const toolsArea = this.findToolsArea(panel);
-        const hasTools = toolsArea && toolsArea.children.length > 0;
+        // Step 5: Show/hide buttons based on whether Clear button container has children
+        // The buttonsContainer always exists, but only has children (the Clear button) when there are tools
+        const innerButtonsDiv = buttonsContainer.querySelector('div.flex.items-center.gap-2');
+        const hasTools = innerButtonsDiv && innerButtonsDiv.children.length > 0;
         buttonContainer.style.display = hasTools ? 'flex' : 'none';
         
         // Update state
