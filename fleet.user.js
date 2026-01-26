@@ -564,20 +564,22 @@
         corePlugins: [],
         devPlugins: [],
         currentArchetype: null,
-        _archetypesLoaded: false,
         
         async loadArchetypes() {
-            if (this._archetypesLoaded) {
-                Logger.debug('Archetypes already loaded, skipping fetch');
-                return { archetypes: this.archetypes };
-            }
-            
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.archetypesPath}`;
+            // Always fetch archetypes on every page load - never cache
+            // Add cache-busting timestamp to prevent browser-level caching
+            const timestamp = Date.now();
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.archetypesPath}?t=${timestamp}`;
             
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url: url,
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    },
                     onload: (response) => {
                         if (response.status === 200) {
                             try {
@@ -585,7 +587,6 @@
                                 this.archetypes = config.archetypes || [];
                                 this.corePlugins = config.corePlugins || [];
                                 this.devPlugins = config.devPlugins || [];
-                                this._archetypesLoaded = true;
                                 Logger.log(`✓ Loaded ${this.archetypes.length} archetypes`);
                                 resolve(config);
                             } catch (e) {
