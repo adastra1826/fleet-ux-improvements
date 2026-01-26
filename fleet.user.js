@@ -5,8 +5,8 @@
 // @version      3.2.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
-// @match        https://fleetai.com/*
-// @icon         https://fleetai.com/favicon.ico
+// @match        https://www.fleetai.com/*
+// @icon         https://www.fleetai.com/favicon.ico
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
@@ -31,7 +31,7 @@
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
     // Base URL that matches the @match pattern (without trailing wildcard)
-    const BASE_URL = 'https://fleetai.com/';
+    const BASE_URL = 'https://www.fleetai.com/';
     
     // GitHub repository configuration
     const GITHUB_CONFIG = {
