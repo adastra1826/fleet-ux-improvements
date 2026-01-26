@@ -5,16 +5,10 @@ const plugin = {
     id: 'sourceDataExplorer',
     name: 'Source Data Explorer',
     description: 'Add button that opens the underlying environment in a new tab. This is meant to be used as an additional way to explore the underlying data so you can build amazing prompts without having to parse the data in JSON format. This links to the actual instance that your tool calls are modifying. BE AWARE: if you make changes inside the instance, they will be reflected in your tool calls. Only use the tools to perform write actions, or you may run into unexpected problems when your submission is graded.',
-    _version: '2.6',
+    _version: '3.6',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { buttonAdded: false, missingLogged: false, interceptionInstalled: false },
-    
-    // Plugin-specific selectors
-    selectors: {
-        toolbar: 'body > div.group\\/sidebar-wrapper.flex.min-h-svh.w-full.has-\\[\\[data-variant\\=inset\\]\\]\\:bg-sidebar > main > div > div > div > div.w-full.h-full.bg-background.rounded-sm.relative.flex.flex-col.min-w-0.overflow-hidden.border-\\[0\\.5px\\].shadow-\\[0_0_15px_rgba\\(0\\,0\\,0\\,0\\.05\\)\\] > div > div.flex.items-center.gap-2.px-4.py-2.border-b',
-        flexSpacer: '.flex-1'
-    },
     
     onMutation(state, context) {
         if (!state.interceptionInstalled) {
@@ -23,22 +17,50 @@ const plugin = {
 
         if (state.buttonAdded) return;
         
-        const toolbar = Context.dom.query(this.selectors.toolbar, {
-            context: `${this.id}.toolbar`
-        });
+        // Find the button container using robust selectors
+        // Target: div.flex.gap-1.mr-0.ml-auto.items-center
+        let buttonContainer = null;
         
-        if (!toolbar) {
-            if (!state.missingLogged) {
-                Logger.debug('Toolbar not found for Source Data Explorer button');
-                state.missingLogged = true;
+        // Strategy 1: Find by class combination (flex, gap-1, ml-auto, items-center)
+        const candidates = document.querySelectorAll('div.flex.gap-1.ml-auto.items-center');
+        buttonContainer = Array.from(candidates).find(el => 
+            el.classList.contains('mr-0') || 
+            (el.classList.contains('flex') && 
+             el.classList.contains('gap-1') && 
+             el.classList.contains('items-center') &&
+             getComputedStyle(el).marginLeft === 'auto')
+        );
+        
+        // Strategy 2: Find by looking for container with Reset Instance button
+        if (!buttonContainer) {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const resetBtn = buttons.find(btn => {
+                const text = btn.textContent.trim();
+                return text === 'Reset Instance' || text.includes('Reset Instance');
+            });
+            if (resetBtn) {
+                buttonContainer = resetBtn.closest('div.flex.gap-1');
             }
-            return;
         }
-
-        const flexSpacer = toolbar.querySelector(this.selectors.flexSpacer);
-        if (!flexSpacer) {
+        
+        // Strategy 3: Find by looking for container with Save button
+        if (!buttonContainer) {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const saveBtn = buttons.find(btn => {
+                const text = btn.textContent.trim();
+                return text === 'Save';
+            });
+            if (saveBtn) {
+                const parent = saveBtn.parentElement;
+                if (parent && parent.classList.contains('flex') && parent.classList.contains('gap-1')) {
+                    buttonContainer = parent;
+                }
+            }
+        }
+        
+        if (!buttonContainer) {
             if (!state.missingLogged) {
-                Logger.debug('Flex spacer not found for Source Data Explorer button');
+                Logger.debug('Button container not found for Source Data Explorer button');
                 state.missingLogged = true;
             }
             return;
@@ -48,7 +70,7 @@ const plugin = {
             return;
         }
 
-        this.addSourceButton(flexSpacer, context);
+        this.addSourceButton(buttonContainer, context);
         state.buttonAdded = true;
     },
 
@@ -117,7 +139,7 @@ const plugin = {
         Logger.log('✓ Network interception installed');
     },
     
-    addSourceButton(flexSpacer, context) {
+    addSourceButton(buttonContainer, context) {
         const button = document.createElement('button');
         button.className = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-sm pl-3 pr-3 gap-2 text-xs relative border-amber-300 dark:border-amber-700';
         button.textContent = '📊 Source Data';
@@ -134,8 +156,8 @@ const plugin = {
             }
         };
         
-        // Insert after the flex spacer
-        flexSpacer.insertAdjacentElement('afterend', button);
+        // Insert as first child of the button container
+        buttonContainer.insertBefore(button, buttonContainer.firstChild);
         Logger.log('✓ Source Data Explorer button added');
     }
 };
