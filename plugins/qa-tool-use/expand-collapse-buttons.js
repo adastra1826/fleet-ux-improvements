@@ -3,7 +3,7 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.10',
+    _version: '1.11',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
@@ -27,11 +27,6 @@ const plugin = {
             }
             return;
         }
-
-        const toolsIndicator = Context.dom.query(this.selectors.workflowToolsIndicator, {
-            context: `${this.id}.workflowToolsIndicator`
-        });
-        const hasTools = toolsIndicator && toolsIndicator.children.length > 0;
 
         let container = document.getElementById('wf-expand-collapse-container');
         
@@ -72,6 +67,12 @@ const plugin = {
             Logger.log('✓ Expand/Collapse buttons added to toolbar');
         }
 
+        // Always check visibility - show/hide buttons based on whether the conditional container has children
+        // Find the div.flex.items-center.gap-2 that conditionally has children (the one that's NOT our button container)
+        const conditionalContainer = Array.from(toolbar.querySelectorAll('div.flex.items-center.gap-2')).find(
+            div => div.id !== 'wf-expand-collapse-container'
+        );
+        const hasTools = conditionalContainer && conditionalContainer.children.length > 0;
         container.style.display = hasTools ? 'flex' : 'none';
     },
     
