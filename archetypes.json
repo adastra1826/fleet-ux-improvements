@@ -37,7 +37,7 @@
         },
         {
           "name": "expand-collapse-buttons.js",
-          "version": "2.1"
+          "version": "2.8"
         },
         {
           "name": "mini-execute-buttons.js",
@@ -127,7 +127,7 @@
         },
         {
           "name": "expand-collapse-buttons.js",
-          "version": "2.2"
+          "version": "1.10"
         }
       ]
     },
