@@ -5,9 +5,17 @@ const plugin = {
     id: 'dev-logger-panel',
     name: 'Dev Logger Panel',
     description: 'Floating panel to view Fleet UX Enhancer logs without prefix',
-    _version: '1.3',
+    _version: '1.4',
     enabledByDefault: true,
     phase: 'core',
+
+    storageKeys: {
+        positionLeft: 'dev-logger-position-left',
+        positionTop: 'dev-logger-position-top',
+        width: 'dev-logger-width',
+        height: 'dev-logger-height',
+        isVisible: 'dev-logger-is-visible'
+    },
 
     initialState: {
         initialized: false,
@@ -33,6 +41,8 @@ const plugin = {
     init(state, context) {
         if (!state.initialized) {
             state.initialized = true;
+            // Load saved visibility state
+            state.isVisible = Storage.get(this.storageKeys.isVisible, true);
             this._setupLogging(state, context);
             Logger.log('✓ Dev logger panel initialized');
         }
@@ -63,13 +73,29 @@ const plugin = {
     },
 
     _buildUI(state, context) {
+        // Load saved position, size, and visibility
+        const savedLeft = Storage.get(this.storageKeys.positionLeft, null);
+        const savedTop = Storage.get(this.storageKeys.positionTop, null);
+        const savedWidth = Storage.get(this.storageKeys.width, 360);
+        const savedHeight = Storage.get(this.storageKeys.height, 240);
+
         const root = document.createElement('div');
         root.id = 'wf-dev-log-panel';
         root.style.position = 'fixed';
-        root.style.right = '24px';
-        root.style.bottom = '80px';
-        root.style.width = '360px';
-        root.style.height = '240px';
+        
+        // Apply saved position or default to right/bottom
+        if (savedLeft !== null && savedTop !== null) {
+            root.style.left = `${savedLeft}px`;
+            root.style.top = `${savedTop}px`;
+            root.style.right = 'auto';
+            root.style.bottom = 'auto';
+        } else {
+            root.style.right = '24px';
+            root.style.bottom = '80px';
+        }
+        
+        root.style.width = `${savedWidth}px`;
+        root.style.height = `${savedHeight}px`;
         root.style.background = 'rgba(16, 18, 24, 0.95)';
         root.style.color = '#e5e7eb';
         root.style.border = '1px solid rgba(255,255,255,0.12)';
@@ -207,13 +233,19 @@ const plugin = {
         document.body.appendChild(root);
         document.body.appendChild(toggleButton);
 
-        requestAnimationFrame(() => {
-            const rect = root.getBoundingClientRect();
-            root.style.left = `${rect.left}px`;
-            root.style.top = `${rect.top}px`;
-            root.style.right = 'auto';
-            root.style.bottom = 'auto';
-        });
+        // If we don't have saved position, convert right/bottom to left/top after first render
+        if (savedLeft === null || savedTop === null) {
+            requestAnimationFrame(() => {
+                const rect = root.getBoundingClientRect();
+                root.style.left = `${rect.left}px`;
+                root.style.top = `${rect.top}px`;
+                root.style.right = 'auto';
+                root.style.bottom = 'auto';
+                // Save the converted position
+                Storage.set(this.storageKeys.positionLeft, rect.left);
+                Storage.set(this.storageKeys.positionTop, rect.top);
+            });
+        }
 
         return {
             root,
@@ -255,6 +287,21 @@ const plugin = {
                 ui.root.style.bottom = 'auto';
             },
             onMouseUp: () => {
+                const ui = state.ui;
+                if (state.isDragging && ui) {
+                    // Save position when dragging ends
+                    const rect = ui.root.getBoundingClientRect();
+                    Storage.set(this.storageKeys.positionLeft, rect.left);
+                    Storage.set(this.storageKeys.positionTop, rect.top);
+                    Logger.log(`✓ Dev logger position saved: left=${rect.left}, top=${rect.top}`);
+                }
+                if (state.isResizing && ui) {
+                    // Save size when resizing ends
+                    const rect = ui.root.getBoundingClientRect();
+                    Storage.set(this.storageKeys.width, rect.width);
+                    Storage.set(this.storageKeys.height, rect.height);
+                    Logger.log(`✓ Dev logger size saved: width=${rect.width}, height=${rect.height}`);
+                }
                 state.isDragging = false;
                 state.isResizing = false;
                 if (document.body) {
@@ -326,10 +373,12 @@ const plugin = {
 
     _updateVisibility(state, visible) {
         state.isVisible = visible;
+        Storage.set(this.storageKeys.isVisible, visible);
         const ui = state.ui;
         if (!ui) return;
         ui.root.style.display = visible ? 'flex' : 'none';
         ui.toggleButton.textContent = visible ? 'Hide Logs' : 'Show Logs';
+        Logger.log(`✓ Dev logger visibility ${visible ? 'shown' : 'hidden'}`);
     },
 
     _applySearchFilter(state) {
