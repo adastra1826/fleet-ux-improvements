@@ -3,117 +3,175 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.11',
+    _version: '1.12',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: { added: false, missingLogged: false },
-    
-    // Plugin-specific selectors
-    selectors: {
-        toolbar: '[id="\\:rs\\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
-        workflowToolsIndicator: '[id="\\:rs\\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div',
-        workflowToolsArea: '[id="\\:rs\\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
-    },
+    initialState: { buttonsAdded: false, panelId: null, missingLogged: false },
     
     onMutation(state, context) {
-        const toolbar = Context.dom.query(this.selectors.toolbar, {
-            context: `${this.id}.toolbar`
+        // Step 1: Find workflow panel by ID (data-panel-id attribute) or by known ID
+        let panel = null;
+        
+        // Try to find panel by data-panel-id attribute first (more flexible)
+        const panels = Context.dom.queryAll('[data-panel-id][data-panel]', {
+            context: `${this.id}.panels`
         });
-        if (!toolbar) {
+        
+        // Look for panel containing "Workflow" text in toolbar
+        for (const candidate of panels) {
+            const toolbar = candidate.querySelector('.border-b.h-9');
+            if (toolbar) {
+                const workflowText = Array.from(toolbar.querySelectorAll('span')).find(
+                    span => span.textContent.trim() === 'Workflow'
+                );
+                if (workflowText) {
+                    panel = candidate;
+                    break;
+                }
+            }
+        }
+        
+        // Fallback: try to find by known ID for qa-tool-use
+        if (!panel) {
+            const knownPanel = document.querySelector('[id=":rs:"][data-panel]');
+            if (knownPanel) {
+                const toolbar = knownPanel.querySelector('.border-b.h-9');
+                if (toolbar) {
+                    const workflowText = Array.from(toolbar.querySelectorAll('span')).find(
+                        span => span.textContent.trim() === 'Workflow'
+                    );
+                    if (workflowText) {
+                        panel = knownPanel;
+                    }
+                }
+            }
+        }
+        
+        if (!panel) {
             if (!state.missingLogged) {
-                Logger.debug('Toolbar not found for expand/collapse buttons');
+                Logger.log(`⚠ Workflow panel not found. Searched ${panels.length} panels with data-panel-id.`);
                 state.missingLogged = true;
             }
             return;
         }
-
-        let container = document.getElementById('wf-expand-collapse-container');
         
-        if (!container) {
-            const buttonClass = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 transition-colors hover:bg-accent rounded-sm h-7 px-2 text-xs text-muted-foreground hover:text-foreground';
-
-            container = document.createElement('div');
-            container.id = 'wf-expand-collapse-container';
-            container.className = 'flex items-center gap-2';
-
-            const expandBtn = document.createElement('button');
-            expandBtn.id = 'wf-expand-btn';
-            expandBtn.className = buttonClass;
-            expandBtn.innerHTML = `<span>Expand All</span>`;
-            expandBtn.addEventListener('click', () => this.setAllToolsState('open'));
-
-            const divider = document.createElement('div');
-            divider.className = 'w-px h-5 bg-border mx-1';
-
-            const collapseBtn = document.createElement('button');
-            collapseBtn.id = 'wf-collapse-btn';
-            collapseBtn.className = buttonClass;
-            collapseBtn.innerHTML = `<span>Collapse All</span>`;
-            collapseBtn.addEventListener('click', () => this.setAllToolsState('closed'));
-
-            const trailingDivider = document.createElement('div');
-            trailingDivider.id = 'wf-expand-collapse-trailing-divider';
-            trailingDivider.className = 'w-px h-5 bg-border mx-1';
-
-            container.appendChild(expandBtn);
-            container.appendChild(divider);
-            container.appendChild(collapseBtn);
-            container.appendChild(trailingDivider);
-
-            // Insert at the beginning of the toolbar (before Clear button)
-            toolbar.insertBefore(container, toolbar.firstChild);
-            state.added = true;
-            Logger.log('✓ Expand/Collapse buttons added to toolbar');
-        }
-
-        // Always check visibility - show/hide buttons based on whether the conditional container has children
-        // Find the div.flex.items-center.gap-2 that conditionally has children (the one that's NOT our button container)
-        const conditionalContainer = Array.from(toolbar.querySelectorAll('div.flex.items-center.gap-2')).find(
-            div => div.id !== 'wf-expand-collapse-container'
-        );
-        const hasTools = conditionalContainer && conditionalContainer.children.length > 0;
-        container.style.display = hasTools ? 'flex' : 'none';
-    },
-    
-    setAllToolsState(targetState) {
-        const workflowToolsArea = Context.dom.query(this.selectors.workflowToolsArea, {
-            context: `${this.id}.workflowToolsArea`
-        });
-        if (!workflowToolsArea) {
-            Logger.log('⚠ Workflow tools area not found for expand/collapse');
+        // Track panel ID
+        const currentPanelId = panel.getAttribute('data-panel-id') || panel.id;
+        
+        // Step 2: Find toolbar (div with border-b, h-9, containing "Workflow" text)
+        const toolbar = panel.querySelector('.border-b.h-9');
+        if (!toolbar) {
+            if (!state.missingLogged) {
+                Logger.log('⚠ Toolbar not found in workflow panel');
+                state.missingLogged = true;
+            }
             return;
         }
-
-        const toolHeaders = Context.dom.queryAll(this.selectors.workflowToolHeader, {
-            root: workflowToolsArea,
-            context: `${this.id}.toolHeaders`
+        
+        // Step 3: Find the buttons container (div with buttons like "Clear")
+        const buttonsContainer = Array.from(toolbar.querySelectorAll('div.flex.items-center')).find(div => {
+            const button = div.querySelector('button');
+            return button && (button.textContent.includes('Clear') || button.querySelector('svg'));
         });
+        
+        if (!buttonsContainer) {
+            if (!state.missingLogged) {
+                Logger.log('⚠ Could not find buttons container for expand/collapse buttons');
+                state.missingLogged = true;
+            }
+            return;
+        }
+        
+        // Step 4: Check if buttons already exist
+        let buttonContainer = document.getElementById('wf-expand-collapse-container');
+        
+        if (!buttonContainer) {
+            // Create button container
+            buttonContainer = document.createElement('div');
+            buttonContainer.id = 'wf-expand-collapse-container';
+            buttonContainer.className = 'flex items-center gap-2';
+            
+            const buttonClass = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 transition-colors hover:bg-accent rounded-sm h-7 px-2 text-xs text-muted-foreground hover:text-foreground';
+            
+            const expandBtn = document.createElement('button');
+            expandBtn.className = buttonClass;
+            expandBtn.textContent = 'Expand All';
+            expandBtn.addEventListener('click', () => this.setAllToolsState(panel, 'open'));
+            
+            const collapseBtn = document.createElement('button');
+            collapseBtn.className = buttonClass;
+            collapseBtn.textContent = 'Collapse All';
+            collapseBtn.addEventListener('click', () => this.setAllToolsState(panel, 'closed'));
+            
+            buttonContainer.appendChild(expandBtn);
+            buttonContainer.appendChild(collapseBtn);
+            
+            // Insert before the buttons container (which contains Clear button)
+            toolbar.insertBefore(buttonContainer, buttonsContainer);
+            
+            Logger.log('✓ Expand/Collapse buttons added to workflow toolbar');
+            
+            // Update state
+            state.buttonsAdded = true;
+            state.panelId = currentPanelId;
+        }
+        
+        // Step 5: Always check visibility - show/hide buttons based on whether the conditional container has children
+        // The conditional container is the one that shows buttons like "Clear" when tools are present
+        const hasTools = buttonsContainer && buttonsContainer.children.length > 0;
+        buttonContainer.style.display = hasTools ? 'flex' : 'none';
+        
+        // Update state
+        state.panelId = currentPanelId;
+        state.missingLogged = false; // Reset on success
+    },
+    
+    findToolsArea(panel) {
+        if (!panel) return null;
+        
+        // Find scrollable container
+        const scrollable = panel.querySelector('.overflow-y-auto');
+        if (!scrollable) return null;
+        
+        // Find tools container with space-y-3 class
+        const toolsArea = scrollable.querySelector('.space-y-3');
+        return toolsArea;
+    },
+    
+    setAllToolsState(panel, targetState) {
+        const toolsArea = this.findToolsArea(panel);
+        if (!toolsArea) {
+            Logger.log('⚠ Workflow tools area not found');
+            return;
+        }
+        
+        // Find all tool headers - look for elements with cursor-pointer class that have aria-expanded
+        // These are the clickable headers for each tool
+        const toolHeaders = Array.from(toolsArea.querySelectorAll('div.cursor-pointer[aria-expanded]'));
+        
+        if (toolHeaders.length === 0) {
+            Logger.log('⚠ No tool headers found in workflow tools area');
+            return;
+        }
+        
         let successCount = 0;
-
+        
         toolHeaders.forEach((header) => {
-            const stateSource = header.getAttribute('data-state')
-                ? header
-                : Context.dom.closest(header, '[data-state]', {
-                    context: `${this.id}.toolHeaderState`
-                });
-            const currentState = stateSource?.getAttribute('data-state');
+            // Determine current state from aria-expanded
             const ariaExpanded = header.getAttribute('aria-expanded');
-            const isOpen = currentState === 'open' ? true
-                : currentState === 'closed' ? false
-                    : ariaExpanded === 'true' ? true
-                        : ariaExpanded === 'false' ? false
-                            : null;
-
-            if (isOpen === null) return;
-
-            if ((targetState === 'open' && !isOpen) ||
-                (targetState === 'closed' && isOpen)) {
+            const isOpen = ariaExpanded === 'true';
+            const isClosed = ariaExpanded === 'false';
+            
+            // Only toggle if state needs to change
+            if (targetState === 'open' && !isOpen) {
+                header.click();
+                successCount++;
+            } else if (targetState === 'closed' && !isClosed) {
                 header.click();
                 successCount++;
             }
         });
-
-        Logger.log(`✓ ${targetState === 'open' ? 'Expanded' : 'Collapsed'} ${successCount} tools`);
+        
+        Logger.log(`✓ ${targetState === 'open' ? 'Expanded' : 'Collapsed'} ${successCount} of ${toolHeaders.length} tools`);
     }
 };
