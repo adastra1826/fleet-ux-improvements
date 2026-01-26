@@ -3,24 +3,40 @@ const plugin = {
     id: 'miniExecuteButtons',
     name: 'Mini Execute Buttons',
     description: 'Adds quick execute buttons to collapsed workflow tools',
-    _version: '1.3',
+    _version: '1.4',
     enabledByDefault: true,
     phase: 'mutation',
-    initialState: { missingLogged: false },
+    initialState: { missingLogged: false, panelId: null },
     
     // Plugin-specific selectors
     selectors: {
-        workflowToolsArea: '[id=":re:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
         toolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
     },
     
     onMutation(state, context) {
-        const toolsContainer = Context.dom.query(this.selectors.workflowToolsArea, {
-            context: `${this.id}.workflowToolsArea`
-        });
+        // Find workflow panel by ID (data-panel-id attribute), then semantic search
+        const panel = this.findWorkflowPanel();
+        if (!panel) {
+            if (!state.missingLogged) {
+                Logger.log('⚠ Workflow panel not found for mini execute buttons');
+                state.missingLogged = true;
+            }
+            return;
+        }
+        
+        // Track panel ID to avoid re-processing
+        const currentPanelId = panel.getAttribute('data-panel-id');
+        if (state.panelId === currentPanelId && !state.missingLogged) {
+            // Already processed this panel, but continue to check for new tools
+        } else {
+            state.panelId = currentPanelId;
+            state.missingLogged = false;
+        }
+        
+        const toolsContainer = this.findToolsArea(panel);
         if (!toolsContainer) {
             if (!state.missingLogged) {
-                Logger.debug('Tools container not found for mini execute buttons');
+                Logger.log('⚠ Tools container not found for mini execute buttons');
                 state.missingLogged = true;
             }
             return;
@@ -79,6 +95,40 @@ const plugin = {
         if (buttonsAdded > 0) {
             Logger.log(`✓ Added ${buttonsAdded} mini execute button(s)`);
         }
+    },
+    
+    findWorkflowPanel() {
+        // Find panels by data-panel-id attribute
+        const panels = Context.dom.queryAll('[data-panel-id][data-panel]', {
+            context: `${this.id}.panels`
+        });
+        
+        // Look for panel containing "Workflow" text in toolbar
+        for (const candidate of panels) {
+            const toolbar = candidate.querySelector('.border-b.h-9');
+            if (toolbar) {
+                const workflowText = Array.from(toolbar.querySelectorAll('span')).find(
+                    span => span.textContent.trim() === 'Workflow'
+                );
+                if (workflowText) {
+                    return candidate;
+                }
+            }
+        }
+        
+        return null;
+    },
+    
+    findToolsArea(panel) {
+        if (!panel) return null;
+        
+        // Find scrollable container
+        const scrollable = panel.querySelector('.overflow-y-auto');
+        if (!scrollable) return null;
+        
+        // Find tools container with space-y-3 class
+        const toolsArea = scrollable.querySelector('.space-y-3');
+        return toolsArea;
     },
     
     executeTool(card, header) {
