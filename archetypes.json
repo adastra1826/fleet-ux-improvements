@@ -29,11 +29,11 @@
         },
         {
           "name": "source-data-explorer.js",
-          "version": "3.6"
+          "version": "2.6"
         },
         {
           "name": "favorites.js",
-          "version": "3.6"
+          "version": "3.5"
         },
         {
           "name": "expand-collapse-buttons.js",
@@ -53,11 +53,11 @@
         },
         {
           "name": "remove-textarea-gradient.js",
-          "version": "1.3"
+          "version": "1.2"
         },
         {
           "name": "layout-manager.js",
-          "version": "2.5"
+          "version": "2.6"
         }
       ]
     },
@@ -74,7 +74,7 @@
         },
         {
           "name": "remove-textarea-gradient.js",
-          "version": "1.3"
+          "version": "1.2"
         }
       ]
     },
@@ -127,7 +127,7 @@
         },
         {
           "name": "expand-collapse-buttons.js",
-          "version": "1.10"
+          "version": "2.0"
         }
       ]
     },

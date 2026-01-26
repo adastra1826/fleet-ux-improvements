@@ -3,35 +3,152 @@ const plugin = {
     id: 'expandCollapseButtons',
     name: 'Expand/Collapse All',
     description: 'Adds buttons to expand or collapse all workflow tools',
-    _version: '1.10',
+    _version: '2.0',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { added: false, missingLogged: false },
     
-    // Plugin-specific selectors
-    selectors: {
-        toolbar: '[id="\\:rs\\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center',
-        workflowToolsIndicator: '[id="\\:rs\\:"] > div > div.bg-background.w-full.flex.items-center.justify-between.border-b.h-9.min-h-9.max-h-9.px-1 > div.flex.items-center > div',
-        workflowToolsArea: '[id="\\:rs\\:"] > div > div.size-full.bg-background-extra.overflow-y-auto > div > div.space-y-3',
-        workflowToolHeader: 'div.flex.items-center.gap-3.p-3.cursor-pointer.hover\\:bg-muted\\/30'
+    // Find panel by ID pattern (data-panel-id like :r1b:)
+    findPanel() {
+        // Strategy 1: Find by data-panel-id attribute pattern
+        const panels = document.querySelectorAll('[data-panel-id]');
+        for (const panel of panels) {
+            const panelId = panel.getAttribute('data-panel-id');
+            // Check if ID matches pattern (starts with : and contains alphanumeric)
+            if (panelId && /^:[a-zA-Z0-9]+:$/.test(panelId)) {
+                // Verify it has the workflow structure by checking for "Workflow" text
+                const hasWorkflowText = Array.from(panel.querySelectorAll('*')).some(el => 
+                    el.textContent && el.textContent.trim() === 'Workflow'
+                );
+                if (hasWorkflowText) {
+                    return panel;
+                }
+            }
+        }
+        
+        // Strategy 2: Find by ID pattern directly
+        const idPattern = /^:[a-zA-Z0-9]+:$/;
+        const allElements = document.querySelectorAll('[id]');
+        for (const el of allElements) {
+            const id = el.getAttribute('id');
+            if (id && idPattern.test(id) && el.hasAttribute('data-panel')) {
+                const hasWorkflowText = Array.from(el.querySelectorAll('*')).some(inner => 
+                    inner.textContent && inner.textContent.trim() === 'Workflow'
+                );
+                if (hasWorkflowText) {
+                    return el;
+                }
+            }
+        }
+        
+        return null;
+    },
+    
+    // Find toolbar header area containing "Workflow" text and "Clear" button
+    findToolbarHeader(panel) {
+        if (!panel) return null;
+        
+        // Find the header bar with border-b and h-9 classes
+        const headerBar = panel.querySelector('.border-b.h-9');
+        if (!headerBar) return null;
+        
+        // Verify it contains both "Workflow" text and "Clear" button
+        const hasWorkflow = Array.from(headerBar.querySelectorAll('*')).some(el => 
+            el.textContent && el.textContent.trim() === 'Workflow'
+        );
+        const hasClear = Array.from(headerBar.querySelectorAll('button')).some(btn => 
+            btn.textContent && btn.textContent.trim().includes('Clear')
+        );
+        
+        if (hasWorkflow && hasClear) {
+            return headerBar;
+        }
+        
+        return null;
+    },
+    
+    // Find insertion point between "Workflow" div and "Clear" button div
+    findInsertionPoint(headerBar) {
+        if (!headerBar) return null;
+        
+        // Find the div containing "Workflow" text
+        const workflowDiv = Array.from(headerBar.querySelectorAll('div')).find(div => {
+            const text = div.textContent && div.textContent.trim();
+            return text && text.includes('Workflow');
+        });
+        
+        if (!workflowDiv) return null;
+        
+        // Find the parent that contains both workflow div and the Clear button area
+        let parent = workflowDiv.parentElement;
+        while (parent && parent !== headerBar) {
+            const hasClear = Array.from(parent.querySelectorAll('button')).some(btn => 
+                btn.textContent && btn.textContent.trim().includes('Clear')
+            );
+            if (hasClear) {
+                // Find the div containing the Clear button (flex items-center)
+                const clearContainer = Array.from(parent.querySelectorAll('div.flex.items-center')).find(div => {
+                    return Array.from(div.querySelectorAll('button')).some(btn => 
+                        btn.textContent && btn.textContent.trim().includes('Clear')
+                    );
+                });
+                
+                if (clearContainer) {
+                    return { parent, before: clearContainer };
+                }
+            }
+            parent = parent.parentElement;
+        }
+        
+        return null;
+    },
+    
+    // Find workflow tools area (space-y-3)
+    findToolsArea(panel) {
+        if (!panel) return null;
+        
+        // Strategy 1: Find scrollable container, then space-y-3 inside it
+        const scrollable = panel.querySelector('.overflow-y-auto');
+        if (scrollable) {
+            const toolsArea = scrollable.querySelector('.space-y-3');
+            if (toolsArea) {
+                return toolsArea;
+            }
+        }
+        
+        // Strategy 2: Direct search for space-y-3 within panel
+        const toolsArea = panel.querySelector('.space-y-3');
+        if (toolsArea && panel.contains(toolsArea)) {
+            return toolsArea;
+        }
+        
+        return null;
     },
     
     onMutation(state, context) {
-        const toolbar = Context.dom.query(this.selectors.toolbar, {
-            context: `${this.id}.toolbar`
-        });
-        if (!toolbar) {
+        // Find panel using ID-first approach
+        const panel = this.findPanel();
+        if (!panel) {
             if (!state.missingLogged) {
-                Logger.debug('Toolbar not found for expand/collapse buttons');
+                Logger.debug('Panel not found for expand/collapse buttons');
                 state.missingLogged = true;
             }
             return;
         }
 
-        const toolsIndicator = Context.dom.query(this.selectors.workflowToolsIndicator, {
-            context: `${this.id}.workflowToolsIndicator`
-        });
-        const hasTools = toolsIndicator && toolsIndicator.children.length > 0;
+        // Find toolbar header
+        const headerBar = this.findToolbarHeader(panel);
+        if (!headerBar) {
+            if (!state.missingLogged) {
+                Logger.debug('Toolbar header not found for expand/collapse buttons');
+                state.missingLogged = true;
+            }
+            return;
+        }
+
+        // Check if tools exist
+        const toolsArea = this.findToolsArea(panel);
+        const hasTools = toolsArea && toolsArea.children.length > 0;
 
         let container = document.getElementById('wf-expand-collapse-container');
         
@@ -66,31 +183,42 @@ const plugin = {
             container.appendChild(collapseBtn);
             container.appendChild(trailingDivider);
 
-            // Insert at the beginning of the toolbar (before Clear button)
-            toolbar.insertBefore(container, toolbar.firstChild);
-            state.added = true;
-            Logger.log('✓ Expand/Collapse buttons added to toolbar');
+            // Find insertion point between "Workflow" div and "Clear" button div
+            const insertionPoint = this.findInsertionPoint(headerBar);
+            if (insertionPoint) {
+                insertionPoint.parent.insertBefore(container, insertionPoint.before);
+                state.added = true;
+                Logger.log('✓ Expand/Collapse buttons added to toolbar');
+            } else {
+                Logger.log('⚠ Could not find insertion point for expand/collapse buttons');
+            }
         }
 
-        container.style.display = hasTools ? 'flex' : 'none';
+        if (container) {
+            container.style.display = hasTools ? 'flex' : 'none';
+        }
     },
     
     setAllToolsState(targetState) {
-        const workflowToolsArea = Context.dom.query(this.selectors.workflowToolsArea, {
-            context: `${this.id}.workflowToolsArea`
-        });
+        // Find panel and tools area
+        const panel = this.findPanel();
+        if (!panel) {
+            Logger.log('⚠ Panel not found for expand/collapse');
+            return;
+        }
+
+        const workflowToolsArea = this.findToolsArea(panel);
         if (!workflowToolsArea) {
             Logger.log('⚠ Workflow tools area not found for expand/collapse');
             return;
         }
 
-        const toolHeaders = Context.dom.queryAll(this.selectors.workflowToolHeader, {
-            root: workflowToolsArea,
-            context: `${this.id}.toolHeaders`
-        });
+        // Find tool headers (collapsible headers)
+        const toolHeaders = workflowToolsArea.querySelectorAll('div.flex.items-center.gap-3.p-3.cursor-pointer');
         let successCount = 0;
 
         toolHeaders.forEach((header) => {
+            // Check state from data-state attribute or parent
             const stateSource = header.getAttribute('data-state')
                 ? header
                 : Context.dom.closest(header, '[data-state]', {
