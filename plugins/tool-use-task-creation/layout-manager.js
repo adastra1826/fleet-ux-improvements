@@ -3,7 +3,7 @@ const plugin = {
     id: 'layoutManager',
     name: 'Three Column Layout',
     description: 'Transforms the layout into three resizable columns with integrated notes',
-    _version: '2.4',
+    _version: '2.5',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false, missingLogged: false, structureMissingLogged: false },
@@ -27,20 +27,24 @@ const plugin = {
     onMutation(state, context) {
         if (state.applied) return;
 
+        Logger.debug(`[${this.id}] Starting layout manager mutation check`);
+
         const mainContainer = Context.dom.query(this.selectors.mainContainer, {
             context: `${this.id}.mainContainer`
         });
         if (!mainContainer) {
             if (!state.missingLogged) {
-                Logger.debug('Main container not found for layout manager');
+                Logger.warn(`[${this.id}] ❌ Main container not found for layout manager`);
+                Logger.debug(`[${this.id}] Selector used: ${this.selectors.mainContainer}`);
                 state.missingLogged = true;
             }
             return;
         }
+        Logger.debug(`[${this.id}] ✓ Main container found`);
 
         if (document.getElementById('wf-three-col-layout')) {
             state.applied = true;
-            Logger.debug('Three column layout already applied');
+            Logger.debug(`[${this.id}] Three column layout already applied`);
             return;
         }
 
@@ -49,15 +53,24 @@ const plugin = {
             context: `${this.id}.leftColumn`
         });
         
+        if (leftColumn) {
+            Logger.debug(`[${this.id}] ✓ Left column found by ID selector: ${this.selectors.leftColumn}`);
+        } else {
+            Logger.debug(`[${this.id}] ⚠ Left column not found by ID, trying fallbacks...`);
+        }
+        
         // Fallback: Find panel with data-panel-size around 30 (left panel)
         if (!leftColumn && mainContainer) {
             const panels = Array.from(mainContainer.children).filter(child => 
                 child.hasAttribute('data-panel') && child.hasAttribute('data-panel-size')
             );
+            Logger.debug(`[${this.id}] Found ${panels.length} panels with data-panel-size`);
             for (const panel of panels) {
                 const size = parseFloat(panel.getAttribute('data-panel-size'));
+                Logger.debug(`[${this.id}] Panel size: ${size}, id: ${panel.id || 'no-id'}`);
                 if (size >= 25 && size <= 35) {
                     leftColumn = panel;
+                    Logger.debug(`[${this.id}] ✓ Left column found by size fallback (size: ${size})`);
                     break;
                 }
             }
@@ -68,7 +81,19 @@ const plugin = {
             const firstPanel = Array.from(mainContainer.children).find(child => 
                 child.hasAttribute('data-panel')
             );
-            if (firstPanel) leftColumn = firstPanel;
+            if (firstPanel) {
+                leftColumn = firstPanel;
+                Logger.debug(`[${this.id}] ✓ Left column found by first panel fallback`);
+            }
+        }
+        
+        if (!leftColumn) {
+            Logger.warn(`[${this.id}] ❌ Left column not found after all attempts`);
+            Logger.debug(`[${this.id}] Main container children: ${Array.from(mainContainer.children).map(c => `${c.tagName}#${c.id || 'no-id'}[data-panel=${c.hasAttribute('data-panel')}]`).join(', ')}`);
+            if (!state.structureMissingLogged) {
+                state.structureMissingLogged = true;
+            }
+            return;
         }
         
         const existingDivider = Context.dom.query('div[data-resize-handle]', {
@@ -76,10 +101,22 @@ const plugin = {
             context: `${this.id}.existingDivider`
         });
         
+        if (existingDivider) {
+            Logger.debug(`[${this.id}] ✓ Existing divider found`);
+        } else {
+            Logger.warn(`[${this.id}] ❌ Existing divider not found`);
+        }
+        
         // Try to find workflow column by ID first, then fallback to semantic search
         let workflowColumn = Context.dom.query(this.selectors.workflowColumn, {
             context: `${this.id}.workflowColumn`
         });
+        
+        if (workflowColumn) {
+            Logger.debug(`[${this.id}] ✓ Workflow column found by ID selector: ${this.selectors.workflowColumn}`);
+        } else {
+            Logger.debug(`[${this.id}] ⚠ Workflow column not found by ID, trying fallbacks...`);
+        }
         
         // Fallback: Find panel with data-panel-size around 70 (right panel)
         if (!workflowColumn && mainContainer) {
@@ -90,6 +127,7 @@ const plugin = {
                 const size = parseFloat(panel.getAttribute('data-panel-size'));
                 if (size >= 60 && size <= 80) {
                     workflowColumn = panel;
+                    Logger.debug(`[${this.id}] ✓ Workflow column found by size fallback (size: ${size})`);
                     break;
                 }
             }
@@ -102,28 +140,110 @@ const plugin = {
             );
             if (panels.length >= 2) {
                 workflowColumn = panels[panels.length - 1];
+                Logger.debug(`[${this.id}] ✓ Workflow column found by last panel fallback`);
             }
         }
 
         if (!leftColumn || !workflowColumn || !existingDivider) {
+            Logger.warn(`[${this.id}] ❌ Missing layout elements - leftColumn: ${!!leftColumn}, workflowColumn: ${!!workflowColumn}, divider: ${!!existingDivider}`);
+            if (leftColumn) {
+                Logger.debug(`[${this.id}] Left column ID: ${leftColumn.id}, size: ${leftColumn.getAttribute('data-panel-size')}`);
+            }
+            if (workflowColumn) {
+                Logger.debug(`[${this.id}] Workflow column ID: ${workflowColumn.id}, size: ${workflowColumn.getAttribute('data-panel-size')}`);
+            }
             if (!state.structureMissingLogged) {
-                Logger.debug(`Missing layout elements - leftColumn: ${!!leftColumn}, workflowColumn: ${!!workflowColumn}, divider: ${!!existingDivider}`);
                 state.structureMissingLogged = true;
             }
             return;
         }
 
+        // Find top and bottom sections within left column
+        // The left column structure: :r6: > wrapper > flex-1 container > (flex-shrink-0 | flex-1 min-h-0 overflow-hidden)
+        
+        // First, find the inner flex container that holds both sections
+        const innerFlexContainer = leftColumn.querySelector('div.flex-1.min-h-0.h-full.p-0.flex.flex-col') ||
+                                   leftColumn.querySelector('div.flex-1.flex.flex-col') ||
+                                   Array.from(leftColumn.querySelectorAll('div.flex.flex-col')).find(el => 
+                                       el.classList.contains('flex-1') && el.classList.contains('min-h-0')
+                                   );
+        
+        if (innerFlexContainer) {
+            Logger.debug(`[${this.id}] ✓ Found inner flex container`);
+        } else {
+            Logger.debug(`[${this.id}] ⚠ Inner flex container not found, searching directly in left column`);
+        }
+        
+        const searchRoot = innerFlexContainer || leftColumn;
+        
+        // Top section: flex-shrink-0 (contains Task/Notes tabs and Problem Description)
         const topSection = Context.dom.query('div.flex-shrink-0', {
-            root: leftColumn,
+            root: searchRoot,
             context: `${this.id}.topSection`
         });
-        const bottomSection = Context.dom.query('div.flex-1.min-h-0.overflow-hidden', {
-            root: leftColumn,
+        
+        // Bottom section: flex-1 min-h-0 overflow-hidden (contains tools panel)
+        // Try multiple selectors for bottom section
+        let bottomSection = Context.dom.query('div.flex-1.min-h-0.overflow-hidden', {
+            root: searchRoot,
             context: `${this.id}.bottomSection`
         });
+        
+        if (!bottomSection) {
+            // Try without overflow-hidden
+            bottomSection = searchRoot.querySelector('div.flex-1.min-h-0');
+            if (bottomSection) {
+                Logger.debug(`[${this.id}] ✓ Bottom section found with flex-1.min-h-0`);
+            }
+        }
+        
+        if (!bottomSection) {
+            // Try finding by structure - look for div with flex-1 and min-h-0
+            const candidates = Array.from(searchRoot.querySelectorAll('div.flex-1'));
+            for (const candidate of candidates) {
+                if (candidate.classList.contains('min-h-0') || candidate.classList.contains('overflow-hidden')) {
+                    // Make sure it's not the top section
+                    if (!candidate.classList.contains('flex-shrink-0')) {
+                        bottomSection = candidate;
+                        Logger.debug(`[${this.id}] ✓ Bottom section found by structure search`);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!bottomSection && searchRoot) {
+            // Last resort: find the second child div that's not flex-shrink-0
+            const children = Array.from(searchRoot.children);
+            for (const child of children) {
+                if (child.tagName === 'DIV' && !child.classList.contains('flex-shrink-0') && 
+                    (child.classList.contains('flex-1') || child.classList.contains('min-h-0'))) {
+                    bottomSection = child;
+                    Logger.debug(`[${this.id}] ✓ Bottom section found as second child`);
+                    break;
+                }
+            }
+        }
+
+        if (!topSection) {
+            Logger.warn(`[${this.id}] ❌ Top section (flex-shrink-0) not found in left column`);
+            Logger.debug(`[${this.id}] Left column HTML structure: ${leftColumn.innerHTML.substring(0, 200)}...`);
+        } else {
+            Logger.debug(`[${this.id}] ✓ Top section found`);
+        }
+        
+        if (!bottomSection) {
+            Logger.warn(`[${this.id}] ❌ Bottom section (flex-1 min-h-0 overflow-hidden) not found in left column`);
+            Logger.debug(`[${this.id}] Left column children: ${Array.from(leftColumn.children).map(c => `${c.tagName}.${Array.from(c.classList).join('.')}`).join(', ')}`);
+        } else {
+            Logger.debug(`[${this.id}] ✓ Bottom section found`);
+        }
 
         if (!topSection || !bottomSection) {
-            Logger.warn('Top or bottom section missing for layout manager');
+            Logger.warn(`[${this.id}] ❌ Cannot proceed - missing top or bottom section`);
+            if (!state.structureMissingLogged) {
+                state.structureMissingLogged = true;
+            }
             return;
         }
 
@@ -136,7 +256,9 @@ const plugin = {
             panelGroupId = workflowColumn.getAttribute('data-panel-group-id');
         }
         panelGroupId = panelGroupId || ':r5:';
+        Logger.debug(`[${this.id}] Using panel group ID: ${panelGroupId}`);
         
+        Logger.debug(`[${this.id}] Preserving elements and clearing main container...`);
         const preservedElements = {
             leftColumn: leftColumn.parentNode.removeChild(leftColumn),
             workflowColumn: workflowColumn.parentNode.removeChild(workflowColumn),
@@ -146,6 +268,7 @@ const plugin = {
         
         mainContainer.innerHTML = '';
         mainContainer.id = 'wf-three-col-layout';
+        Logger.debug(`[${this.id}] Main container cleared and ID set`);
 
         const savedCol1 = Storage.get(this.storageKeys.col1Width, 25);
         const savedCol2 = Storage.get(this.storageKeys.col2Width, 37.5);
@@ -190,11 +313,12 @@ const plugin = {
         mainContainer.appendChild(divider2);
         mainContainer.appendChild(preservedElements.workflowColumn);
 
+        Logger.debug(`[${this.id}] Setting up column resize handlers...`);
         this.setupColumnResize(divider1, col1, col2);
         this.setupColumnResize(divider2, col2, preservedElements.workflowColumn);
 
         state.applied = true;
-        Logger.log('✓ Three column layout applied');
+        Logger.log(`[${this.id}] ✓ Three column layout applied successfully`);
     },
     
     createDivider(panelGroupId, id, ariaControls, max, min, current) {
@@ -217,6 +341,7 @@ const plugin = {
     },
     
     reorganizeFirstColumnContent(wrapper, topSection) {
+        Logger.debug(`[${this.id}] Reorganizing first column content...`);
         const savedRatio = Storage.get(this.storageKeys.sectionSplitRatio, 60);
         
         const existingSection = Context.dom.query('div.p-3.border-b', {
@@ -224,9 +349,11 @@ const plugin = {
             context: `${this.id}.existingSection`
         });
         if (!existingSection) {
-            Logger.warn('Existing section not found for reorganization');
+            Logger.warn(`[${this.id}] ❌ Existing section (div.p-3.border-b) not found for reorganization`);
+            Logger.debug(`[${this.id}] Top section HTML: ${topSection.innerHTML.substring(0, 300)}...`);
             return;
         }
+        Logger.debug(`[${this.id}] ✓ Existing section found`);
 
         topSection.removeChild(existingSection);
 
@@ -287,6 +414,7 @@ const plugin = {
         wrapper.appendChild(topPanel);
         wrapper.appendChild(resizeHandle);
         wrapper.appendChild(bottomPanel);
+        Logger.debug(`[${this.id}] ✓ First column content reorganized`);
 
         this.setupSectionResize(resizeHandle, topPanel, bottomPanel);
     },
