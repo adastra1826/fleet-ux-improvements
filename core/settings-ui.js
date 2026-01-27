@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '4.0',
+    _version: '4.1',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -1098,7 +1098,7 @@ const plugin = {
             <div style="
                 margin-bottom: 20px;
                 padding: 14px;
-                padding-bottom: 20px;
+                padding-top: 20px;
                 background: #fee2e2;
                 border: 2px solid #dc2626;
                 border-radius: 8px;
