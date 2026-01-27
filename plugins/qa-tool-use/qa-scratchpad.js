@@ -1,11 +1,11 @@
 // ============= qa-scratchpad.js =============
-// Adds an adjustable height scratchpad between the prompt quality rating and environment variables sections.
+// Adds an adjustable height scratchpad between the prompt and environment variables sections.
 
 const plugin = {
     id: 'qaScratchpad',
     name: 'QA Scratchpad',
-    description: 'Adds an adjustable height scratchpad for notes between prompt quality rating and environment variables',
-    _version: '1.0',
+    description: 'Adds an adjustable height scratchpad for notes between prompt and environment variables',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -25,7 +25,7 @@ const plugin = {
     },
     
     selectors: {
-        promptQualityRating: 'div.flex.flex-col.gap-2:has(label:contains("Prompt Quality Rating"))',
+        promptSection: 'div.flex.flex-col.gap-2:has(span:contains("Prompt"), label:contains("Prompt"))',
         envVariables: 'div.space-y-2:has(span:contains("Environment Variables"))'
     },
     
@@ -33,62 +33,113 @@ const plugin = {
         scratchpadInserted: false,
         resizeHandlerAttached: false,
         textareaObserver: null,
-        saveTimeoutId: null
+        saveTimeoutId: null,
+        searchAttempted: false,
+        insertionFailedLogged: false
     },
     
     onMutation(state, context) {
-        // Find the prompt quality rating section
-        // It's a div with class "flex flex-col gap-2" that contains a label with "Prompt Quality Rating"
-        const promptQualitySection = this.findPromptQualitySection();
-        if (!promptQualitySection) {
-            Logger.debug('Prompt quality rating section not found');
+        // Find the prompt section (formerly "Prompt Quality Rating", now just "Prompt")
+        const promptSection = this.findPromptSection();
+        if (!promptSection) {
+            if (!state.searchAttempted) {
+                state.searchAttempted = true;
+                // Log detailed diagnostic information only once
+                const candidates = Context.dom.queryAll('div.flex.flex-col.gap-2', {
+                    context: `${this.id}.diagnostic`
+                });
+                const foundLabels = [];
+                candidates.forEach(candidate => {
+                    const label = candidate.querySelector('label, span.text-sm');
+                    if (label) {
+                        foundLabels.push(label.textContent.trim());
+                    }
+                });
+                Logger.warn(`QA Scratchpad: Prompt section not found. Found ${candidates.length} candidate divs with labels/spans: ${foundLabels.join(', ') || 'none'}`);
+            }
             return;
         }
         
         // Check if scratchpad already exists
-        let scratchpadContainer = promptQualitySection.nextElementSibling;
+        let scratchpadContainer = promptSection.nextElementSibling;
         if (scratchpadContainer && scratchpadContainer.dataset.qaScratchpad === 'true') {
             // Scratchpad already exists, just attach resize handler if needed
             if (!state.resizeHandlerAttached) {
                 this.attachResizeHandler(state, scratchpadContainer);
                 state.resizeHandlerAttached = true;
-                Logger.log('✓ Resize handler attached');
+                Logger.log('✓ QA Scratchpad: Resize handler attached');
             }
             return;
         }
         
         // Find the environment variables section (next sibling)
-        const envVariablesSection = promptQualitySection.nextElementSibling;
+        const envVariablesSection = promptSection.nextElementSibling;
         if (!envVariablesSection || !envVariablesSection.classList.contains('space-y-2')) {
-            Logger.debug('Environment variables section not found');
+            if (!state.insertionFailedLogged) {
+                state.insertionFailedLogged = true;
+                const nextSibling = promptSection.nextElementSibling;
+                const nextSiblingInfo = nextSibling 
+                    ? `Found: ${nextSibling.tagName.toLowerCase()}.${Array.from(nextSibling.classList).join('.')}`
+                    : 'No next sibling found';
+                Logger.warn(`QA Scratchpad: Environment variables section not found. ${nextSiblingInfo}`);
+            }
+            return;
+        }
+        
+        // Verify it's actually the environment variables section
+        const envLabel = envVariablesSection.querySelector('span.text-sm.text-muted-foreground.font-medium');
+        if (!envLabel || !envLabel.textContent.includes('Environment Variables')) {
+            if (!state.insertionFailedLogged) {
+                state.insertionFailedLogged = true;
+                const foundText = envLabel ? envLabel.textContent.trim() : 'no label found';
+                Logger.warn(`QA Scratchpad: Next section is not Environment Variables. Found: "${foundText}"`);
+            }
             return;
         }
         
         // Insert scratchpad
         const scratchpad = this.createScratchpad(state);
-        promptQualitySection.insertAdjacentElement('afterend', scratchpad);
+        promptSection.insertAdjacentElement('afterend', scratchpad);
         state.scratchpadInserted = true;
-        Logger.log('✓ QA Scratchpad inserted');
+        state.insertionFailedLogged = false; // Reset on success
+        Logger.log('✓ QA Scratchpad: Successfully inserted between Prompt and Environment Variables sections');
         
         // Attach resize handler
-        scratchpadContainer = promptQualitySection.nextElementSibling;
+        scratchpadContainer = promptSection.nextElementSibling;
         if (scratchpadContainer && scratchpadContainer.dataset.qaScratchpad === 'true') {
             this.attachResizeHandler(state, scratchpadContainer);
             state.resizeHandlerAttached = true;
-            Logger.log('✓ Resize handler attached');
+            Logger.log('✓ QA Scratchpad: Resize handler attached');
+        } else {
+            Logger.warn('QA Scratchpad: Inserted but could not find container for resize handler');
         }
     },
     
-    findPromptQualitySection() {
+    findPromptSection() {
         // Find all divs with "flex flex-col gap-2"
         const candidates = Context.dom.queryAll('div.flex.flex-col.gap-2', {
-            context: `${this.id}.findPromptQualitySection`
+            context: `${this.id}.findPromptSection`
         });
         
         for (const candidate of candidates) {
+            // Look for both label and span elements (structure may vary)
             const label = candidate.querySelector('label');
-            if (label && label.textContent.includes('Prompt Quality Rating')) {
-                return candidate;
+            const span = candidate.querySelector('span.text-sm.text-muted-foreground.font-medium');
+            
+            // Check label first (for "Prompt Quality Rating" if it still exists)
+            if (label) {
+                const labelText = label.textContent.trim();
+                if (labelText.includes('Prompt Quality Rating') || labelText === 'Prompt') {
+                    return candidate;
+                }
+            }
+            
+            // Check span (for current "Prompt" structure)
+            if (span) {
+                const spanText = span.textContent.trim();
+                if (spanText === 'Prompt' || spanText.includes('Prompt Quality Rating')) {
+                    return candidate;
+                }
             }
         }
         
@@ -121,7 +172,7 @@ const plugin = {
         toggleCheckbox.checked = Storage.getSubOptionEnabled(this.id, 'remember-contents', true);
         toggleCheckbox.addEventListener('change', (e) => {
             Storage.setSubOptionEnabled(this.id, 'remember-contents', e.target.checked);
-            Logger.log(`Remember contents: ${e.target.checked}`);
+            Logger.debug(`QA Scratchpad: Remember contents setting changed to ${e.target.checked}`);
         });
         
         const toggleText = document.createElement('span');
@@ -154,7 +205,7 @@ const plugin = {
             const savedText = Storage.get(this.storageKeys.scratchpadText, '');
             if (savedText) {
                 this.applyTextareaValue(textarea, savedText);
-                Logger.log(`✓ Restored scratchpad text (${savedText.length} chars)`);
+                Logger.log(`✓ QA Scratchpad: Restored saved text (${savedText.length} chars)`);
             }
         }
         
@@ -193,7 +244,7 @@ const plugin = {
         const resizeHandle = textareaWrapper.querySelector('div.cursor-ns-resize');
         
         if (!textareaWrapper || !resizeHandle) {
-            Logger.warn('Could not find textarea wrapper or resize handle');
+            Logger.warn('QA Scratchpad: Could not find textarea wrapper or resize handle for attachment');
             return;
         }
         
@@ -240,7 +291,7 @@ const plugin = {
             // Save the new height
             const currentHeight = textareaWrapper.offsetHeight;
             Storage.set(this.storageKeys.scratchpadHeight, currentHeight);
-            Logger.debug(`Saved scratchpad height: ${currentHeight}px`);
+            Logger.debug(`QA Scratchpad: Saved height ${currentHeight}px`);
         };
         
         resizeHandle.addEventListener('mousedown', handleMouseDown);
@@ -259,7 +310,7 @@ const plugin = {
                 if (rememberContents) {
                     const text = textarea.value || '';
                     Storage.set(this.storageKeys.scratchpadText, text);
-                    Logger.debug(`Saved scratchpad text (${text.length} chars)`);
+                    Logger.debug(`QA Scratchpad: Saved text (${text.length} chars)`);
                 }
                 state.saveTimeoutId = null;
             }, 500);
@@ -293,7 +344,7 @@ const plugin = {
         CleanupRegistry.registerEventListener(textarea, 'input', saveText);
         CleanupRegistry.registerEventListener(textarea, 'change', saveText);
         
-        Logger.log('✓ Scratchpad text saving enabled');
+        Logger.debug('QA Scratchpad: Text saving observer enabled');
     },
     
     applyTextareaValue(textarea, value) {
@@ -332,7 +383,7 @@ const plugin = {
                     props.onChange(syntheticEvent);
                     return;
                 } catch (error) {
-                    Logger.debug('Error calling React onChange:', error);
+                    Logger.debug('QA Scratchpad: Error calling React onChange:', error);
                 }
             }
         }
