@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '3.4',
+    _version: '3.5',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -47,31 +47,42 @@ const plugin = {
         
         // Check if we should pulse before setting base styles
         const shouldPulse = Context.isOutdated || (Context.isDevBranch && this._getPulseOverrideEnabled());
+        const isAlreadyPulsing = this._pulseInterval !== null;
         
-        const baseStyles = `
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            background: var(--background, white);
-            border: 1px solid #fcd34d;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 9999;
-            transition: ${shouldPulse ? 'border 1s ease, box-shadow 1s ease' : 'all 0.2s'};
-        `;
+        // If button is already bound and pulsing, don't reset styles that interfere with animation
+        const isBound = settingsBtn.dataset.wfSettingsBound === 'true';
         
-        settingsBtn.style.cssText = baseStyles;
+        if (!isBound || !isAlreadyPulsing) {
+            const baseStyles = `
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                width: 48px;
+                height: 48px;
+                border-radius: 50%;
+                background: var(--background, white);
+                border: 1px solid #fcd34d;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                z-index: 9999;
+                transition: ${shouldPulse ? 'border 1s ease, box-shadow 1s ease' : 'all 0.2s'};
+            `;
+            
+            settingsBtn.style.cssText = baseStyles;
+        } else if (isAlreadyPulsing) {
+            // Only update transition if pulsing, don't reset border/box-shadow
+            settingsBtn.style.transition = 'border 1s ease, box-shadow 1s ease';
+        }
         
         // Add pulsing animation if outdated or override is enabled (dev branch only)
         if (shouldPulse) {
             settingsBtn.classList.add('wf-settings-outdated');
-            this._startPulseAnimation(settingsBtn);
+            if (!isAlreadyPulsing) {
+                this._startPulseAnimation(settingsBtn);
+            }
         } else {
             settingsBtn.classList.remove('wf-settings-outdated');
             this._stopPulseAnimation();
@@ -115,9 +126,11 @@ const plugin = {
         settingsBtn.style.border = '2px solid #dc2626';
         settingsBtn.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.4)';
         
+        Logger.debug('Starting pulse animation');
         let isOn = true; // Start with red outline (on state)
         this._pulseInterval = setInterval(() => {
             isOn = !isOn;
+            Logger.debug(`Pulse animation tick: isOn=${isOn}`);
             if (isOn) {
                 settingsBtn.style.border = '2px solid #dc2626';
                 settingsBtn.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.4)';
@@ -126,6 +139,8 @@ const plugin = {
                 settingsBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
             }
         }, 1000); // 1 second per state
+        
+        Logger.debug(`Pulse animation interval started: ${this._pulseInterval}`);
     },
     
     _stopPulseAnimation() {
@@ -195,7 +210,11 @@ const plugin = {
     _startPresenceGuard() {
         if (this._presenceInterval) return;
         const guard = () => {
-            this._ensureSettingsButton();
+            // Only ensure button if it doesn't exist - don't reset if it's already there and pulsing
+            const existingBtn = document.getElementById('wf-settings-btn');
+            if (!existingBtn) {
+                this._ensureSettingsButton();
+            }
             this._ensureModalPresence();
         };
         this._presenceInterval = setInterval(guard, 1000);
