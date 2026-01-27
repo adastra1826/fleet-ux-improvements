@@ -1010,32 +1010,44 @@
                     const fetchedVersion = parsedPlugin._version || parsedPlugin.version || null;
                     
                     if (fetchedVersion && fetchedVersion !== version) {
-                        // Fetched version doesn't match expected - GitHub CDN might be stale
-                        Logger.warn(`⚠ Fetched ${filename} has version v${fetchedVersion}, expected v${version}. GitHub CDN may be stale.`);
+                        // Compare versions to determine if fetched is newer or older
+                        const versionComparison = this._compareVersions(fetchedVersion, version);
                         
-                        // Don't cache the wrong version - use old cache if available
-                        if (cached) {
-                            Logger.warn(`Using cached v${cached.version} instead of stale fetched version`);
-                            Context.outdatedPlugins.push({
-                                filename: filename,
-                                sourcePath: sourcePath,
-                                cachedVersion: cached.version,
-                                requiredVersion: version,
-                                fetchedVersion: fetchedVersion
-                            });
-                            return cached.code;
-                        } else {
-                            // No cache available, but version is wrong - use it anyway with warning
-                            Logger.warn(`No cache available, using fetched version v${fetchedVersion} (expected v${version})`);
-                            Context.outdatedPlugins.push({
-                                filename: filename,
-                                sourcePath: sourcePath,
-                                cachedVersion: null,
-                                requiredVersion: version,
-                                fetchedVersion: fetchedVersion
-                            });
-                            // Don't cache the wrong version
+                        if (versionComparison > 0) {
+                            // Fetched version is NEWER than required - this is good, not outdated
+                            Logger.log(`✓ Fetched ${filename} has newer version v${fetchedVersion} (required v${version}). Using newer version.`);
+                            // Cache with the newer fetched version
+                            this.cachePluginCode(filename, sourcePath, fetchedCode, fetchedVersion);
+                            Logger.debug(`Verified and cached ${filename} v${fetchedVersion} (newer than required v${version})`);
                             return fetchedCode;
+                        } else {
+                            // Fetched version is OLDER than required - GitHub CDN might be stale
+                            Logger.warn(`⚠ Fetched ${filename} has version v${fetchedVersion}, expected v${version}. GitHub CDN may be stale.`);
+                            
+                            // Don't cache the wrong version - use old cache if available
+                            if (cached) {
+                                Logger.warn(`Using cached v${cached.version} instead of stale fetched version`);
+                                Context.outdatedPlugins.push({
+                                    filename: filename,
+                                    sourcePath: sourcePath,
+                                    cachedVersion: cached.version,
+                                    requiredVersion: version,
+                                    fetchedVersion: fetchedVersion
+                                });
+                                return cached.code;
+                            } else {
+                                // No cache available, but version is wrong - use it anyway with warning
+                                Logger.warn(`No cache available, using fetched version v${fetchedVersion} (expected v${version})`);
+                                Context.outdatedPlugins.push({
+                                    filename: filename,
+                                    sourcePath: sourcePath,
+                                    cachedVersion: null,
+                                    requiredVersion: version,
+                                    fetchedVersion: fetchedVersion
+                                });
+                                // Don't cache the wrong version
+                                return fetchedCode;
+                            }
                         }
                     }
                     
