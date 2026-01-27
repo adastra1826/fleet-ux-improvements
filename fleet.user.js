@@ -58,6 +58,9 @@
         isOutdated: false,
         latestVersion: null,
         isDevBranch: DEV_SCRIPTS_ENABLED,
+        githubBranch: GITHUB_CONFIG.branch,
+        githubOwner: GITHUB_CONFIG.owner,
+        githubRepo: GITHUB_CONFIG.repo,
         logPrefix: LOG_PREFIX,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
     };
