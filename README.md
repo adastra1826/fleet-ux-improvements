@@ -82,14 +82,15 @@ The extension uses an archetype-based plugin system that loads different feature
 
 ### Tool Use Task Creation Page
 
-- **Layout Manager**: Customizable multi-column layout with adjustable column widths
-- **Favorites**: Star frequently-used tools for quick access (persists between sessions)
-- **Expand/Collapse Buttons**: Quickly expand or collapse all workflow steps
-- **Mini Execute Buttons**: Execute tools while they're collapsed
-- **Duplicate to End**: Button to duplicate a tool step and place it at the end of the workflow
-- **Auto-Confirm Re-execute**: Automatically confirms the "Re-execute steps and invalidate results" modal
 - **Source Data Explorer**: Visual explorer for browsing source data
-- **Autocorrect Disabled**: Prevents autocorrect in textareas and the tool search field
+- **Favorites**: Star frequently-used tools for quick access (persists between sessions)
+- **Remove Textarea Gradient**: Cleaner textarea appearance
+- **Remember Layout Proportions**: Persists and restores the main panel split positions between sessions
+- **Prompt and Notes Areas Layout**: Anchors scratchpad to bottom and makes prompt handle control both areas (with option to remember scratchpad text)
+- **Execute to Current Tool**: Adds button to execute all tools from the beginning up to and including the current tool
+
+### Computer Use Task Creation Page
+
 - **Remove Textarea Gradient**: Cleaner textarea appearance
 
 ### QA Tool Use Review Page
@@ -97,6 +98,15 @@ The extension uses an archetype-based plugin system that loads different feature
 - **Bug Report Expand**: Click bug reports to expand and view full content with proper whitespace rendering
 - **Source Data Explorer**: Visual explorer for browsing source data
 - **Panel Size Memory**: Remembers your preferred panel sizes between sessions
+- **Remember Layout Proportions**: Persists and restores panel split positions between sessions
+- **QA Scratchpad**: Adds an adjustable height scratchpad for notes between prompt quality rating and environment variables (with option to remember contents)
+- **Request Revisions Improvements**: Enhanced workflow with auto-copy workflow to "What did you try?", auto-paste prompt to Task issue, and auto-paste verifier output to Grading issue
+- **Execute to Current Tool**: Adds button to execute all tools from the beginning up to and including the current tool
+
+### QA Computer Use Review Page
+
+- **Bug Report Expand**: Click bug reports to expand and view full content with proper whitespace rendering
+- **Request Revisions Improvements**: Enhanced workflow with auto-copy workflow to "What did you try?", auto-paste prompt to Task issue, and auto-paste verifier output to Grading issue
 
 ---
 
