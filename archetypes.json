@@ -3,7 +3,7 @@
   "corePlugins": [
     {
       "name": "settings-ui.js",
-      "version": "3.3"
+      "version": "3.4"
     }
   ],
   "devPlugins": [
@@ -89,6 +89,10 @@
         {
           "name": "panel-size-memory.js",
           "version": "1.8"
+        },
+        {
+          "name": "qa-scratchpad.js",
+          "version": "1.0"
         },
         {
           "name": "request-revisions.js",
