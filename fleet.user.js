@@ -10,6 +10,7 @@
 // @icon         https://www.fleetai.com/favicon.ico
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
 // @run-at       document-start
@@ -359,6 +360,84 @@
         },
         setSubOptionEnabled(pluginId, subOptionId, enabled) {
             this.set(`suboption-${pluginId}-${subOptionId}`, enabled);
+        },
+        // Delete a key
+        delete(key) {
+            try {
+                GM_deleteValue(STORAGE_PREFIX + key);
+            } catch (e) {
+                Logger.error(`Failed to delete storage key ${key}:`, e);
+            }
+        },
+        // Clear all storage
+        clearAll(plugins = null) {
+            Logger.log('Clearing all storage and cache...');
+            let clearedCount = 0;
+            
+            // Clear all plugin-related storage
+            const allPlugins = plugins || (typeof PluginManager !== 'undefined' ? PluginManager.getAll() : []);
+            allPlugins.forEach(plugin => {
+                // Clear plugin enabled state
+                this.delete(`plugin-${plugin.id}-enabled`);
+                clearedCount++;
+                
+                // Clear module logging
+                this.delete(`module-logging-${plugin.id}`);
+                clearedCount++;
+                
+                // Clear sub-options
+                if (plugin.subOptions && Array.isArray(plugin.subOptions)) {
+                    plugin.subOptions.forEach(subOption => {
+                        this.delete(`suboption-${plugin.id}-${subOption.id}`);
+                        clearedCount++;
+                    });
+                }
+                
+                // Clear plugin cache (try common patterns)
+                // Note: We can't enumerate all cache keys, so we clear known patterns
+                const pluginKey = this.getPluginKey(plugin.id, null);
+                if (pluginKey) {
+                    this.delete(`plugin-cache-${pluginKey}`);
+                    clearedCount++;
+                }
+            });
+            
+            // Clear global settings
+            const globalKeys = [
+                'global-plugins-enabled',
+                'global-plugins-previous',
+                'debug',
+                'verbose',
+                'submodule-logging'
+            ];
+            globalKeys.forEach(key => {
+                this.delete(key);
+                clearedCount++;
+            });
+            
+            // Clear plugin order for all known archetypes
+            // We'll try common archetype IDs
+            const commonArchetypeIds = ['global', 'qa-tool-use', 'qa-comp-use', 'tool-use-task-creation'];
+            commonArchetypeIds.forEach(archetypeId => {
+                this.delete(`plugin-order-${archetypeId}`);
+                clearedCount++;
+            });
+            
+            // Clear dev logger panel storage if it exists
+            const devLoggerKeys = [
+                'dev-logger-position-left',
+                'dev-logger-position-top',
+                'dev-logger-width',
+                'dev-logger-height',
+                'dev-logger-is-visible'
+            ];
+            devLoggerKeys.forEach(key => {
+                this.delete(key);
+                clearedCount++;
+            });
+            
+            Logger.log(`✓ Cleared ${clearedCount} storage keys`);
+            return clearedCount;
         }
     };
 
