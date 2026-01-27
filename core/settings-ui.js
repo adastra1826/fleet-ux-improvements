@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '3.3',
+    _version: '3.4',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -45,6 +45,9 @@ const plugin = {
         settingsBtn.type = 'button';
         settingsBtn.title = 'Fleet Enhancer Settings';
         
+        // Check if we should pulse before setting base styles
+        const shouldPulse = Context.isOutdated || (Context.isDevBranch && this._getPulseOverrideEnabled());
+        
         const baseStyles = `
             position: fixed;
             bottom: 20px;
@@ -60,13 +63,12 @@ const plugin = {
             justify-content: center;
             cursor: pointer;
             z-index: 9999;
-            transition: all 0.2s;
+            transition: ${shouldPulse ? 'border 1s ease, box-shadow 1s ease' : 'all 0.2s'};
         `;
         
         settingsBtn.style.cssText = baseStyles;
         
         // Add pulsing animation if outdated or override is enabled (dev branch only)
-        const shouldPulse = Context.isOutdated || (Context.isDevBranch && this._getPulseOverrideEnabled());
         if (shouldPulse) {
             settingsBtn.classList.add('wf-settings-outdated');
             this._startPulseAnimation(settingsBtn);
@@ -109,7 +111,11 @@ const plugin = {
         // Ensure smooth transitions
         settingsBtn.style.transition = 'border 1s ease, box-shadow 1s ease';
         
-        let isOn = false;
+        // Set initial state (start with red outline)
+        settingsBtn.style.border = '2px solid #dc2626';
+        settingsBtn.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.4)';
+        
+        let isOn = true; // Start with red outline (on state)
         this._pulseInterval = setInterval(() => {
             isOn = !isOn;
             if (isOn) {
@@ -136,9 +142,14 @@ const plugin = {
     
     _updatePulseAnimation() {
         const settingsBtn = document.getElementById('wf-settings-btn');
-        if (!settingsBtn) return;
+        if (!settingsBtn) {
+            Logger.debug('Settings button not found for pulse animation update');
+            return;
+        }
         
         const shouldPulse = Context.isOutdated || (Context.isDevBranch && this._getPulseOverrideEnabled());
+        Logger.debug(`Pulse animation update: shouldPulse=${shouldPulse}, isOutdated=${Context.isOutdated}, isDevBranch=${Context.isDevBranch}, overrideEnabled=${this._getPulseOverrideEnabled()}`);
+        
         if (shouldPulse) {
             this._startPulseAnimation(settingsBtn);
         } else {
@@ -641,8 +652,14 @@ const plugin = {
             if (pulseOverrideToggle) {
                 pulseOverrideToggle.addEventListener('change', (e) => {
                     this._handleToggleChange(e);
-                    this._setPulseOverrideEnabled(e.target.checked);
-                    this._updatePulseAnimation();
+                    const enabled = e.target.checked;
+                    Logger.log(`Pulse override toggle changed to: ${enabled}`);
+                    this._setPulseOverrideEnabled(enabled);
+                    // Reapply button behavior to update styles
+                    const settingsBtn = document.getElementById('wf-settings-btn');
+                    if (settingsBtn) {
+                        this._applySettingsButtonBehavior(settingsBtn);
+                    }
                     this._updateSettingsMessage(modal, plugins);
                 });
             }
