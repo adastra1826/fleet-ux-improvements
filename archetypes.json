@@ -54,10 +54,6 @@
         {
           "name": "remove-textarea-gradient.js",
           "version": "1.4"
-        },
-        {
-          "name": "layout-manager.js",
-          "version": "3.7"
         }
       ]
     },
