@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '3.3',
+    _version: '3.2',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -265,22 +265,6 @@ const plugin = {
             <div style="font-size: 11px; color: var(--muted-foreground, #888); text-align: center; padding-top: 12px; border-top: 1px solid var(--border, #e5e5e5);">
                 Fleet Workflow Enhancer · 
                 <a href="#" id="wf-reload-plugins" style="color: var(--brand, #4f46e5); text-decoration: none;">Reload Plugins</a>
-            </div>
-            
-            <!-- Clear Cache Button -->
-            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border, #e5e5e5);">
-                <button id="wf-clear-cache" style="
-                    width: 100%;
-                    padding: 10px 16px;
-                    font-size: 13px;
-                    font-weight: 500;
-                    color: #dc2626;
-                    background: transparent;
-                    border: 1px solid #dc2626;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                ">Clear Cache</button>
             </div>
         `;
         
@@ -570,32 +554,6 @@ const plugin = {
             reloadLink.addEventListener('click', (e) => {
                 e.preventDefault();
                 window.location.reload();
-            });
-        }
-        
-        // Clear cache button
-        const clearCacheBtn = Context.dom.query('#wf-clear-cache', {
-            root: modal,
-            context: `${this.id}.clearCacheButton`
-        });
-        if (clearCacheBtn) {
-            clearCacheBtn.addEventListener('click', () => {
-                const confirmed = confirm('Are you sure? This will clear *all* settings and data stored by this userscript.');
-                if (confirmed) {
-                    const allPlugins = PluginManager.getAll();
-                    const clearedCount = Storage.clearAll(allPlugins);
-                    Logger.log(`✓ Cache cleared: ${clearedCount} keys removed`);
-                    alert(`Cache cleared successfully. ${clearedCount} storage keys were removed. The page will now reload.`);
-                    window.location.reload();
-                }
-            });
-            clearCacheBtn.addEventListener('mouseenter', () => {
-                clearCacheBtn.style.background = '#fee2e2';
-                clearCacheBtn.style.borderColor = '#b91c1c';
-            });
-            clearCacheBtn.addEventListener('mouseleave', () => {
-                clearCacheBtn.style.background = 'transparent';
-                clearCacheBtn.style.borderColor = '#dc2626';
             });
         }
     },

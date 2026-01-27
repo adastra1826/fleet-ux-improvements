@@ -2,7 +2,7 @@
   "corePlugins": [
     {
       "name": "settings-ui.js",
-      "version": "3.3"
+      "version": "3.2"
     }
   ],
   "devPlugins": [
@@ -20,6 +20,10 @@
       "disambiguationSelectors": [],
       "plugins": [
         {
+          "name": "autocorrect-textareas.js",
+          "version": "1.2"
+        },
+        {
           "name": "source-data-explorer.js",
           "version": "3.7"
         },
@@ -30,14 +34,6 @@
         {
           "name": "remove-textarea-gradient.js",
           "version": "1.4"
-        },
-        {
-          "name": "prompt-and-notes-areas.js",
-          "version": "1.0"
-        },
-        {
-          "name": "remember-layout-proportions.js",
-          "version": "1.0"
         }
       ]
     },
