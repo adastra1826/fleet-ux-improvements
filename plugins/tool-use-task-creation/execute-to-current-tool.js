@@ -3,7 +3,7 @@ const plugin = {
     id: 'executeToCurrentTool',
     name: 'Execute to Current Tool',
     description: 'Adds button to execute all tools from the beginning up to and including the current tool',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false, panelId: null },
