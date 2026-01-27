@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '4.1',
+    _version: '5.0',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -238,8 +238,11 @@ const plugin = {
         const archetype = Context.currentArchetype;
         const archetypeId = archetype ? archetype.id : 'global';
         const allPlugins = PluginManager.getAll();
-        const archetypePlugins = allPlugins.filter(p => p.phase !== 'core');
-        const orderedPlugins = this._getOrderedPlugins(archetypePlugins, archetypeId);
+        // Separate regular archetype plugins from dev plugins
+        const archetypePlugins = allPlugins.filter(p => p.phase !== 'core' && !p._isDev);
+        const devPlugins = Context.isDevBranch ? PluginManager.getDevPlugins() : [];
+        const orderedPlugins = this._getOrderedPlugins(archetypePlugins, archetypeId, 'regular');
+        const orderedDevPlugins = this._getOrderedPlugins(devPlugins, archetypeId, 'dev');
         const version = Context.version || 'unknown';
         this._settingsArchetypeId = archetypeId;
         this._initialSettingsSnapshot = this._getSettingsSnapshot(archetypePlugins, archetypeId);
@@ -250,6 +253,11 @@ const plugin = {
         const pluginTogglesHTML = orderedPlugins.length > 0 
             ? orderedPlugins.map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled, globalEnabled)).join('')
             : '<p style="color: #666; font-size: 13px; font-style: italic;">No plugins loaded for this page.</p>';
+        
+        // Build dev plugin toggles HTML
+        const devPluginTogglesHTML = orderedDevPlugins.length > 0 
+            ? orderedDevPlugins.map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled, globalEnabled)).join('')
+            : '<p style="color: #666; font-size: 13px; font-style: italic;">No dev plugins loaded.</p>';
         
         // Build outdated plugins warning HTML
         const outdatedPluginsHTML = Context.outdatedPlugins && Context.outdatedPlugins.length > 0
@@ -347,6 +355,19 @@ const plugin = {
                 </div>
             </div>
             
+            ${Context.isDevBranch && devPlugins.length > 0 ? `
+            <!-- Dev Plugins Section -->
+            <div style="margin-bottom: 20px; border-top: 1px solid var(--border, #e5e5e5); padding-top: 20px;">
+                <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: var(--foreground, #333);">
+                    Dev Plugins (${devPlugins.length})
+                </h3>
+                <div id="wf-dev-plugin-list">
+                    ${devPluginTogglesHTML}
+                </div>
+            </div>
+            ` : ''}
+            
+            ${Context.isDevBranch ? `
             <!-- Debug Section -->
             <div style="border-top: 1px solid var(--border, #e5e5e5); padding-top: 16px; margin-bottom: 16px;">
                 <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: var(--foreground, #333);">
@@ -356,9 +377,10 @@ const plugin = {
                     ${this._createToggleHTML('wf-debug-enabled', 'Enable Debug Logging', Logger.isDebugEnabled())}
                     ${this._createToggleHTML('wf-verbose-enabled', 'Enable Verbose Logging', Logger.isVerboseEnabled())}
                     ${this._createToggleHTML('wf-submodule-logging-enabled', 'Enable Submodule Logging', submoduleLoggingEnabled)}
-                    ${Context.isDevBranch ? this._createToggleHTML('wf-pulse-override-enabled', 'Override Pulse Animation (Dev)', this._getPulseOverrideEnabled()) : ''}
+                    ${this._createToggleHTML('wf-pulse-override-enabled', 'Override Pulse Animation (Dev)', this._getPulseOverrideEnabled())}
                 </div>
             </div>
+            ` : ''}
             
             <!-- Footer -->
             <div style="font-size: 11px; color: var(--muted-foreground, #888); text-align: center; padding-top: 12px; border-top: 1px solid var(--border, #e5e5e5);">
@@ -387,7 +409,7 @@ const plugin = {
         this._ensureMessageElement(modal);
         
         // Attach event listeners
-        this._attachModalListeners(modal, orderedPlugins);
+        this._attachModalListeners(modal, orderedPlugins, orderedDevPlugins);
         this._updateSettingsMessage(modal, archetypePlugins);
         
         return modal;
@@ -516,8 +538,9 @@ const plugin = {
         `;
     },
     
-    _attachModalListeners(modal, plugins) {
+    _attachModalListeners(modal, plugins, devPlugins = []) {
         const self = this;
+        const allPlugins = [...plugins, ...devPlugins];
         
         // Close button
         const closeBtn = Context.dom.query('#wf-settings-close', {
@@ -550,17 +573,26 @@ const plugin = {
                 const isEnabled = e.target.checked;
                 this._setGlobalEnabled(isEnabled);
                 if (!isEnabled) {
-                    this._storeGlobalSnapshot(plugins);
-                    plugins.forEach(plugin => {
+                    this._storeGlobalSnapshot(allPlugins);
+                    allPlugins.forEach(plugin => {
                         PluginManager.setEnabled(plugin.id, false);
                     });
                 } else {
-                    this._restoreGlobalSnapshot(plugins);
+                    this._restoreGlobalSnapshot(allPlugins);
                 }
                 this._updateAllPluginsButtonsVisibility(modal, isEnabled);
                 this._renderPluginList(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._renderDevPluginList(modal, devPlugins);
+                }
                 this._attachPluginToggleListeners(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._attachPluginToggleListeners(modal, devPlugins, 'dev');
+                }
                 this._attachPluginReorderListeners(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._attachPluginReorderListeners(modal, devPlugins, 'dev');
+                }
                 this._updateSettingsMessage(modal, plugins);
             });
         }
@@ -572,12 +604,21 @@ const plugin = {
         });
         if (allOnBtn) {
             allOnBtn.addEventListener('click', () => {
-                plugins.forEach(plugin => {
+                allPlugins.forEach(plugin => {
                     PluginManager.setEnabled(plugin.id, true);
                 });
                 this._renderPluginList(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._renderDevPluginList(modal, devPlugins);
+                }
                 this._attachPluginToggleListeners(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._attachPluginToggleListeners(modal, devPlugins, 'dev');
+                }
                 this._attachPluginReorderListeners(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._attachPluginReorderListeners(modal, devPlugins, 'dev');
+                }
                 this._updateSettingsMessage(modal, plugins);
             });
             allOnBtn.addEventListener('mouseenter', () => {
@@ -596,12 +637,21 @@ const plugin = {
         });
         if (allOffBtn) {
             allOffBtn.addEventListener('click', () => {
-                plugins.forEach(plugin => {
+                allPlugins.forEach(plugin => {
                     PluginManager.setEnabled(plugin.id, false);
                 });
                 this._renderPluginList(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._renderDevPluginList(modal, devPlugins);
+                }
                 this._attachPluginToggleListeners(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._attachPluginToggleListeners(modal, devPlugins, 'dev');
+                }
                 this._attachPluginReorderListeners(modal, plugins);
+                if (Context.isDevBranch && devPlugins.length > 0) {
+                    this._attachPluginReorderListeners(modal, devPlugins, 'dev');
+                }
                 this._updateSettingsMessage(modal, plugins);
             });
             allOffBtn.addEventListener('mouseenter', () => {
@@ -617,6 +667,12 @@ const plugin = {
         // Plugin toggles
         this._attachPluginToggleListeners(modal, plugins);
         this._attachPluginReorderListeners(modal, plugins);
+        
+        // Dev plugin toggles (if dev branch and dev plugins exist)
+        if (Context.isDevBranch && devPlugins.length > 0) {
+            this._attachPluginToggleListeners(modal, devPlugins, 'dev');
+            this._attachPluginReorderListeners(modal, devPlugins, 'dev');
+        }
         
         // Debug toggle
         const debugToggle = Context.dom.query('#wf-debug-enabled', {
@@ -747,13 +803,32 @@ const plugin = {
         }
         const submoduleLoggingEnabled = Logger.isSubmoduleLoggingEnabled();
         const globalEnabled = this._getGlobalEnabled();
-        const orderedPlugins = this._getOrderedPlugins(plugins, this._settingsArchetypeId);
+        const orderedPlugins = this._getOrderedPlugins(plugins, this._settingsArchetypeId, 'regular');
         container.innerHTML = orderedPlugins
             .map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled, globalEnabled))
             .join('');
     },
 
-    _attachPluginToggleListeners(modal, plugins) {
+    _renderDevPluginList(modal, devPlugins) {
+        const container = Context.dom.query('#wf-dev-plugin-list', {
+            root: modal,
+            context: `${this.id}.devPluginList`
+        });
+        if (!container) return;
+        if (!devPlugins || devPlugins.length === 0) {
+            container.innerHTML = '<p style="color: #666; font-size: 13px; font-style: italic;">No dev plugins loaded.</p>';
+            return;
+        }
+        const submoduleLoggingEnabled = Logger.isSubmoduleLoggingEnabled();
+        const globalEnabled = this._getGlobalEnabled();
+        const orderedDevPlugins = this._getOrderedPlugins(devPlugins, this._settingsArchetypeId, 'dev');
+        container.innerHTML = orderedDevPlugins
+            .map(plugin => this._createPluginToggleHTML(plugin, submoduleLoggingEnabled, globalEnabled))
+            .join('');
+    },
+
+    _attachPluginToggleListeners(modal, plugins, listType = 'regular') {
+        const listId = listType === 'dev' ? 'wf-dev-plugin-list' : 'wf-plugin-list';
         plugins.forEach(plugin => {
             const checkbox = Context.dom.query(`#wf-plugin-${plugin.id}`, {
                 root: modal,
@@ -763,10 +838,18 @@ const plugin = {
                 checkbox.addEventListener('change', (e) => {
                     this._handleToggleChange(e);
                     PluginManager.setEnabled(plugin.id, e.target.checked);
-                    this._renderPluginList(modal, plugins);
-                    this._attachPluginToggleListeners(modal, plugins);
-                    this._attachPluginReorderListeners(modal, plugins);
-                    this._updateSettingsMessage(modal, plugins);
+                    if (listType === 'dev') {
+                        this._renderDevPluginList(modal, plugins);
+                        this._attachPluginToggleListeners(modal, plugins, 'dev');
+                        this._attachPluginReorderListeners(modal, plugins, 'dev');
+                    } else {
+                        this._renderPluginList(modal, plugins);
+                        this._attachPluginToggleListeners(modal, plugins);
+                        this._attachPluginReorderListeners(modal, plugins);
+                    }
+                    // Get all plugins (regular + dev) for settings message
+                    const allArchetypePlugins = PluginManager.getAll().filter(p => p.phase !== 'core' && !p._isDev);
+                    this._updateSettingsMessage(modal, allArchetypePlugins);
                 });
             }
             
@@ -801,13 +884,15 @@ const plugin = {
         });
     },
 
-    _attachPluginReorderListeners(modal, plugins) {
-        const list = Context.dom.query('#wf-plugin-list', {
+    _attachPluginReorderListeners(modal, plugins, listType = 'regular') {
+        const listId = listType === 'dev' ? 'wf-dev-plugin-list' : 'wf-plugin-list';
+        const boundKey = listType === 'dev' ? 'wfDevReorderBound' : 'wfReorderBound';
+        const list = Context.dom.query(`#${listId}`, {
             root: modal,
             context: `${this.id}.pluginListReorder`
         });
-        if (!list || list.dataset.wfReorderBound === 'true') return;
-        list.dataset.wfReorderBound = 'true';
+        if (!list || list.dataset[boundKey] === 'true') return;
+        list.dataset[boundKey] = 'true';
 
         list.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -827,17 +912,26 @@ const plugin = {
             const draggedId = this._draggingPluginId || (e.dataTransfer ? e.dataTransfer.getData('text/plain') : null);
             if (!draggedId || draggedId === targetId) return;
 
-            const order = this._getStoredPluginOrder(this._settingsArchetypeId, plugins);
+            const orderKey = listType === 'dev' ? `dev-plugin-order-${this._settingsArchetypeId}` : `plugin-order-${this._settingsArchetypeId}`;
+            const order = this._getStoredPluginOrder(this._settingsArchetypeId, plugins, listType);
             const fromIndex = order.indexOf(draggedId);
             const toIndex = order.indexOf(targetId);
             if (fromIndex === -1 || toIndex === -1) return;
             order.splice(fromIndex, 1);
             order.splice(toIndex, 0, draggedId);
-            this._setStoredPluginOrder(this._settingsArchetypeId, order);
-            this._renderPluginList(modal, plugins);
-            this._attachPluginToggleListeners(modal, plugins);
-            this._attachPluginReorderListeners(modal, plugins);
-            this._updateSettingsMessage(modal, plugins);
+            this._setStoredPluginOrder(this._settingsArchetypeId, order, listType);
+            if (listType === 'dev') {
+                this._renderDevPluginList(modal, plugins);
+                this._attachPluginToggleListeners(modal, plugins, 'dev');
+                this._attachPluginReorderListeners(modal, plugins, 'dev');
+            } else {
+                this._renderPluginList(modal, plugins);
+                this._attachPluginToggleListeners(modal, plugins);
+                this._attachPluginReorderListeners(modal, plugins);
+            }
+            // Get all plugins (regular + dev) for settings message
+            const allArchetypePlugins = PluginManager.getAll().filter(p => p.phase !== 'core' && !p._isDev);
+            this._updateSettingsMessage(modal, allArchetypePlugins);
         });
 
         list.addEventListener('dragstart', (e) => {
@@ -868,25 +962,26 @@ const plugin = {
         });
     },
 
-    _getOrderedPlugins(plugins, archetypeId) {
+    _getOrderedPlugins(plugins, archetypeId, listType = 'regular') {
         if (!plugins || plugins.length === 0) return [];
-        const order = this._getStoredPluginOrder(archetypeId, plugins);
+        const order = this._getStoredPluginOrder(archetypeId, plugins, listType);
         const byId = new Map(plugins.map(plugin => [plugin.id, plugin]));
         return order.map(id => byId.get(id)).filter(Boolean);
     },
 
-    _getPluginOrderKey(archetypeId) {
-        return `plugin-order-${archetypeId || 'global'}`;
+    _getPluginOrderKey(archetypeId, listType = 'regular') {
+        const prefix = listType === 'dev' ? 'dev-plugin-order' : 'plugin-order';
+        return `${prefix}-${archetypeId || 'global'}`;
     },
 
-    _setStoredPluginOrder(archetypeId, order) {
-        const key = this._getPluginOrderKey(archetypeId);
+    _setStoredPluginOrder(archetypeId, order, listType = 'regular') {
+        const key = this._getPluginOrderKey(archetypeId, listType);
         Storage.set(key, JSON.stringify(order || []));
     },
 
-    _getStoredPluginOrder(archetypeId, plugins) {
+    _getStoredPluginOrder(archetypeId, plugins, listType = 'regular') {
         const ids = plugins.map(plugin => plugin.id);
-        const key = this._getPluginOrderKey(archetypeId);
+        const key = this._getPluginOrderKey(archetypeId, listType);
         const storedRaw = Storage.get(key, null);
         let stored = null;
         if (storedRaw) {
@@ -897,7 +992,7 @@ const plugin = {
             }
         }
         if (!stored || !Array.isArray(stored)) {
-            this._setStoredPluginOrder(archetypeId, ids);
+            this._setStoredPluginOrder(archetypeId, ids, listType);
             return ids;
         }
         const valid = new Set(ids);
@@ -905,7 +1000,7 @@ const plugin = {
         const missing = ids.filter(id => !filtered.includes(id));
         const normalized = filtered.concat(missing);
         if (JSON.stringify(stored) !== JSON.stringify(normalized)) {
-            this._setStoredPluginOrder(archetypeId, normalized);
+            this._setStoredPluginOrder(archetypeId, normalized, listType);
         }
         return normalized;
     },

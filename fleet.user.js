@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.5.1
+// @version      3.6.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -28,7 +28,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.5.1';
+    const VERSION = '3.6.0';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -1191,6 +1191,32 @@
             return plugin;
         },
         
+        /**
+         * Load a dev archetype plugin with versioning support
+         * Dev archetype plugins live under: dev/<archetypeId>/<filename>
+         * @param {string} filename - The plugin filename (e.g., "source-data-explorer.js")
+         * @param {string} version - Required version (e.g., "1.0")
+         * @param {string} archetypeId - The archetype ID (e.g., "qa-tool-use")
+         * @returns {Promise} - Resolves with the plugin object
+         */
+        async loadDevArchetypePlugin(filename, version, archetypeId) {
+            // Dev archetype plugins must always live under: dev/<archetypeId>/<filename>
+            if (filename.includes('/')) {
+                throw new Error(
+                    `Invalid dev archetype plugin name "${filename}". Plugin names must be filenames only (no folder paths).`
+                );
+            }
+
+            const sourcePath = `dev/${archetypeId}/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.devPath}/${archetypeId}/${filename}`;
+
+            const code = await this.loadPluginCode(filename, sourcePath, version, url);
+            const plugin = this.parsePluginCode(code, filename, { useModuleLogger: true });
+            this._loadedPluginFiles.add(sourcePath);
+            Logger.debug(`Loaded dev archetype plugin ${filename} v${version} from ${sourcePath}`);
+            return plugin;
+        },
+        
         async loadPluginsFromConfig(pluginList, type) {
             if (!pluginList || pluginList.length === 0) {
                 Logger.debug(`No ${type} plugins configured`);
@@ -1321,6 +1347,79 @@
         },
         
         /**
+         * Load dev plugins for an archetype (auto-discover based on regular plugin list)
+         * Attempts to load dev versions of plugins from dev/<archetypeId>/ folder
+         * @param {Array} pluginList - List of regular plugins for the archetype
+         * @param {string} archetypeId - The archetype ID
+         */
+        async loadDevPluginsForArchetype(pluginList, archetypeId) {
+            if (!DEV_SCRIPTS_ENABLED) {
+                Logger.debug('Dev scripts disabled, skipping dev archetype plugins');
+                return;
+            }
+            
+            if (!pluginList || pluginList.length === 0) {
+                Logger.debug('No regular plugins for this archetype, skipping dev plugin discovery');
+                return;
+            }
+            
+            if (!archetypeId) {
+                Logger.error('Archetype ID required to load dev plugins');
+                return;
+            }
+            
+            Logger.log(`Discovering dev plugins for ${archetypeId}...`);
+            const loadPromises = [];
+            
+            for (const pluginDef of pluginList) {
+                // Extract filename from plugin definition
+                let filename;
+                if (typeof pluginDef === 'string') {
+                    filename = pluginDef;
+                } else if (pluginDef && pluginDef.name) {
+                    filename = pluginDef.name;
+                } else {
+                    continue;
+                }
+                
+                if (filename.includes('/')) {
+                    continue;
+                }
+                
+                // Check if dev version exists by attempting to load it
+                // Use version 1.0 as default for dev plugins (they can declare their own version)
+                const sourcePath = `dev/${archetypeId}/${filename}`;
+                const alreadyLoadedByPath = this._loadedPluginFiles.has(sourcePath);
+                
+                if (alreadyLoadedByPath) {
+                    Logger.debug(`Dev plugin ${filename} already loaded, skipping`);
+                    continue;
+                }
+                
+                // Attempt to load dev plugin (will fail gracefully if it doesn't exist)
+                loadPromises.push(
+                    this.loadDevArchetypePlugin(filename, '1.0', archetypeId)
+                        .then(plugin => {
+                            const loadedVersion = plugin._version || plugin.version || '1.0';
+                            plugin._sourceFile = filename;
+                            plugin._version = loadedVersion;
+                            plugin._isCore = false;
+                            plugin._isDev = true;
+                            PluginManager.register(plugin);
+                            Logger.log(`✓ Loaded dev plugin: ${filename} v${loadedVersion}`);
+                        })
+                        .catch(err => {
+                            // Silently ignore if dev plugin doesn't exist (this is expected)
+                            Logger.debug(`Dev plugin ${filename} not found (this is normal if dev version doesn't exist)`);
+                        })
+                );
+            }
+            
+            await Promise.allSettled(loadPromises);
+            Logger.log('Dev archetype plugin discovery complete');
+        },
+        
+        /**
          * Clean up deprecated cached plugins for an archetype
          * Compares cached plugins against expected plugins from archetypes.json
          * and deletes any cached entries that are no longer listed
@@ -1420,6 +1519,10 @@
         
         getArchetypePlugins() {
             return this.getAll().filter(p => p._isCore !== true);
+        },
+        
+        getDevPlugins() {
+            return this.getAll().filter(p => p._isDev === true);
         },
         
         isEnabled(id) {
@@ -1550,6 +1653,11 @@
             // Load archetype-specific plugins
             const pluginsToLoad = ArchetypeManager.getPluginsForCurrentArchetype();
             await PluginLoader.loadPluginsForArchetype(pluginsToLoad, archetype.id);
+            
+            // Load dev archetype plugins (if dev scripts enabled)
+            if (DEV_SCRIPTS_ENABLED) {
+                await PluginLoader.loadDevPluginsForArchetype(pluginsToLoad, archetype.id);
+            }
             
             // Run early plugins
             PluginManager.runEarlyPlugins();
