@@ -42,7 +42,7 @@
         },
         {
           "name": "execute-to-current-tool.js",
-          "version": "1.8"
+          "version": "1.9"
         }
       ]
     },
@@ -96,7 +96,7 @@
         },
         {
           "name": "execute-to-current-tool.js",
-          "version": "1.8"
+          "version": "1.9"
         }
       ]
     },
