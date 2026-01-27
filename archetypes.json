@@ -3,7 +3,7 @@
   "corePlugins": [
     {
       "name": "settings-ui.js",
-      "version": "5.2"
+      "version": "5.3"
     }
   ],
   "devPlugins": [
@@ -114,6 +114,41 @@
         {
           "name": "request-revisions.js",
           "version": "2.8"
+        }
+      ]
+    }
+  ],
+  "devArchetypes": [
+    {
+      "id": "tool-use-task-creation",
+      "name": "Tool Use Task Creation Page",
+      "description": "Page for creating K-type workflow tasks",
+      "urlPattern": "work/problems/create-tool-use*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "source-data-explorer.js",
+          "version": "3.7"
+        },
+        {
+          "name": "workflow-integrity-check.js",
+          "version": "1.0"
+        }
+      ]
+    },
+    {
+      "id": "qa-tool-use",
+      "name": "Task Review Page",
+      "urlPattern": "work/problems/qa-tool-use/*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "source-data-explorer.js",
+          "version": "1.2"
+        },
+        {
+          "name": "workflow-integrity-check.js",
+          "version": "1.0"
         }
       ]
     }
