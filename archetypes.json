@@ -25,6 +25,10 @@
           "version": "3.7"
         },
         {
+          "name": "json-editor-online.js",
+          "version": "1.0"
+        },
+        {
           "name": "favorites.js",
           "version": "3.7"
         },
@@ -81,6 +85,10 @@
         {
           "name": "source-data-explorer.js",
           "version": "1.2"
+        },
+        {
+          "name": "json-editor-online.js",
+          "version": "1.0"
         },
         {
           "name": "panel-size-memory.js",
