@@ -5,7 +5,7 @@ const plugin = {
     id: 'jsonEditorOnline',
     name: 'JSON Editor Online',
     description: 'Add button that opens JSON Editor Online in a new tab. Optionally show button on each tool result to copy output and open editor.',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -21,8 +21,7 @@ const plugin = {
     
     initialState: { 
         toolbarButtonAdded: false, 
-        missingLogged: false,
-        processedTools: new Set()
+        missingLogged: false
     },
     
     onMutation(state, context) {
@@ -153,23 +152,16 @@ const plugin = {
         });
         
         toolCards.forEach(card => {
-            // Get a unique identifier for this tool card
-            const cardId = this.getCardId(card);
-            if (state.processedTools.has(cardId)) {
-                return; // Already processed
-            }
-            
             // Find the result area
             const resultArea = this.findResultArea(card);
             if (!resultArea) {
                 return;
             }
             
-            // Check if button already exists
+            // Check if button already exists (like mini-execute-buttons does)
             const existing = resultArea.querySelector('[data-fleet-plugin="jsonEditorOnline"][data-slot="tool-button"]');
             if (existing) {
-                state.processedTools.add(cardId);
-                return;
+                return; // Button already exists, skip
             }
             
             // Find the button container (where "Find in result..." and other buttons are)
@@ -219,7 +211,6 @@ const plugin = {
                 }
             }
             
-            state.processedTools.add(cardId);
             Logger.log(`✓ JSON Editor Online button added to tool result`);
         });
     },
@@ -256,21 +247,6 @@ const plugin = {
         // Find tools container with space-y-3 class
         const toolsArea = scrollable.querySelector('.space-y-3');
         return toolsArea;
-    },
-    
-    getCardId(card) {
-        // Try to get a unique identifier for the card
-        // Use the tool name if available, otherwise use position
-        const header = card.querySelector('div.flex.items-center.gap-3.p-3');
-        if (header) {
-            const toolName = header.querySelector('span.font-mono');
-            if (toolName) {
-                return toolName.textContent.trim();
-            }
-        }
-        // Fallback to index
-        const cards = Array.from(card.parentElement?.children || []);
-        return `card-${cards.indexOf(card)}`;
     },
     
     findResultArea(card) {
