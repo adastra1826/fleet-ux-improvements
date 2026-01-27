@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.2',
+    _version: '5.3',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -61,7 +61,7 @@ const plugin = {
                 height: 48px;
                 border-radius: 50%;
                 background: var(--background, white);
-                border: 1px solid #fcd34d;
+                border: 1px solid #60a5fa;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
                 display: flex;
                 align-items: center;
@@ -77,7 +77,7 @@ const plugin = {
             settingsBtn.style.transition = 'border 1s ease, box-shadow 1s ease';
         }
         
-        // Add pulsing animation if outdated or override is enabled (dev branch only)
+        // Add pulsing animation if outdated or simulate update banner is enabled (dev branch only)
         if (shouldPulse) {
             settingsBtn.classList.add('wf-settings-outdated');
             if (!isAlreadyPulsing) {
@@ -133,7 +133,7 @@ const plugin = {
                 settingsBtn.style.border = '2px solid #dc2626';
                 settingsBtn.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.4)';
             } else {
-                settingsBtn.style.border = '1px solid #fcd34d';
+                settingsBtn.style.border = '1px solid #60a5fa';
                 settingsBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
             }
         }, 1000); // 1 second per state
@@ -146,7 +146,7 @@ const plugin = {
         }
         const settingsBtn = document.getElementById('wf-settings-btn');
         if (settingsBtn) {
-            settingsBtn.style.border = '1px solid #fcd34d';
+            settingsBtn.style.border = '1px solid #60a5fa';
             settingsBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
         }
     },
@@ -265,7 +265,7 @@ const plugin = {
             : '';
         
         // Build script update notification HTML
-        // Show if outdated OR if pulse override is enabled (for testing on dev branch)
+        // Show if outdated OR if simulate update banner is enabled (for testing on dev branch)
         const shouldShowUpdateNotification = (Context.isOutdated && Context.latestVersion) || 
             (Context.isDevBranch && this._getPulseOverrideEnabled());
         const updateNotificationHTML = shouldShowUpdateNotification
@@ -377,7 +377,7 @@ const plugin = {
                     ${this._createToggleHTML('wf-debug-enabled', 'Enable Debug Logging', Logger.isDebugEnabled())}
                     ${this._createToggleHTML('wf-verbose-enabled', 'Enable Verbose Logging', Logger.isVerboseEnabled())}
                     ${this._createToggleHTML('wf-submodule-logging-enabled', 'Enable Submodule Logging', submoduleLoggingEnabled)}
-                    ${this._createToggleHTML('wf-pulse-override-enabled', 'Override Pulse Animation (Dev)', this._getPulseOverrideEnabled())}
+                    ${this._createToggleHTML('wf-pulse-override-enabled', 'Simulate Update Banner', this._getPulseOverrideEnabled())}
                 </div>
             </div>
             ` : ''}
@@ -715,7 +715,7 @@ const plugin = {
             });
         }
         
-        // Pulse override toggle (dev branch only)
+        // Simulate Update Banner toggle (dev branch only)
         if (Context.isDevBranch) {
             const pulseOverrideToggle = Context.dom.query('#wf-pulse-override-enabled', {
                 root: modal,
@@ -725,14 +725,18 @@ const plugin = {
                 pulseOverrideToggle.addEventListener('change', (e) => {
                     this._handleToggleChange(e);
                     const enabled = e.target.checked;
-                    Logger.log(`Pulse override toggle changed to: ${enabled}`);
+                    Logger.log(`Simulate Update Banner toggle changed to: ${enabled}`);
                     this._setPulseOverrideEnabled(enabled);
                     // Reapply button behavior to update styles
                     const settingsBtn = document.getElementById('wf-settings-btn');
                     if (settingsBtn) {
                         this._applySettingsButtonBehavior(settingsBtn);
                     }
-                    this._updateSettingsMessage(modal, plugins);
+                    // Recreate modal to show/hide update banner
+                    this._closeModal();
+                    setTimeout(() => {
+                        this._toggleModal();
+                    }, 100);
                 });
             }
         }
@@ -1184,9 +1188,24 @@ const plugin = {
     
     _createUpdateNotificationHTML() {
         const currentVersion = Context.version || 'unknown';
-        // If pulse override is enabled but no latestVersion, use current version for display
-        const latestVersion = Context.latestVersion || (Context.isDevBranch && this._getPulseOverrideEnabled() ? currentVersion : 'unknown');
+        // If simulate update banner is enabled, simulate update by using current version + 0.1 as latest
         const isOverrideMode = Context.isDevBranch && this._getPulseOverrideEnabled() && !Context.isOutdated;
+        let latestVersion = Context.latestVersion;
+        
+        if (isOverrideMode) {
+            // Simulate update by making latest version slightly higher
+            // Parse version and increment patch version
+            const versionParts = currentVersion.split('.');
+            if (versionParts.length >= 3) {
+                const patch = parseInt(versionParts[2]) || 0;
+                versionParts[2] = (patch + 1).toString();
+                latestVersion = versionParts.join('.');
+            } else {
+                latestVersion = currentVersion;
+            }
+        } else {
+            latestVersion = Context.latestVersion || 'unknown';
+        }
         
         return `
             <div style="
@@ -1205,15 +1224,20 @@ const plugin = {
                     </svg>
                     <div style="flex: 1;">
                         <h3 style="font-size: 15px; font-weight: 600; margin: 0 0 8px 0; color: #991b1b;">
-                            ${isOverrideMode ? 'Pulse Animation Test Mode' : 'Extension Update Available'}
+                            Extension Update Available
                         </h3>
                         <p style="font-size: 13px; color: #991b1b; margin: 0 0 10px 0; line-height: 1.5;">
-                            ${isOverrideMode 
-                                ? `Pulse animation override is enabled for testing. Current version: <strong>${currentVersion}</strong>.`
-                                : `Your current version of this extension (<strong>${currentVersion}</strong>) is outdated. Please update to the <a href="https://raw.githubusercontent.com/${Context.githubOwner || 'adastra1826'}/${Context.githubRepo || 'fleet-ux-improvements'}/${Context.githubBranch || 'dev'}/fleet.user.js" target="_blank" rel="noopener noreferrer" style="color: #991b1b; text-decoration: underline; font-weight: 600;">newest version</a> (<strong>${latestVersion}</strong>).`
-                            }
+                            Your current version of this extension (<strong>${currentVersion}</strong>) is outdated. Please update to the <a href="https://raw.githubusercontent.com/${Context.githubOwner || 'adastra1826'}/${Context.githubRepo || 'fleet-ux-improvements'}/${Context.githubBranch || 'dev'}/fleet.user.js" target="_blank" rel="noopener noreferrer" style="color: #991b1b; text-decoration: underline; font-weight: 600;">newest version</a> (<strong>${latestVersion}</strong>).
                         </p>
-                        
+                        <div style="font-size: 12px; color: #991b1b; background: rgba(220, 38, 38, 0.1); padding: 10px; border-radius: 6px; line-height: 1.6;">
+                            <strong>How to update:</strong>
+                            <ol style="margin: 6px 0 0 0; padding-left: 20px;">
+                                <li>Open your browser's extension manager (Tampermonkey/Violentmonkey)</li>
+                                <li>Find this userscript in the list</li>
+                                <li>Click "Check for updates" or the update button</li>
+                                <li>Reload the page after the update completes</li>
+                            </ol>
+                        </div>
                     </div>
                 </div>
             </div>
