@@ -43,6 +43,10 @@
         {
           "name": "prompt-and-notes-areas.js",
           "version": "1.0"
+        },
+        {
+          "name": "execute-to-current-tool.js",
+          "version": "1.0"
         }
       ]
     },
@@ -101,6 +105,10 @@
         {
           "name": "request-revisions.js",
           "version": "2.8"
+        },
+        {
+          "name": "execute-to-current-tool.js",
+          "version": "1.0"
         }
       ]
     },
