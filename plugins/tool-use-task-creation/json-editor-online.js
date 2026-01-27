@@ -5,7 +5,7 @@ const plugin = {
     id: 'jsonEditorOnline',
     name: 'JSON Editor Online',
     description: 'Add button that opens JSON Editor Online in a new tab. Optionally show button on each tool result to copy output and open editor.',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -186,10 +186,18 @@ const plugin = {
             button.title = 'Copy current output and go to JSON Editor Online';
             button.innerHTML = '<span class="text-xs font-mono">{}</span>';
             
+            let isHandlingClick = false;
             button.onclick = async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                await this.copyResultAndOpenEditor(card, resultArea);
+                if (isHandlingClick) return;
+                isHandlingClick = true;
+                try {
+                    await this.copyResultAndOpenEditor(card, resultArea);
+                } finally {
+                    // Reset after a short delay to allow async operations
+                    setTimeout(() => { isHandlingClick = false; }, 1000);
+                }
             };
             
             // Insert after the divider (w-px h-4 bg-border mx-1)
@@ -308,95 +316,79 @@ const plugin = {
     },
     
     async copyResultAndOpenEditor(card, resultArea) {
-        Logger.log('Copying result and opening JSON Editor Online');
-        
-        // Find the copy button in the result area
-        const copyButton = this.findCopyButton(resultArea);
-        if (copyButton) {
-            try {
-                // Click the copy button
-                copyButton.click();
-                Logger.log('✓ Clicked copy button');
-                
-                // Small delay to ensure clipboard is updated
-                await new Promise(resolve => setTimeout(resolve, 100));
-            } catch (e) {
-                Logger.warn('Failed to click copy button:', e);
-            }
-        } else {
-            Logger.warn('Copy button not found, opening editor anyway');
+        // Prevent double execution
+        if (this._copying) {
+            return;
         }
+        this._copying = true;
         
-        // Open JSON Editor Online in new tab
-        window.open('https://jsoneditoronline.org', '_blank');
-        Logger.log('✓ Opened JSON Editor Online');
-    },
-    
-    findCopyButton(resultArea) {
-        // Look for copy button - it's typically near the result area
-        // Try multiple strategies
-        
-        // Strategy 1: Look in the button container we found earlier (most likely location)
-        const buttonContainer = this.findResultButtonContainer(resultArea);
-        if (buttonContainer) {
-            // Look for button with copy-related title or aria-label
-            const copyBtn = Array.from(buttonContainer.querySelectorAll('button')).find(btn => {
-                const title = (btn.getAttribute('title') || '').toLowerCase();
-                const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                const text = btn.textContent.toLowerCase();
-                return title.includes('copy') || title.includes('clipboard') || 
-                       ariaLabel.includes('copy') || ariaLabel.includes('clipboard') ||
-                       text.includes('copy');
-            });
-            if (copyBtn) {
-                return copyBtn;
+        try {
+            Logger.log('Copying result and opening JSON Editor Online');
+            
+            // Find the result content div (the one with the actual JSON/text)
+            const resultContent = this.findResultContent(resultArea);
+            if (resultContent) {
+                try {
+                    // Extract text content
+                    const textContent = resultContent.textContent || resultContent.innerText || '';
+                    
+                    if (textContent.trim()) {
+                        // Use Clipboard API to copy directly
+                        await navigator.clipboard.writeText(textContent);
+                        Logger.log('✓ Copied result content to clipboard');
+                    } else {
+                        Logger.warn('Result content is empty');
+                    }
+                } catch (e) {
+                    Logger.warn('Failed to copy to clipboard:', e);
+                    // Fallback: try using document.execCommand for older browsers
+                    try {
+                        const textArea = document.createElement('textarea');
+                        textArea.value = resultContent.textContent || resultContent.innerText || '';
+                        textArea.style.position = 'fixed';
+                        textArea.style.opacity = '0';
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        Logger.log('✓ Copied result content to clipboard (fallback method)');
+                    } catch (fallbackError) {
+                        Logger.warn('Fallback copy method also failed:', fallbackError);
+                    }
+                }
+            } else {
+                Logger.warn('Result content div not found, opening editor anyway');
             }
             
-            // Look for button with copy icon (clipboard icon) in SVG
-            const buttons = buttonContainer.querySelectorAll('button');
-            for (const btn of buttons) {
-                const svg = btn.querySelector('svg');
-                if (svg) {
-                    // Check for common copy icon paths
-                    const paths = svg.querySelectorAll('path');
-                    for (const path of paths) {
-                        const d = path.getAttribute('d') || '';
-                        // Common copy icon patterns (clipboard rectangles)
-                        if (d.includes('M16 1H4c-1.1') || d.includes('M20 9h-2v2h2V9z') || 
-                            d.includes('rect') && d.includes('M8') && d.includes('M4')) {
-                            return btn;
-                        }
-                    }
-                }
-            }
+            // Open JSON Editor Online in new tab
+            window.open('https://jsoneditoronline.org', '_blank');
+            Logger.log('✓ Opened JSON Editor Online');
+        } finally {
+            this._copying = false;
         }
-        
-        // Strategy 2: Look for button near the result content area
-        const resultContent = resultArea.querySelector('div.p-3.rounded-md.border');
+    },
+    
+    findResultContent(resultArea) {
+        // Find the div with the actual result content
+        // Based on the HTML structure: div.p-3.rounded-md.border with font-mono
+        const resultContent = resultArea.querySelector('div.p-3.rounded-md.border.font-mono');
         if (resultContent) {
-            // Look for buttons in the same parent or nearby
-            const parent = resultContent.parentElement;
-            if (parent) {
-                const nearbyButtons = parent.querySelectorAll('button');
-                for (const btn of nearbyButtons) {
-                    const title = (btn.getAttribute('title') || '').toLowerCase();
-                    const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                    if (title.includes('copy') || title.includes('clipboard') || 
-                        ariaLabel.includes('copy') || ariaLabel.includes('clipboard')) {
-                        return btn;
-                    }
-                }
-            }
+            return resultContent;
         }
         
-        // Strategy 3: Look for any button with copy-related attributes in the entire result area
-        const allButtons = resultArea.querySelectorAll('button');
-        for (const btn of allButtons) {
-            const title = (btn.getAttribute('title') || '').toLowerCase();
-            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-            if (title.includes('copy') || title.includes('clipboard') || 
-                ariaLabel.includes('copy') || ariaLabel.includes('clipboard')) {
-                return btn;
+        // Fallback: look for div with whitespace-pre-wrap (common for code/JSON display)
+        const preWrapDiv = resultArea.querySelector('div.whitespace-pre-wrap');
+        if (preWrapDiv) {
+            return preWrapDiv;
+        }
+        
+        // Fallback: look for any div with border that contains JSON-like content
+        const borderDivs = resultArea.querySelectorAll('div.border');
+        for (const div of borderDivs) {
+            const text = (div.textContent || '').trim();
+            // Check if it looks like JSON (starts with { or [)
+            if (text.startsWith('{') || text.startsWith('[')) {
+                return div;
             }
         }
         
