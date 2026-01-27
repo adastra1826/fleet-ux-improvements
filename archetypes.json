@@ -21,10 +21,6 @@
       "disambiguationSelectors": [],
       "plugins": [
         {
-          "name": "source-data-explorer.js",
-          "version": "3.7"
-        },
-        {
           "name": "json-editor-online.js",
           "version": "1.2"
         },
@@ -80,10 +76,6 @@
       "plugins": [
         {
           "name": "bug-report-expand.js",
-          "version": "1.2"
-        },
-        {
-          "name": "source-data-explorer.js",
           "version": "1.2"
         },
         {
