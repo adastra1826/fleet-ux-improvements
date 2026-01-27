@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.4.0
+// @version      3.5.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -28,7 +28,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.4.0';
+    const VERSION = '3.5.0';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -55,6 +55,9 @@
         currentArchetype: null,
         currentPath: null,
         outdatedPlugins: [],
+        isOutdated: false,
+        latestVersion: null,
+        isDevBranch: DEV_SCRIPTS_ENABLED,
         logPrefix: LOG_PREFIX,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
     };
@@ -710,6 +713,23 @@
                                 this.archetypes = config.archetypes || [];
                                 this.corePlugins = config.corePlugins || [];
                                 this.devPlugins = config.devPlugins || [];
+                                
+                                // Check if script version is outdated
+                                if (config.version) {
+                                    const latestVersion = config.version;
+                                    Context.latestVersion = latestVersion;
+                                    // Simple version comparison: if versions don't match, consider outdated
+                                    // This handles semantic versioning (e.g., "3.4.0" vs "3.4.1")
+                                    Context.isOutdated = this._compareVersions(VERSION, latestVersion) < 0;
+                                    if (Context.isOutdated) {
+                                        Logger.warn(`⚠ Script version ${VERSION} is outdated. Latest version is ${latestVersion}`);
+                                    }
+                                } else {
+                                    // No version in config, assume up to date
+                                    Context.isOutdated = false;
+                                    Context.latestVersion = VERSION;
+                                }
+                                
                                 Logger.log(`✓ Loaded ${this.archetypes.length} archetypes from branch: ${GITHUB_CONFIG.branch}`);
                                 resolve(config);
                             } catch (e) {
@@ -735,6 +755,24 @@
 
         getDevPlugins() {
             return this.devPlugins || [];
+        },
+        
+        /**
+         * Compare two version strings (e.g., "3.4.0" vs "3.4.1")
+         * Returns: -1 if v1 < v2, 0 if v1 === v2, 1 if v1 > v2
+         */
+        _compareVersions(v1, v2) {
+            const parts1 = v1.split('.').map(Number);
+            const parts2 = v2.split('.').map(Number);
+            const maxLength = Math.max(parts1.length, parts2.length);
+            
+            for (let i = 0; i < maxLength; i++) {
+                const part1 = parts1[i] || 0;
+                const part2 = parts2[i] || 0;
+                if (part1 < part2) return -1;
+                if (part1 > part2) return 1;
+            }
+            return 0;
         },
         
         /**

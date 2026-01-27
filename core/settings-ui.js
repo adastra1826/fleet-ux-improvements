@@ -14,11 +14,13 @@ const plugin = {
     _buttonCreated: false,
     _modalOpen: false,
     _presenceInterval: null,
+    _pulseInterval: null,
     
     init(state, context) {
         this._ensureSettingsButton();
         this._ensureModalPresence();
         this._startPresenceGuard();
+        this._updatePulseAnimation();
     },
     
     // No destroy method - this plugin persists
@@ -42,7 +44,8 @@ const plugin = {
         if (!settingsBtn) return;
         settingsBtn.type = 'button';
         settingsBtn.title = 'Fleet Enhancer Settings';
-        settingsBtn.style.cssText = `
+        
+        const baseStyles = `
             position: fixed;
             bottom: 20px;
             left: 20px;
@@ -59,6 +62,18 @@ const plugin = {
             z-index: 9999;
             transition: all 0.2s;
         `;
+        
+        settingsBtn.style.cssText = baseStyles;
+        
+        // Add pulsing animation if outdated or override is enabled (dev branch only)
+        const shouldPulse = Context.isOutdated || (Context.isDevBranch && this._getPulseOverrideEnabled());
+        if (shouldPulse) {
+            settingsBtn.classList.add('wf-settings-outdated');
+            this._startPulseAnimation(settingsBtn);
+        } else {
+            settingsBtn.classList.remove('wf-settings-outdated');
+            this._stopPulseAnimation();
+        }
         settingsBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
@@ -80,6 +95,55 @@ const plugin = {
         });
 
         settingsBtn.addEventListener('click', () => this._toggleModal());
+    },
+    
+    _startPulseAnimation(settingsBtn) {
+        if (!settingsBtn) return;
+        
+        // Stop existing animation if any
+        if (this._pulseInterval) {
+            clearInterval(this._pulseInterval);
+            this._pulseInterval = null;
+        }
+        
+        // Ensure smooth transitions
+        settingsBtn.style.transition = 'border 1s ease, box-shadow 1s ease';
+        
+        let isOn = false;
+        this._pulseInterval = setInterval(() => {
+            isOn = !isOn;
+            if (isOn) {
+                settingsBtn.style.border = '2px solid #dc2626';
+                settingsBtn.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.4)';
+            } else {
+                settingsBtn.style.border = '1px solid #fcd34d';
+                settingsBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+            }
+        }, 1000); // 1 second per state
+    },
+    
+    _stopPulseAnimation() {
+        if (this._pulseInterval) {
+            clearInterval(this._pulseInterval);
+            this._pulseInterval = null;
+        }
+        const settingsBtn = document.getElementById('wf-settings-btn');
+        if (settingsBtn) {
+            settingsBtn.style.border = '1px solid #fcd34d';
+            settingsBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+        }
+    },
+    
+    _updatePulseAnimation() {
+        const settingsBtn = document.getElementById('wf-settings-btn');
+        if (!settingsBtn) return;
+        
+        const shouldPulse = Context.isOutdated || (Context.isDevBranch && this._getPulseOverrideEnabled());
+        if (shouldPulse) {
+            this._startPulseAnimation(settingsBtn);
+        } else {
+            this._stopPulseAnimation();
+        }
     },
     
     _toggleModal() {
@@ -167,7 +231,13 @@ const plugin = {
             ? this._createOutdatedPluginsHTML(Context.outdatedPlugins)
             : '';
         
+        // Build script update notification HTML
+        const updateNotificationHTML = Context.isOutdated && Context.latestVersion
+            ? this._createUpdateNotificationHTML()
+            : '';
+        
         modal.innerHTML = `
+            ${updateNotificationHTML}
             <!-- Sticky Header -->
             <div style="position: sticky; top: -24px; margin: -24px -24px 20px -24px; padding: 24px 24px 16px 24px; background: var(--background, white); border-bottom: 1px solid var(--border, #e5e5e5); z-index: 1;">
                 <div style="display: flex; align-items: flex-start; justify-content: space-between;">
@@ -258,6 +328,7 @@ const plugin = {
                     ${this._createToggleHTML('wf-debug-enabled', 'Enable Debug Logging', Logger.isDebugEnabled())}
                     ${this._createToggleHTML('wf-verbose-enabled', 'Enable Verbose Logging', Logger.isVerboseEnabled())}
                     ${this._createToggleHTML('wf-submodule-logging-enabled', 'Enable Submodule Logging', submoduleLoggingEnabled)}
+                    ${Context.isDevBranch ? this._createToggleHTML('wf-pulse-override-enabled', 'Override Pulse Animation (Dev)', this._getPulseOverrideEnabled()) : ''}
                 </div>
             </div>
             
@@ -561,6 +632,22 @@ const plugin = {
             });
         }
         
+        // Pulse override toggle (dev branch only)
+        if (Context.isDevBranch) {
+            const pulseOverrideToggle = Context.dom.query('#wf-pulse-override-enabled', {
+                root: modal,
+                context: `${this.id}.pulseOverrideToggle`
+            });
+            if (pulseOverrideToggle) {
+                pulseOverrideToggle.addEventListener('change', (e) => {
+                    this._handleToggleChange(e);
+                    this._setPulseOverrideEnabled(e.target.checked);
+                    this._updatePulseAnimation();
+                    this._updateSettingsMessage(modal, plugins);
+                });
+            }
+        }
+        
         // Reload plugins link
         const reloadLink = Context.dom.query('#wf-reload-plugins', {
             root: modal,
@@ -824,6 +911,14 @@ const plugin = {
     _setGlobalEnabled(enabled) {
         Storage.set('global-plugins-enabled', enabled);
     },
+    
+    _getPulseOverrideEnabled() {
+        return Storage.get('pulse-override-enabled', false);
+    },
+    
+    _setPulseOverrideEnabled(enabled) {
+        Storage.set('pulse-override-enabled', enabled);
+    },
 
     _storeGlobalSnapshot(plugins) {
         if (!Array.isArray(plugins)) return;
@@ -955,6 +1050,47 @@ const plugin = {
                 <ul style="font-size: 12px; color: #92400e; margin: 8px 0 0 0; padding-left: 20px;">
                     ${pluginsList}
                 </ul>
+            </div>
+        `;
+    },
+    
+    _createUpdateNotificationHTML() {
+        const currentVersion = Context.version || 'unknown';
+        const latestVersion = Context.latestVersion || 'unknown';
+        
+        return `
+            <div style="
+                margin-bottom: 20px;
+                padding: 14px;
+                background: #fee2e2;
+                border: 2px solid #dc2626;
+                border-radius: 8px;
+            ">
+                <div style="display: flex; align-items: flex-start; margin-bottom: 10px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px; color: #dc2626; flex-shrink: 0; margin-top: 2px;">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <div style="flex: 1;">
+                        <h3 style="font-size: 15px; font-weight: 600; margin: 0 0 8px 0; color: #991b1b;">
+                            Extension Update Available
+                        </h3>
+                        <p style="font-size: 13px; color: #991b1b; margin: 0 0 10px 0; line-height: 1.5;">
+                            Your current version of this extension (<strong>${currentVersion}</strong>) is outdated. 
+                            Please update to the newest version (<strong>${latestVersion}</strong>).
+                        </p>
+                        <div style="font-size: 12px; color: #991b1b; background: rgba(220, 38, 38, 0.1); padding: 10px; border-radius: 6px; line-height: 1.6;">
+                            <strong>How to update:</strong>
+                            <ol style="margin: 6px 0 0 0; padding-left: 20px;">
+                                <li>Open your browser's extension manager (Tampermonkey/Violentmonkey)</li>
+                                <li>Find this userscript in the list</li>
+                                <li>Click "Check for updates" or the update button</li>
+                                <li>Reload the page after the update completes</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
     }
