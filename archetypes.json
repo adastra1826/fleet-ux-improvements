@@ -43,10 +43,6 @@
         {
           "name": "execute-to-current-tool.js",
           "version": "1.9"
-        },
-        {
-          "name": "workflow-integrity-check.js",
-          "version": "1.0"
         }
       ]
     },
@@ -101,10 +97,6 @@
         {
           "name": "execute-to-current-tool.js",
           "version": "1.9"
-        },
-        {
-          "name": "workflow-integrity-check.js",
-          "version": "1.0"
         }
       ]
     },
