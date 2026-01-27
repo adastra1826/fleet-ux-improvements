@@ -5,7 +5,7 @@ const plugin = {
     id: 'jsonEditorOnline',
     name: 'JSON Editor Online',
     description: 'Add button that opens JSON Editor Online in a new tab. Optionally show button on each tool result to copy output and open editor.',
-    _version: '1.5',
+    _version: '1.6',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -28,8 +28,7 @@ const plugin = {
     
     initialState: { 
         toolbarButtonAdded: false, 
-        missingLogged: false,
-        panelId: null
+        missingLogged: false
     },
     
     onMutation(state, context) {
@@ -104,21 +103,8 @@ const plugin = {
             return;
         }
         
-        // Track panel ID to avoid re-processing (like execute-to-current-tool does)
-        const currentPanelId = panel.getAttribute('data-panel-id');
-        if (state.panelId === currentPanelId && !state.missingLogged) {
-            // Already processed this panel, but continue to check for new tools
-        } else {
-            state.panelId = currentPanelId;
-            state.missingLogged = false;
-        }
-        
         const toolsContainer = this.findToolsArea(panel);
         if (!toolsContainer) {
-            if (!state.missingLogged) {
-                Logger.debug('Tools container not found for JSON Editor Online tool buttons');
-                state.missingLogged = true;
-            }
             return;
         }
         
@@ -126,21 +112,11 @@ const plugin = {
             root: toolsContainer,
             context: `${this.id}.toolCards`
         });
-        let buttonsAdded = 0;
         
         toolCards.forEach(card => {
-            // Check for collapsible root first (like mini-execute-buttons does)
-            const collapsibleRoot = Context.dom.query('div[data-state]', {
-                root: card,
-                context: `${this.id}.collapsibleRoot`
-            });
-            if (!collapsibleRoot) return;
-            
-            // Find the result area (only in open tools - results only exist after execution)
+            // Find the result area
             const resultArea = this.findResultArea(card);
             if (!resultArea) {
-                // Result area not found - tool may not have been executed yet or is collapsed
-                // This is expected for tools without results, so don't log as error
                 return;
             }
             
@@ -153,7 +129,6 @@ const plugin = {
             // Find the button container (where "Find in result..." and other buttons are)
             const buttonContainer = this.findResultButtonContainer(resultArea);
             if (!buttonContainer) {
-                Logger.debug(`Button container not found for tool result area in ${this.id}`);
                 return;
             }
             
@@ -198,17 +173,12 @@ const plugin = {
                 }
             }
             
-            buttonsAdded++;
             Logger.log(`✓ JSON Editor Online button added to tool result`);
         });
-        
-        if (buttonsAdded > 0) {
-            Logger.log(`✓ Added ${buttonsAdded} JSON Editor Online button(s) to tool results`);
-        }
     },
     
     findWorkflowPanel() {
-        // Find panels by data-panel-id attribute, then semantic search
+        // Find panels by data-panel-id attribute
         const panels = Context.dom.queryAll('[data-panel-id][data-panel]', {
             context: `${this.id}.panels`
         });
@@ -256,9 +226,7 @@ const plugin = {
     },
     
     findResultArea(card) {
-        // Find the collapsible content area - only check open state
-        // Result areas only exist when tools have been executed and are showing results
-        // Match the working tool-use-task-creation version exactly
+        // Find the collapsible content area
         const collapsibleContent = Context.dom.query('div[data-state="open"] > div[id^="radix-"][data-state="open"]', {
             root: card,
             context: `${this.id}.collapsibleContent`
