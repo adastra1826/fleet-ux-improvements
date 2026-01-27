@@ -5,7 +5,7 @@ const plugin = {
     id: 'jsonEditorOnline',
     name: 'JSON Editor Online',
     description: 'Add button that opens JSON Editor Online in a new tab. Optionally show button on each tool result to copy output and open editor.',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -15,7 +15,7 @@ const plugin = {
             id: 'show-on-tool',
             name: 'Show button on each tool',
             description: 'Add a small button to each tool result area that copies the output and opens JSON Editor Online',
-            enabledByDefault: false
+            enabledByDefault: true
         }
     ],
     
@@ -145,7 +145,7 @@ const plugin = {
             button.setAttribute('data-slot', 'tool-button');
             button.className = 'inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground size-7 h-6 w-6';
             button.title = 'Copy current output and go to JSON Editor Online';
-            button.innerHTML = '<span class="text-xs font-mono">{ }</span>';
+            button.innerHTML = '<span class="text-xs font-mono">{}</span>';
             
             button.onclick = async (e) => {
                 e.stopPropagation();
