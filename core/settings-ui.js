@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.3',
+    _version: '5.4',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -1229,15 +1229,6 @@ const plugin = {
                         <p style="font-size: 13px; color: #991b1b; margin: 0 0 10px 0; line-height: 1.5;">
                             Your current version of this extension (<strong>${currentVersion}</strong>) is outdated. Please update to the <a href="https://raw.githubusercontent.com/${Context.githubOwner || 'adastra1826'}/${Context.githubRepo || 'fleet-ux-improvements'}/${Context.githubBranch || 'dev'}/fleet.user.js" target="_blank" rel="noopener noreferrer" style="color: #991b1b; text-decoration: underline; font-weight: 600;">newest version</a> (<strong>${latestVersion}</strong>).
                         </p>
-                        <div style="font-size: 12px; color: #991b1b; background: rgba(220, 38, 38, 0.1); padding: 10px; border-radius: 6px; line-height: 1.6;">
-                            <strong>How to update:</strong>
-                            <ol style="margin: 6px 0 0 0; padding-left: 20px;">
-                                <li>Open your browser's extension manager (Tampermonkey/Violentmonkey)</li>
-                                <li>Find this userscript in the list</li>
-                                <li>Click "Check for updates" or the update button</li>
-                                <li>Reload the page after the update completes</li>
-                            </ol>
-                        </div>
                     </div>
                 </div>
             </div>
