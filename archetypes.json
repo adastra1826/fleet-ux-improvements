@@ -38,6 +38,10 @@
         {
           "name": "prompt-and-notes-areas.js",
           "version": "1.0"
+        },
+        {
+          "name": "remember-layout-proportions.js",
+          "version": "1.0"
         }
       ]
     },
