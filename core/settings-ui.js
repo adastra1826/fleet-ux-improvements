@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '3.5',
+    _version: '3.6',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -262,7 +262,10 @@ const plugin = {
             : '';
         
         // Build script update notification HTML
-        const updateNotificationHTML = Context.isOutdated && Context.latestVersion
+        // Show if outdated OR if pulse override is enabled (for testing on dev branch)
+        const shouldShowUpdateNotification = (Context.isOutdated && Context.latestVersion) || 
+            (Context.isDevBranch && this._getPulseOverrideEnabled());
+        const updateNotificationHTML = shouldShowUpdateNotification
             ? this._createUpdateNotificationHTML()
             : '';
         
@@ -1092,7 +1095,9 @@ const plugin = {
     
     _createUpdateNotificationHTML() {
         const currentVersion = Context.version || 'unknown';
-        const latestVersion = Context.latestVersion || 'unknown';
+        // If pulse override is enabled but no latestVersion, use current version for display
+        const latestVersion = Context.latestVersion || (Context.isDevBranch && this._getPulseOverrideEnabled() ? currentVersion : 'unknown');
+        const isOverrideMode = Context.isDevBranch && this._getPulseOverrideEnabled() && !Context.isOutdated;
         
         return `
             <div style="
@@ -1110,12 +1115,15 @@ const plugin = {
                     </svg>
                     <div style="flex: 1;">
                         <h3 style="font-size: 15px; font-weight: 600; margin: 0 0 8px 0; color: #991b1b;">
-                            Extension Update Available
+                            ${isOverrideMode ? 'Pulse Animation Test Mode' : 'Extension Update Available'}
                         </h3>
                         <p style="font-size: 13px; color: #991b1b; margin: 0 0 10px 0; line-height: 1.5;">
-                            Your current version of this extension (<strong>${currentVersion}</strong>) is outdated. 
-                            Please update to the newest version (<strong>${latestVersion}</strong>).
+                            ${isOverrideMode 
+                                ? `Pulse animation override is enabled for testing. Current version: <strong>${currentVersion}</strong>.`
+                                : `Your current version of this extension (<strong>${currentVersion}</strong>) is outdated. Please update to the newest version (<strong>${latestVersion}</strong>).`
+                            }
                         </p>
+                        ${!isOverrideMode ? `
                         <div style="font-size: 12px; color: #991b1b; background: rgba(220, 38, 38, 0.1); padding: 10px; border-radius: 6px; line-height: 1.6;">
                             <strong>How to update:</strong>
                             <ol style="margin: 6px 0 0 0; padding-left: 20px;">
@@ -1125,6 +1133,7 @@ const plugin = {
                                 <li>Reload the page after the update completes</li>
                             </ol>
                         </div>
+                        ` : ''}
                     </div>
                 </div>
             </div>
