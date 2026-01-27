@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '3.1',
+    _version: '3.2',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -207,6 +207,32 @@ const plugin = {
                         </div>
                     </div>
                     ${this._createSwitchHTML('wf-global-enabled', globalEnabled)}
+                </div>
+                <div id="wf-all-plugins-buttons" style="display: ${globalEnabled ? 'flex' : 'none'}; gap: 8px; margin-top: 10px;">
+                    <button id="wf-all-plugins-on" style="
+                        flex: 1;
+                        padding: 8px 12px;
+                        font-size: 13px;
+                        font-weight: 500;
+                        color: var(--foreground, #333);
+                        background: var(--card, #fafafa);
+                        border: 1px solid var(--border, #e5e5e5);
+                        border-radius: 6px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    ">All On</button>
+                    <button id="wf-all-plugins-off" style="
+                        flex: 1;
+                        padding: 8px 12px;
+                        font-size: 13px;
+                        font-weight: 500;
+                        color: var(--foreground, #333);
+                        background: var(--card, #fafafa);
+                        border: 1px solid var(--border, #e5e5e5);
+                        border-radius: 6px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    ">All Off</button>
                 </div>
             </div>
 
@@ -416,10 +442,60 @@ const plugin = {
                 } else {
                     this._restoreGlobalSnapshot(plugins);
                 }
+                this._updateAllPluginsButtonsVisibility(modal, isEnabled);
                 this._renderPluginList(modal, plugins);
                 this._attachPluginToggleListeners(modal, plugins);
                 this._attachPluginReorderListeners(modal, plugins);
                 this._updateSettingsMessage(modal, plugins);
+            });
+        }
+
+        // All On / All Off buttons
+        const allOnBtn = Context.dom.query('#wf-all-plugins-on', {
+            root: modal,
+            context: `${this.id}.allOnButton`
+        });
+        if (allOnBtn) {
+            allOnBtn.addEventListener('click', () => {
+                plugins.forEach(plugin => {
+                    PluginManager.setEnabled(plugin.id, true);
+                });
+                this._renderPluginList(modal, plugins);
+                this._attachPluginToggleListeners(modal, plugins);
+                this._attachPluginReorderListeners(modal, plugins);
+                this._updateSettingsMessage(modal, plugins);
+            });
+            allOnBtn.addEventListener('mouseenter', () => {
+                allOnBtn.style.background = 'var(--hover, #f0f0f0)';
+                allOnBtn.style.borderColor = 'var(--border-hover, #d1d5db)';
+            });
+            allOnBtn.addEventListener('mouseleave', () => {
+                allOnBtn.style.background = 'var(--card, #fafafa)';
+                allOnBtn.style.borderColor = 'var(--border, #e5e5e5)';
+            });
+        }
+
+        const allOffBtn = Context.dom.query('#wf-all-plugins-off', {
+            root: modal,
+            context: `${this.id}.allOffButton`
+        });
+        if (allOffBtn) {
+            allOffBtn.addEventListener('click', () => {
+                plugins.forEach(plugin => {
+                    PluginManager.setEnabled(plugin.id, false);
+                });
+                this._renderPluginList(modal, plugins);
+                this._attachPluginToggleListeners(modal, plugins);
+                this._attachPluginReorderListeners(modal, plugins);
+                this._updateSettingsMessage(modal, plugins);
+            });
+            allOffBtn.addEventListener('mouseenter', () => {
+                allOffBtn.style.background = 'var(--hover, #f0f0f0)';
+                allOffBtn.style.borderColor = 'var(--border-hover, #d1d5db)';
+            });
+            allOffBtn.addEventListener('mouseleave', () => {
+                allOffBtn.style.background = 'var(--card, #fafafa)';
+                allOffBtn.style.borderColor = 'var(--border, #e5e5e5)';
             });
         }
 
@@ -784,6 +860,17 @@ const plugin = {
         msg.style.display = changed ? 'block' : 'none';
         if (changed) {
             this._positionMessage(modal, msg);
+        }
+    },
+
+    _updateAllPluginsButtonsVisibility(modal, globalEnabled) {
+        const buttonsContainer = Context.dom.query('#wf-all-plugins-buttons', {
+            root: modal,
+            context: `${this.id}.allPluginsButtonsVisibility`
+        });
+        
+        if (buttonsContainer) {
+            buttonsContainer.style.display = globalEnabled ? 'flex' : 'none';
         }
     },
     
