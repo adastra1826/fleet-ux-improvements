@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.0',
+    _version: '5.1',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -423,7 +423,7 @@ const plugin = {
         // Build sub-options HTML if plugin has them
         const subOptionsHTML = this._createSubOptionsHTML(plugin, isEnabled, isDisabled);
         
-        const moduleToggleHTML = submoduleLoggingEnabled && isEnabled ? `
+        const moduleToggleHTML = Context.isDevBranch && submoduleLoggingEnabled && isEnabled ? `
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border, #e5e5e5);">
                     <label style="font-size: 12px; color: var(--muted-foreground, #666);" for="wf-plugin-log-${plugin.id}">
                         Module Logging
@@ -488,10 +488,9 @@ const plugin = {
         
         return `
             <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border, #e5e5e5);">
-                <div style="font-size: 11px; font-weight: 600; color: var(--muted-foreground, #888); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    Sub-options
+                <div style="margin-left: 12px;">
+                    ${subOptionItems}
                 </div>
-                ${subOptionItems}
             </div>
         `;
     },

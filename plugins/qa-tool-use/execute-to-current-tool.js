@@ -3,7 +3,7 @@ const plugin = {
     id: 'executeToCurrentTool',
     name: 'Execute to Current Tool',
     description: 'Adds button to execute all tools from the beginning up to and including the current tool',
-    _version: '1.9',
+    _version: '1.10',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false, panelId: null },
@@ -76,7 +76,7 @@ const plugin = {
                 execToCurrentBtn = document.createElement('button');
                 execToCurrentBtn.className = 'wf-execute-to-current-btn inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 transition-colors hover:brightness-95 rounded-sm size-7 h-7 w-10 text-foreground';
                 execToCurrentBtn.title = 'Execute to current tool';
-                execToCurrentBtn.innerHTML = `<svg width="35.2" height="26.4" viewBox="0 0 35.2 26.4" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-current size-3.5"><path d="M 18.7 2.2 A 11 11 0 0 0 7.7 13.2 A 11 11 0 0 0 18.7 24.2" stroke-width="1.65"/><path d="M 15.4 2.2 A 11 11 0 0 0 4.4 13.2 A 11 11 0 0 0 15.4 24.2" stroke-width="1.65"/><circle cx="22" cy="13.2" r="11" stroke-width="1.65"/><path d="M20.933 9.5172C20.5939 9.30526 20.1665 9.29404 19.8167 9.4879C19.467 9.68174 19.25 10.0501 19.25 10.45V16.05C19.25 16.4499 19.467 16.8183 19.8167 17.0121C20.1665 17.206 20.5939 17.1947 20.933 16.9828L25.333 14.1328C25.6546 13.9318 25.85 13.5793 25.85 13.2C25.85 12.8207 25.6546 12.4682 25.333 12.2672L20.933 9.5172Z" stroke-width="1.65" stroke-linejoin="round" fill="none"/></svg>`;
+                execToCurrentBtn.innerHTML = `<svg width="42.24" height="31.68" viewBox="0 0 35.2 26.4" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-current size-3.5"><path d="M 18.7 2.2 A 11 11 0 0 0 7.7 13.2 A 11 11 0 0 0 18.7 24.2" stroke-width="1.65"/><path d="M 15.4 2.2 A 11 11 0 0 0 4.4 13.2 A 11 11 0 0 0 15.4 24.2" stroke-width="1.65"/><circle cx="22" cy="13.2" r="11" stroke-width="1.65"/><path d="M20.933 9.5172C20.5939 9.30526 20.1665 9.29404 19.8167 9.4879C19.467 9.68174 19.25 10.0501 19.25 10.45V16.05C19.25 16.4499 19.467 16.8183 19.8167 17.0121C20.1665 17.206 20.5939 17.1947 20.933 16.9828L25.333 14.1328C25.6546 13.9318 25.85 13.5793 25.85 13.2C25.85 12.8207 25.6546 12.4682 25.333 12.2672L20.933 9.5172Z" stroke-width="1.65" stroke-linejoin="round" fill="none"/></svg>`;
                 
                 execToCurrentBtn.addEventListener('click', (e) => {
                     e.stopPropagation();

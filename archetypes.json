@@ -3,7 +3,7 @@
   "corePlugins": [
     {
       "name": "settings-ui.js",
-      "version": "5.0"
+      "version": "5.1"
     }
   ],
   "devPlugins": [
@@ -42,7 +42,7 @@
         },
         {
           "name": "execute-to-current-tool.js",
-          "version": "1.9"
+          "version": "1.10"
         }
       ]
     },
@@ -96,7 +96,7 @@
         },
         {
           "name": "execute-to-current-tool.js",
-          "version": "1.9"
+          "version": "1.10"
         }
       ]
     },
