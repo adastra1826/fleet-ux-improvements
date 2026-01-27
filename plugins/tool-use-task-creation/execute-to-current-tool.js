@@ -74,9 +74,9 @@ const plugin = {
 
             if (!execToCurrentBtn) {
                 execToCurrentBtn = document.createElement('button');
-                execToCurrentBtn.className = 'wf-execute-to-current-btn inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 transition-colors hover:brightness-95 border border-border rounded-sm size-7 h-7 w-7 border-b-2 text-foreground';
+                execToCurrentBtn.className = 'wf-execute-to-current-btn inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground size-7 h-7 w-7';
                 execToCurrentBtn.title = 'Execute to current tool';
-                execToCurrentBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="fill-current size-3.5"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM11.03 8.652C10.7217 8.45933 10.3332 8.44913 10.0152 8.62536C9.69728 8.80158 9.5 9.13648 9.5 9.5V14.5C9.5 14.8635 9.69728 15.1984 10.0152 15.3746C10.3332 15.5509 10.7217 15.5407 11.03 15.348L15.03 12.848C15.3224 12.6653 15.5 12.3448 15.5 12C15.5 11.6552 15.3224 11.3347 15.03 11.152L11.03 8.652Z"></path></svg>`;
+                execToCurrentBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="size-3.5 stroke-current"><circle cx="12" cy="12" r="10" stroke-width="1.5"></circle><path d="M10 8L10 16L16 12L10 8Z" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"></path><line x1="6" y1="18" x2="18" y2="18" stroke-width="1.5" stroke-linecap="round"></line></svg>`;
                 
                 execToCurrentBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -84,12 +84,28 @@ const plugin = {
                     this.executeToCurrentTool(card, header, toolsContainer);
                 });
 
-                buttonContainer.insertBefore(execToCurrentBtn, buttonContainer.firstChild);
                 buttonsAdded++;
             }
 
             // Always visible, regardless of collapsed state
             execToCurrentBtn.style.display = 'inline-flex';
+            
+            // Ensure proper positioning: after mini execute button if it exists, otherwise at the beginning
+            const miniExecBtn = Context.dom.query('.wf-mini-execute-btn', {
+                root: buttonContainer,
+                context: `${this.id}.miniExecBtn`
+            });
+            if (miniExecBtn) {
+                // If mini button exists, ensure we're right after it
+                if (execToCurrentBtn.previousSibling !== miniExecBtn) {
+                    miniExecBtn.insertAdjacentElement('afterend', execToCurrentBtn);
+                }
+            } else {
+                // If no mini button, ensure we're at the beginning
+                if (execToCurrentBtn !== buttonContainer.firstChild) {
+                    buttonContainer.insertBefore(execToCurrentBtn, buttonContainer.firstChild);
+                }
+            }
         });
 
         if (buttonsAdded > 0) {
@@ -194,68 +210,80 @@ const plugin = {
 
             const isCollapsed = collapsibleRoot.getAttribute('data-state') === 'closed';
             
-            // Function to find and click execute button
-            const findAndClickExecute = () => {
-                const collapsibleContent = Context.dom.query('div[data-state="open"] > div[id^="radix-"][data-state="open"]', {
-                    root: card,
-                    context: `${this.id}.collapsibleContent`
+            // Function to find and click mini-execute button
+            const findAndClickMiniExecute = () => {
+                const buttonContainer = Context.dom.query('div.flex.items-center.gap-1', {
+                    root: header,
+                    context: `${this.id}.buttonContainerForExec`
                 });
-                if (!collapsibleContent) return false;
+                if (!buttonContainer) return false;
                 
-                const buttons = Context.dom.queryAll('div.px-3.pb-3.space-y-3 > button', {
-                    root: collapsibleContent,
-                    context: `${this.id}.executeButtons`
-                });
-                let executeBtn = null;
-                buttons.forEach(btn => {
-                    const btnText = btn.textContent.trim();
-                    if (btnText === 'Execute' || btnText === 'Re-execute') {
-                        executeBtn = btn;
-                    }
+                const miniExecBtn = Context.dom.query('.wf-mini-execute-btn', {
+                    root: buttonContainer,
+                    context: `${this.id}.miniExecBtnForExec`
                 });
                 
-                if (executeBtn) {
-                    executeBtn.click();
-                    Logger.log('Clicked execute button');
+                if (miniExecBtn && miniExecBtn.style.display !== 'none') {
+                    miniExecBtn.click();
+                    Logger.log('Clicked mini-execute button');
                     return true;
                 }
                 return false;
             };
             
-            if (isCollapsed) {
-                // Expand first
+            if (!isCollapsed) {
+                // Close the tool first
                 header.click();
-                
-                const buttonObserver = new MutationObserver((mutations, obs) => {
-                    if (findAndClickExecute()) {
+                Logger.log('Collapsed tool before execution');
+            }
+            
+            // Wait for tool to be collapsed and mini-execute button to appear
+            const buttonObserver = new MutationObserver((mutations, obs) => {
+                const currentState = collapsibleRoot.getAttribute('data-state');
+                if (currentState === 'closed') {
+                    // Tool is now collapsed, try to find and click mini-execute button
+                    if (findAndClickMiniExecute()) {
                         obs.disconnect();
                         this.watchForToolCompletion(card, header, resolve);
                     }
-                });
-                
-                buttonObserver.observe(card, {
-                    childList: true,
-                    subtree: true,
-                    attributes: true,
-                    attributeFilter: ['hidden', 'data-state']
-                });
-                
-                setTimeout(() => {
+                }
+            });
+            
+            buttonObserver.observe(card, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['data-state', 'style']
+            });
+            
+            // Also check immediately in case tool is already collapsed
+            if (isCollapsed) {
+                if (findAndClickMiniExecute()) {
                     buttonObserver.disconnect();
-                    if (!findAndClickExecute()) {
-                        Logger.warn('Execute button not found after expanding');
-                        resolve(false);
-                    }
-                }, 5000);
-            } else {
-                // Already open, just click execute
-                if (findAndClickExecute()) {
                     this.watchForToolCompletion(card, header, resolve);
                 } else {
-                    Logger.warn('Execute button not found for open tool');
-                    resolve(false);
+                    // Wait a bit for mini-execute button to appear
+                    setTimeout(() => {
+                        if (findAndClickMiniExecute()) {
+                            buttonObserver.disconnect();
+                            this.watchForToolCompletion(card, header, resolve);
+                        } else {
+                            buttonObserver.disconnect();
+                            Logger.warn('Mini-execute button not found');
+                            resolve(false);
+                        }
+                    }, 500);
                 }
             }
+            
+            // Timeout after 5 seconds
+            setTimeout(() => {
+                buttonObserver.disconnect();
+                if (!findAndClickMiniExecute()) {
+                    Logger.warn('Mini-execute button not found after waiting');
+                    resolve(false);
+                }
+            }, 5000);
         });
     },
     
@@ -269,16 +297,8 @@ const plugin = {
                 const success = hasSuccess && !hasError;
                 Logger.log('Tool execution completed with ' + (success ? 'SUCCESS' : 'ERROR'));
                 
-                // Collapse if it was expanded
-                const collapsibleRoot = Context.dom.query('div[data-state]', {
-                    root: card,
-                    context: `${this.id}.collapsibleRoot`
-                });
-                if (collapsibleRoot && collapsibleRoot.getAttribute('data-state') === 'open') {
-                    header.click();
-                    Logger.log('Collapsed tool after completion');
-                }
-                
+                // The mini-execute button's own logic will handle collapsing the tool
+                // We just need to resolve the promise
                 resolve(success);
             }
         });
