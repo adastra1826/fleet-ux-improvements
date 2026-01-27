@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '3.6',
+    _version: '4.0',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -126,11 +126,9 @@ const plugin = {
         settingsBtn.style.border = '2px solid #dc2626';
         settingsBtn.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.4)';
         
-        Logger.debug('Starting pulse animation');
         let isOn = true; // Start with red outline (on state)
         this._pulseInterval = setInterval(() => {
             isOn = !isOn;
-            Logger.debug(`Pulse animation tick: isOn=${isOn}`);
             if (isOn) {
                 settingsBtn.style.border = '2px solid #dc2626';
                 settingsBtn.style.boxShadow = '0 2px 8px rgba(220, 38, 38, 0.4)';
@@ -139,8 +137,6 @@ const plugin = {
                 settingsBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
             }
         }, 1000); // 1 second per state
-        
-        Logger.debug(`Pulse animation interval started: ${this._pulseInterval}`);
     },
     
     _stopPulseAnimation() {
@@ -163,7 +159,6 @@ const plugin = {
         }
         
         const shouldPulse = Context.isOutdated || (Context.isDevBranch && this._getPulseOverrideEnabled());
-        Logger.debug(`Pulse animation update: shouldPulse=${shouldPulse}, isOutdated=${Context.isOutdated}, isDevBranch=${Context.isDevBranch}, overrideEnabled=${this._getPulseOverrideEnabled()}`);
         
         if (shouldPulse) {
             this._startPulseAnimation(settingsBtn);
@@ -270,7 +265,6 @@ const plugin = {
             : '';
         
         modal.innerHTML = `
-            ${updateNotificationHTML}
             <!-- Sticky Header -->
             <div style="position: sticky; top: -24px; margin: -24px -24px 20px -24px; padding: 24px 24px 16px 24px; background: var(--background, white); border-bottom: 1px solid var(--border, #e5e5e5); z-index: 1;">
                 <div style="display: flex; align-items: flex-start; justify-content: space-between;">
@@ -298,6 +292,7 @@ const plugin = {
                         </svg>
                     </button>
                 </div>
+                ${updateNotificationHTML}
             </div>
             
             <!-- Global Toggle -->
@@ -1103,6 +1098,7 @@ const plugin = {
             <div style="
                 margin-bottom: 20px;
                 padding: 14px;
+                padding-bottom: 20px;
                 background: #fee2e2;
                 border: 2px solid #dc2626;
                 border-radius: 8px;
