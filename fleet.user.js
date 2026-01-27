@@ -438,6 +438,48 @@
             
             Logger.log(`✓ Cleared ${clearedCount} storage keys`);
             return clearedCount;
+        },
+        // Cache registry tracking methods
+        getCachedPluginsForArchetype(archetypeId) {
+            if (!archetypeId) return [];
+            const registryKey = `plugin-cache-registry-${archetypeId}`;
+            const registry = this.get(registryKey, null);
+            if (registry) {
+                try {
+                    return JSON.parse(registry);
+                } catch (e) {
+                    Logger.error(`Failed to parse cache registry for ${archetypeId}:`, e);
+                    return [];
+                }
+            }
+            return [];
+        },
+        registerCachedPlugin(archetypeId, filename) {
+            if (!archetypeId || !filename) return;
+            const registryKey = `plugin-cache-registry-${archetypeId}`;
+            const plugins = this.getCachedPluginsForArchetype(archetypeId);
+            if (!plugins.includes(filename)) {
+                plugins.push(filename);
+                this.set(registryKey, JSON.stringify(plugins));
+                Logger.debug(`Registered cached plugin: ${filename} (archetype: ${archetypeId})`);
+            }
+        },
+        unregisterCachedPlugin(archetypeId, filename) {
+            if (!archetypeId || !filename) return;
+            const registryKey = `plugin-cache-registry-${archetypeId}`;
+            const plugins = this.getCachedPluginsForArchetype(archetypeId);
+            const index = plugins.indexOf(filename);
+            if (index !== -1) {
+                plugins.splice(index, 1);
+                this.set(registryKey, JSON.stringify(plugins));
+                Logger.debug(`Unregistered cached plugin: ${filename} (archetype: ${archetypeId})`);
+            }
+        },
+        clearCachedPluginsForArchetype(archetypeId) {
+            if (!archetypeId) return;
+            const registryKey = `plugin-cache-registry-${archetypeId}`;
+            this.delete(registryKey);
+            Logger.debug(`Cleared cache registry for archetype: ${archetypeId}`);
         }
     };
 
@@ -878,6 +920,16 @@
             const pluginKey = Storage.getPluginKey(filename, sourcePath);
             Storage.setCachedPlugin(pluginKey, code, version);
             Logger.debug(`Cached plugin ${filename} v${version}`);
+            
+            // Register in cache registry for archetype plugins (not core/dev)
+            // sourcePath format: "archetypeId/filename" or "core/filename" or "dev/filename"
+            if (sourcePath && !sourcePath.startsWith('core/') && !sourcePath.startsWith('dev/')) {
+                const pathParts = sourcePath.split('/');
+                if (pathParts.length === 2) {
+                    const archetypeId = pathParts[0];
+                    Storage.registerCachedPlugin(archetypeId, filename);
+                }
+            }
         },
         
         /**
@@ -895,6 +947,14 @@
             // Check if we have a cached version that matches
             if (cached && cached.version === version) {
                 Logger.debug(`Using cached plugin ${filename} v${version}`);
+                // Register in cache registry for archetype plugins (not core/dev)
+                if (sourcePath && !sourcePath.startsWith('core/') && !sourcePath.startsWith('dev/')) {
+                    const pathParts = sourcePath.split('/');
+                    if (pathParts.length === 2) {
+                        const archetypeId = pathParts[0];
+                        Storage.registerCachedPlugin(archetypeId, filename);
+                    }
+                }
                 return cached.code;
             }
             
@@ -1204,7 +1264,79 @@
                 });
             }
             
+            // Clean up deprecated cached plugins for this archetype
+            this.cleanupDeprecatedCache(pluginList, archetypeId);
+            
             Logger.log('Archetype plugin loading complete');
+        },
+        
+        /**
+         * Clean up deprecated cached plugins for an archetype
+         * Compares cached plugins against expected plugins from archetypes.json
+         * and deletes any cached entries that are no longer listed
+         * @param {Array} pluginList - List of expected plugins from archetypes.json
+         * @param {string} archetypeId - The archetype ID
+         */
+        cleanupDeprecatedCache(pluginList, archetypeId) {
+            if (!archetypeId) {
+                Logger.debug('Skipping deprecated cache cleanup: no archetype ID');
+                return;
+            }
+            
+            if (!pluginList || !Array.isArray(pluginList)) {
+                Logger.debug('Skipping deprecated cache cleanup: invalid plugin list');
+                return;
+            }
+            
+            // Extract expected plugin filenames from pluginList
+            const expectedFilenames = new Set();
+            pluginList.forEach(pluginDef => {
+                let filename;
+                if (typeof pluginDef === 'string') {
+                    filename = pluginDef;
+                } else if (pluginDef && pluginDef.name) {
+                    filename = pluginDef.name;
+                }
+                if (filename) {
+                    expectedFilenames.add(filename);
+                }
+            });
+            
+            // Get cached plugins for this archetype
+            const cachedPlugins = Storage.getCachedPluginsForArchetype(archetypeId);
+            
+            if (cachedPlugins.length === 0) {
+                Logger.debug(`No cached plugins found for archetype: ${archetypeId}`);
+                return;
+            }
+            
+            // Find deprecated plugins (cached but not in expected list)
+            const deprecatedPlugins = cachedPlugins.filter(filename => !expectedFilenames.has(filename));
+            
+            if (deprecatedPlugins.length === 0) {
+                Logger.debug(`No deprecated cached plugins found for archetype: ${archetypeId}`);
+                return;
+            }
+            
+            // Delete deprecated cache entries
+            let deletedCount = 0;
+            deprecatedPlugins.forEach(filename => {
+                const pluginKey = `${archetypeId}/${filename}`;
+                const cacheKey = `plugin-cache-${pluginKey}`;
+                
+                try {
+                    Storage.delete(cacheKey);
+                    Storage.unregisterCachedPlugin(archetypeId, filename);
+                    deletedCount++;
+                    Logger.log(`Deleted deprecated cached plugin: ${filename} (archetype: ${archetypeId})`);
+                } catch (e) {
+                    Logger.error(`Failed to delete deprecated cache entry for ${filename} (archetype: ${archetypeId}):`, e);
+                }
+            });
+            
+            if (deletedCount > 0) {
+                Logger.log(`✓ Cleaned up ${deletedCount} deprecated cached plugin(s) for archetype: ${archetypeId}`);
+            }
         }
     };
 
