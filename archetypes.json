@@ -91,6 +91,10 @@
           "version": "1.8"
         },
         {
+          "name": "remember-layout-proportions.js",
+          "version": "1.0"
+        },
+        {
           "name": "qa-scratchpad.js",
           "version": "1.0"
         },
