@@ -3,7 +3,7 @@ const plugin = {
     id: 'layoutManager',
     name: 'Three Column Layout',
     description: 'Transforms the layout into three resizable columns with integrated notes',
-    _version: '3.6',
+    _version: '3.7',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { applied: false, missingLogged: false, structureMissingLogged: false },
@@ -341,16 +341,64 @@ const plugin = {
     reorganizeFirstColumnContent(wrapper, topSection) {
         const savedRatio = Storage.get(this.storageKeys.sectionSplitRatio, 60);
         
-        const existingSection = Context.dom.query('div.p-3.border-b', {
+        // Find existing section with multiple strategies
+        let existingSection = null;
+        
+        // Strategy 1: Look for div with p-3 and border-b classes
+        existingSection = Context.dom.query('div.p-3.border-b', {
             root: topSection,
             context: `${this.id}.existingSection`
         });
+        
+        // Strategy 2: Look for div with p-3 class (border-b might be missing)
         if (!existingSection) {
-            Logger.warn(`[${this.id}] Existing section not found for reorganization`);
+            const candidates = Array.from(topSection.querySelectorAll('div.p-3'));
+            if (candidates.length > 0) {
+                // Prefer one with border-b
+                existingSection = candidates.find(c => c.classList.contains('border-b')) || candidates[0];
+            }
+        }
+        
+        // Strategy 3: Look for div containing "Problem Description" text
+        if (!existingSection) {
+            const walker = document.createTreeWalker(
+                topSection,
+                NodeFilter.SHOW_ELEMENT,
+                {
+                    acceptNode: function(node) {
+                        if (node.tagName === 'DIV' && node.textContent.includes('Problem Description')) {
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                        return NodeFilter.FILTER_SKIP;
+                    }
+                }
+            );
+            const found = walker.nextNode();
+            if (found) {
+                // Find the parent container with p-3 or border-b
+                let parent = found.parentElement;
+                while (parent && parent !== topSection) {
+                    if (parent.classList.contains('p-3') || parent.classList.contains('border-b')) {
+                        existingSection = parent;
+                        break;
+                    }
+                    parent = parent.parentElement;
+                }
+            }
+        }
+        
+        if (!existingSection) {
+            Logger.warn(`[${this.id}] Existing section not found for reorganization after all strategies`);
             return;
         }
 
-        topSection.removeChild(existingSection);
+        // Remove from its parent (may not be direct child of topSection)
+        if (existingSection.parentElement) {
+            existingSection.parentElement.removeChild(existingSection);
+        } else {
+            Logger.warn(`[${this.id}] Existing section has no parent - cannot remove`);
+            return;
+        }
 
         const topPanel = document.createElement('div');
         topPanel.id = 'wf-top-panel';
