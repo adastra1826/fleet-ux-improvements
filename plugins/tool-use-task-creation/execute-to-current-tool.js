@@ -3,7 +3,7 @@ const plugin = {
     id: 'executeToCurrentTool',
     name: 'Execute to Current Tool',
     description: 'Adds button to execute all tools from the beginning up to and including the current tool',
-    _version: '1.7',
+    _version: '1.8',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false, panelId: null },
@@ -76,7 +76,7 @@ const plugin = {
                 execToCurrentBtn = document.createElement('button');
                 execToCurrentBtn.className = 'wf-execute-to-current-btn inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 transition-colors hover:brightness-95 rounded-sm size-7 h-7 w-10 text-foreground';
                 execToCurrentBtn.title = 'Execute to current tool';
-                execToCurrentBtn.innerHTML = `<svg width="32" height="24" viewBox="0 0 32 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-current size-3.5"><path d="M 2 2 A 10 10 0 0 1 12 12 A 10 10 0 0 1 2 22" stroke-width="1.5"/><path d="M 6 2 A 10 10 0 0 1 16 12 A 10 10 0 0 1 6 22" stroke-width="1.5"/><circle cx="20" cy="12" r="10" stroke-width="1.5"/><path d="M19.03 8.652C18.7217 8.45933 18.3332 8.44913 18.0152 8.62536C17.6973 8.80158 17.5 9.13648 17.5 9.5V14.5C17.5 14.8635 17.6973 15.1984 18.0152 15.3746C18.3332 15.5509 18.7217 15.5407 19.03 15.348L23.03 12.848C23.3224 12.6653 23.5 12.3448 23.5 12C23.5 11.6552 23.3224 11.3347 23.03 11.152L19.03 8.652Z" stroke-width="1.5" stroke-linejoin="round" fill="none"/></svg>`;
+                execToCurrentBtn.innerHTML = `<svg width="35.2" height="26.4" viewBox="0 0 35.2 26.4" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-current size-3.5"><path d="M 2.2 2.2 A 11 11 0 0 0 2.2 24.2" stroke-width="1.65"/><path d="M 6.6 2.2 A 11 11 0 0 0 6.6 24.2" stroke-width="1.65"/><circle cx="22" cy="13.2" r="11" stroke-width="1.65"/><path d="M20.933 9.5172C20.5939 9.30526 20.1665 9.29404 19.8167 9.4879C19.467 9.68174 19.25 10.0501 19.25 10.45V16.05C19.25 16.4499 19.467 16.8183 19.8167 17.0121C20.1665 17.206 20.5939 17.1947 20.933 16.9828L25.333 14.1328C25.6546 13.9318 25.85 13.5793 25.85 13.2C25.85 12.8207 25.6546 12.4682 25.333 12.2672L20.933 9.5172Z" stroke-width="1.65" stroke-linejoin="round" fill="none"/></svg>`;
                 
                 execToCurrentBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
