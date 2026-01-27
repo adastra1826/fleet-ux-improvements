@@ -5,7 +5,7 @@ const plugin = {
     id: 'jsonEditorOnline',
     name: 'JSON Editor Online',
     description: 'Add button that opens JSON Editor Online in a new tab. Optionally show button on each tool result to copy output and open editor.',
-    _version: '1.3',
+    _version: '1.4',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -69,8 +69,8 @@ const plugin = {
         const button = document.createElement('button');
         button.setAttribute('data-fleet-plugin', this.id);
         button.setAttribute('data-slot', 'toolbar-button');
-        // Same style as source data but no outline (remove border classes)
-        button.className = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-secondary transition-colors hover:bg-secondary/80 h-8 rounded-sm pl-3 text-xs pr-3 text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300';
+        // Same style as source data but no outline (remove border classes), normal white text
+        button.className = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-secondary transition-colors hover:bg-secondary/80 h-8 rounded-sm pl-3 text-xs pr-3 text-foreground';
         button.innerHTML = '<span class="whitespace-nowrap text-md font-medium">{ } JSON Editor</span>';
         button.title = 'Open JSON Editor Online in new tab';
         
@@ -111,9 +111,17 @@ const plugin = {
             root: toolsContainer,
             context: `${this.id}.toolCards`
         });
+        let buttonsAdded = 0;
         
         toolCards.forEach(card => {
-            // Find the result area
+            // Check for collapsible root first (like mini-execute-buttons does)
+            const collapsibleRoot = Context.dom.query('div[data-state]', {
+                root: card,
+                context: `${this.id}.collapsibleRoot`
+            });
+            if (!collapsibleRoot) return;
+            
+            // Find the result area (works for both open and closed tools)
             const resultArea = this.findResultArea(card);
             if (!resultArea) {
                 return;
@@ -172,8 +180,13 @@ const plugin = {
                 }
             }
             
+            buttonsAdded++;
             Logger.log(`✓ JSON Editor Online button added to tool result`);
         });
+        
+        if (buttonsAdded > 0) {
+            Logger.log(`✓ Added ${buttonsAdded} JSON Editor Online button(s) to tool results`);
+        }
     },
     
     findWorkflowPanel() {
@@ -225,11 +238,21 @@ const plugin = {
     },
     
     findResultArea(card) {
-        // Find the collapsible content area
-        const collapsibleContent = Context.dom.query('div[data-state="open"] > div[id^="radix-"][data-state="open"]', {
+        // Find the collapsible content area - check both open and closed states
+        // The content is still in the DOM even when collapsed, just hidden
+        let collapsibleContent = Context.dom.query('div[data-state="open"] > div[id^="radix-"]', {
             root: card,
             context: `${this.id}.collapsibleContent`
         });
+        
+        // If not found in open state, try to find it regardless of state
+        if (!collapsibleContent) {
+            collapsibleContent = Context.dom.query('div[id^="radix-"]', {
+                root: card,
+                context: `${this.id}.collapsibleContent`
+            });
+        }
+        
         if (!collapsibleContent) return null;
         
         // Find the result section - look for div with "Result" text
