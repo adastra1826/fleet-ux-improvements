@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools list',
-    _version: '3.7',
+    _version: '3.8',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false, containerSelector: null },
@@ -31,7 +31,7 @@ const plugin = {
         style.textContent = `
             .favorite-star {
                 cursor: pointer;
-                margin-right: 6px;
+                margin-right: 3px;
                 transition: all 0.2s;
                 display: inline-flex;
                 align-items: center;
