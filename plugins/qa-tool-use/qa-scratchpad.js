@@ -5,7 +5,7 @@ const plugin = {
     id: 'qaScratchpad',
     name: 'QA Scratchpad',
     description: 'Adds an adjustable height scratchpad for notes between prompt and environment variables',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -25,8 +25,7 @@ const plugin = {
     },
     
     selectors: {
-        promptSection: 'div.flex.flex-col.gap-2:has(span:contains("Prompt"), label:contains("Prompt"))',
-        envVariables: 'div.space-y-2:has(span:contains("Environment Variables"))'
+        promptSection: 'div.flex.flex-col.gap-2:has(span:contains("Prompt"), label:contains("Prompt"))'
     },
     
     initialState: {
@@ -39,7 +38,7 @@ const plugin = {
     },
     
     onMutation(state, context) {
-        // Find the prompt section (formerly "Prompt Quality Rating", now just "Prompt")
+        // Find the prompt section
         const promptSection = this.findPromptSection();
         if (!promptSection) {
             if (!state.searchAttempted) {
@@ -72,37 +71,12 @@ const plugin = {
             return;
         }
         
-        // Find the environment variables section (next sibling)
-        const envVariablesSection = promptSection.nextElementSibling;
-        if (!envVariablesSection || !envVariablesSection.classList.contains('space-y-2')) {
-            if (!state.insertionFailedLogged) {
-                state.insertionFailedLogged = true;
-                const nextSibling = promptSection.nextElementSibling;
-                const nextSiblingInfo = nextSibling 
-                    ? `Found: ${nextSibling.tagName.toLowerCase()}.${Array.from(nextSibling.classList).join('.')}`
-                    : 'No next sibling found';
-                Logger.warn(`QA Scratchpad: Environment variables section not found. ${nextSiblingInfo}`);
-            }
-            return;
-        }
-        
-        // Verify it's actually the environment variables section
-        const envLabel = envVariablesSection.querySelector('span.text-sm.text-muted-foreground.font-medium');
-        if (!envLabel || !envLabel.textContent.includes('Environment Variables')) {
-            if (!state.insertionFailedLogged) {
-                state.insertionFailedLogged = true;
-                const foundText = envLabel ? envLabel.textContent.trim() : 'no label found';
-                Logger.warn(`QA Scratchpad: Next section is not Environment Variables. Found: "${foundText}"`);
-            }
-            return;
-        }
-        
-        // Insert scratchpad
+        // Insert scratchpad right after the prompt section
         const scratchpad = this.createScratchpad(state);
         promptSection.insertAdjacentElement('afterend', scratchpad);
         state.scratchpadInserted = true;
         state.insertionFailedLogged = false; // Reset on success
-        Logger.log('✓ QA Scratchpad: Successfully inserted between Prompt and Environment Variables sections');
+        Logger.log('✓ QA Scratchpad: Successfully inserted after Prompt section');
         
         // Attach resize handler
         scratchpadContainer = promptSection.nextElementSibling;
@@ -122,24 +96,17 @@ const plugin = {
         });
         
         for (const candidate of candidates) {
-            // Look for both label and span elements (structure may vary)
+            // Look for both label and span elements
             const label = candidate.querySelector('label');
             const span = candidate.querySelector('span.text-sm.text-muted-foreground.font-medium');
             
-            // Check label first (for "Prompt Quality Rating" if it still exists)
-            if (label) {
-                const labelText = label.textContent.trim();
-                if (labelText.includes('Prompt Quality Rating') || labelText === 'Prompt') {
-                    return candidate;
-                }
+            // Check if either contains "Prompt" text
+            if (label && label.textContent.trim() === 'Prompt') {
+                return candidate;
             }
             
-            // Check span (for current "Prompt" structure)
-            if (span) {
-                const spanText = span.textContent.trim();
-                if (spanText === 'Prompt' || spanText.includes('Prompt Quality Rating')) {
-                    return candidate;
-                }
+            if (span && span.textContent.trim() === 'Prompt') {
+                return candidate;
             }
         }
         
