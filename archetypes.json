@@ -21,10 +21,6 @@
       "disambiguationSelectors": [],
       "plugins": [
         {
-          "name": "autocorrect-textareas.js",
-          "version": "1.2"
-        },
-        {
           "name": "source-data-explorer.js",
           "version": "3.7"
         },
@@ -57,10 +53,6 @@
       "urlPattern": "workflows/m-type/create",
       "disambiguationSelectors": [],
       "plugins": [
-        {
-          "name": "autocorrect-textareas.js",
-          "version": "1.2"
-        },
         {
           "name": "remove-textarea-gradient.js",
           "version": "1.3"
