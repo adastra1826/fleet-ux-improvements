@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.6.0
+// @version      3.7.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -28,7 +28,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.6.0';
+    const VERSION = '3.7.0';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -685,9 +685,11 @@
     // ============= ARCHETYPE MANAGER =============
     const ArchetypeManager = {
         archetypes: [],
+        devArchetypes: [],
         corePlugins: [],
         devPlugins: [],
         currentArchetype: null,
+        currentDevArchetype: null,
         
         async loadArchetypes() {
             // Always fetch archetypes on every page load - never cache
@@ -711,6 +713,7 @@
                             try {
                                 const config = JSON.parse(response.responseText);
                                 this.archetypes = config.archetypes || [];
+                                this.devArchetypes = config.devArchetypes || [];
                                 this.corePlugins = config.corePlugins || [];
                                 this.devPlugins = config.devPlugins || [];
                                 
@@ -908,6 +911,134 @@
                 return [];
             }
             return this.currentArchetype.plugins || [];
+        },
+        
+        /**
+         * Detect dev archetype based on URL pattern, with optional selector disambiguation
+         * Same logic as detectArchetype() but uses devArchetypes array
+         */
+        detectDevArchetype() {
+            return new Promise((resolve) => {
+                const currentUrl = window.location.href;
+                const currentPath = UrlMatcher.getPathFromUrl(currentUrl);
+                
+                Logger.log(`Detecting dev archetype for path: "${currentPath}"`);
+                
+                // Step 1: Find all dev archetypes whose URL pattern matches
+                const urlMatches = this.devArchetypes.filter(archetype => {
+                    if (!archetype.urlPattern) {
+                        Logger.debug(`Dev archetype ${archetype.id} has no urlPattern, skipping`);
+                        return false;
+                    }
+                    return UrlMatcher.matches(currentPath, archetype.urlPattern);
+                });
+                
+                Logger.debug(`Dev archetype URL pattern matches: ${urlMatches.map(a => a.id).join(', ') || 'none'}`);
+                
+                if (urlMatches.length === 0) {
+                    Logger.debug('No dev archetype matched the current URL');
+                    this.currentDevArchetype = null;
+                    resolve(null);
+                    return;
+                }
+                
+                // Step 2: If only one match, use it (no disambiguation needed)
+                if (urlMatches.length === 1) {
+                    const archetype = urlMatches[0];
+                    Logger.log(`✓ Single dev archetype URL match: ${archetype.id} - ${archetype.name}`);
+                    this.currentDevArchetype = archetype;
+                    resolve(archetype);
+                    return;
+                }
+                
+                // Step 3: Multiple matches - sort by specificity first
+                urlMatches.sort((a, b) => {
+                    const specA = UrlMatcher.getSpecificity(a.urlPattern);
+                    const specB = UrlMatcher.getSpecificity(b.urlPattern);
+                    return specB - specA; // Higher specificity first
+                });
+                
+                Logger.debug(`Sorted dev archetypes by specificity: ${urlMatches.map(a => `${a.id}(${UrlMatcher.getSpecificity(a.urlPattern)})`).join(', ')}`);
+                
+                // Step 4: Check if disambiguation is needed
+                const needsDisambiguation = urlMatches.some(a => 
+                    a.disambiguationSelectors && a.disambiguationSelectors.length > 0
+                );
+                
+                if (!needsDisambiguation) {
+                    // Use the most specific URL match
+                    const archetype = urlMatches[0];
+                    Logger.log(`✓ Most specific dev archetype URL match: ${archetype.id} - ${archetype.name}`);
+                    this.currentDevArchetype = archetype;
+                    resolve(archetype);
+                    return;
+                }
+                
+                // Step 5: Disambiguation needed - wait for DOM and check selectors
+                Logger.debug('Multiple dev archetype URL matches with disambiguation selectors, waiting for DOM...');
+                this._disambiguateDevArchetypeWithSelectors(urlMatches, resolve);
+            });
+        },
+        
+        /**
+         * Disambiguate between dev archetypes using DOM selectors
+         */
+        _disambiguateDevArchetypeWithSelectors(candidates, resolve) {
+            let attempts = 0;
+            const maxAttempts = 20;
+            const checkInterval = 250;
+            
+            const checkSelectors = () => {
+                attempts++;
+                
+                // Check each candidate's disambiguation selectors
+                for (const archetype of candidates) {
+                    const selectors = archetype.disambiguationSelectors || [];
+                    
+                    // If no selectors, this archetype can't be confirmed via DOM
+                    if (selectors.length === 0) {
+                        continue;
+                    }
+                    
+                    // Check if ALL disambiguation selectors are present
+                    const allPresent = selectors.every(selector => {
+                        const exists = Context.dom.query(selector, {
+                            context: `devArchetype:${archetype.id}`
+                        }) !== null;
+                        Logger.debug(`  [dev:${archetype.id}] Selector "${selector}": ${exists ? '✓' : '✗'}`);
+                        return exists;
+                    });
+                    
+                    if (allPresent) {
+                        Logger.log(`✓ Disambiguated to dev archetype: ${archetype.id} - ${archetype.name}`);
+                        this.currentDevArchetype = archetype;
+                        resolve(archetype);
+                        return;
+                    }
+                }
+                
+                // No disambiguation match yet
+                if (attempts < maxAttempts) {
+                    Logger.debug(`Dev archetype disambiguation attempt ${attempts}/${maxAttempts}, retrying...`);
+                    setTimeout(checkSelectors, checkInterval);
+                } else {
+                    // Fallback to most specific URL match
+                    const fallback = candidates[0];
+                    Logger.warn(`Dev archetype disambiguation failed after ${maxAttempts} attempts, falling back to: ${fallback.id}`);
+                    this.currentDevArchetype = fallback;
+                    resolve(fallback);
+                }
+            };
+            
+            // Start checking
+            checkSelectors();
+        },
+        
+        getPluginsForCurrentDevArchetype() {
+            if (!this.currentDevArchetype) {
+                return [];
+            }
+            return this.currentDevArchetype.plugins || [];
         }
     };
 
@@ -1347,76 +1478,91 @@
         },
         
         /**
-         * Load dev plugins for an archetype (auto-discover based on regular plugin list)
-         * Attempts to load dev versions of plugins from dev/<archetypeId>/ folder
-         * @param {Array} pluginList - List of regular plugins for the archetype
-         * @param {string} archetypeId - The archetype ID
+         * Load dev archetype plugins (similar to loadPluginsForArchetype but uses dev path)
+         * @param {Array} pluginList - List of dev archetype plugins
+         * @param {string} archetypeId - The dev archetype ID
          */
-        async loadDevPluginsForArchetype(pluginList, archetypeId) {
-            if (!DEV_SCRIPTS_ENABLED) {
-                Logger.debug('Dev scripts disabled, skipping dev archetype plugins');
-                return;
-            }
-            
+        async loadPluginsForDevArchetype(pluginList, archetypeId) {
             if (!pluginList || pluginList.length === 0) {
-                Logger.debug('No regular plugins for this archetype, skipping dev plugin discovery');
+                Logger.log('No dev archetype plugins to load');
                 return;
             }
             
             if (!archetypeId) {
-                Logger.error('Archetype ID required to load dev plugins');
+                Logger.error('Dev archetype ID required to load plugins');
                 return;
             }
             
-            Logger.log(`Discovering dev plugins for ${archetypeId}...`);
+            Logger.log(`Loading ${pluginList.length} dev archetype plugin(s) for ${archetypeId}...`);
             const loadPromises = [];
             
             for (const pluginDef of pluginList) {
-                // Extract filename from plugin definition
-                let filename;
+                // Support both old format (string) and new format (object with name and version)
+                let filename, version;
                 if (typeof pluginDef === 'string') {
+                    // Backward compatibility: if just a string, default to version 1.0
                     filename = pluginDef;
-                } else if (pluginDef && pluginDef.name) {
+                    version = '1.0';
+                } else if (pluginDef && pluginDef.name && pluginDef.version) {
                     filename = pluginDef.name;
+                    version = pluginDef.version;
                 } else {
+                    Logger.error('Invalid dev archetype plugin definition:', pluginDef);
                     continue;
                 }
-                
+
+                Logger.debug(`🔍 archetypes.json requests dev archetype plugin ${filename} v${version} for ${archetypeId}`);
+
                 if (filename.includes('/')) {
+                    Logger.error(
+                        `Invalid dev archetype plugin name "${filename}". Plugin names must be filenames only (no folder paths).`
+                    );
                     continue;
                 }
                 
-                // Check if dev version exists by attempting to load it
-                // Use version 1.0 as default for dev plugins (they can declare their own version)
+                // Check if already loaded
+                const existingPlugins = PluginManager.getAll();
+                const alreadyLoadedByFile = existingPlugins.some(p => p._sourceFile === filename && p._isDev);
+                
                 const sourcePath = `dev/${archetypeId}/${filename}`;
                 const alreadyLoadedByPath = this._loadedPluginFiles.has(sourcePath);
                 
-                if (alreadyLoadedByPath) {
-                    Logger.debug(`Dev plugin ${filename} already loaded, skipping`);
+                if (alreadyLoadedByFile || alreadyLoadedByPath) {
+                    Logger.debug(`Dev archetype plugin ${filename} already loaded, skipping fetch`);
                     continue;
                 }
                 
-                // Attempt to load dev plugin (will fail gracefully if it doesn't exist)
                 loadPromises.push(
-                    this.loadDevArchetypePlugin(filename, '1.0', archetypeId)
+                    this.loadDevArchetypePlugin(filename, version, archetypeId)
                         .then(plugin => {
-                            const loadedVersion = plugin._version || plugin.version || '1.0';
+                            const loadedVersion = plugin._version || plugin.version || version;
                             plugin._sourceFile = filename;
                             plugin._version = loadedVersion;
                             plugin._isCore = false;
                             plugin._isDev = true;
                             PluginManager.register(plugin);
-                            Logger.log(`✓ Loaded dev plugin: ${filename} v${loadedVersion}`);
+                            Logger.log(`✓ Loaded dev archetype plugin: ${filename} v${loadedVersion}`);
                         })
                         .catch(err => {
-                            // Silently ignore if dev plugin doesn't exist (this is expected)
-                            Logger.debug(`Dev plugin ${filename} not found (this is normal if dev version doesn't exist)`);
+                            Logger.error(`✗ Failed to load dev archetype plugin: ${filename} v${version}`, err);
                         })
                 );
             }
             
             await Promise.allSettled(loadPromises);
-            Logger.log('Dev archetype plugin discovery complete');
+            
+            // Log warnings about outdated plugins
+            if (Context.outdatedPlugins.length > 0) {
+                Logger.warn(`⚠ ${Context.outdatedPlugins.length} dev archetype plugin(s) are using outdated cached versions:`);
+                Context.outdatedPlugins.forEach(p => {
+                    Logger.warn(`  - ${p.filename}: cached v${p.cachedVersion}, required v${p.requiredVersion}`);
+                });
+            }
+            
+            // Clean up deprecated cached plugins for this dev archetype
+            this.cleanupDeprecatedCache(pluginList, archetypeId);
+            
+            Logger.log('Dev archetype plugin loading complete');
         },
         
         /**
@@ -1656,7 +1802,11 @@
             
             // Load dev archetype plugins (if dev scripts enabled)
             if (DEV_SCRIPTS_ENABLED) {
-                await PluginLoader.loadDevPluginsForArchetype(pluginsToLoad, archetype.id);
+                const devArchetype = await ArchetypeManager.detectDevArchetype();
+                if (devArchetype) {
+                    const devPluginsToLoad = ArchetypeManager.getPluginsForCurrentDevArchetype();
+                    await PluginLoader.loadPluginsForDevArchetype(devPluginsToLoad, devArchetype.id);
+                }
             }
             
             // Run early plugins
