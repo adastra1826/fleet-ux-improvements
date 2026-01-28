@@ -5,7 +5,7 @@ const plugin = {
     id: 'dev-logger-panel',
     name: 'Dev Logger Panel',
     description: 'Floating panel to view Fleet UX Enhancer logs without prefix',
-    _version: '1.4',
+    _version: '2.0',
     enabledByDefault: true,
     phase: 'core',
 
@@ -35,7 +35,9 @@ const plugin = {
         unsubscribe: null,
         guardInterval: null,
         ui: null,
-        handlers: null
+        handlers: null,
+        newLogCount: 0,
+        isAtBottom: true
     },
 
     init(state, context) {
@@ -190,6 +192,48 @@ const plugin = {
         body.style.fontSize = '11px';
         body.style.lineHeight = '1.4';
         body.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+        body.style.position = 'relative';
+
+        const newLogIndicator = document.createElement('div');
+        newLogIndicator.id = 'wf-dev-log-new-indicator';
+        newLogIndicator.style.position = 'absolute';
+        newLogIndicator.style.bottom = '8px';
+        newLogIndicator.style.left = '8px';
+        newLogIndicator.style.right = '8px';
+        newLogIndicator.style.background = 'rgba(59, 130, 246, 0.9)';
+        newLogIndicator.style.color = '#ffffff';
+        newLogIndicator.style.padding = '6px 10px';
+        newLogIndicator.style.borderRadius = '6px';
+        newLogIndicator.style.fontSize = '11px';
+        newLogIndicator.style.fontWeight = '500';
+        newLogIndicator.style.cursor = 'pointer';
+        newLogIndicator.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        newLogIndicator.style.zIndex = '10';
+        newLogIndicator.style.display = 'flex';
+        newLogIndicator.style.alignItems = 'center';
+        newLogIndicator.style.justifyContent = 'space-between';
+        newLogIndicator.style.gap = '8px';
+        newLogIndicator.style.display = 'none';
+
+        const newLogText = document.createElement('span');
+        newLogText.id = 'wf-dev-log-new-text';
+        newLogText.textContent = '0 new';
+
+        const scrollToBottomButton = document.createElement('button');
+        scrollToBottomButton.type = 'button';
+        scrollToBottomButton.textContent = '↓ Scroll to bottom';
+        scrollToBottomButton.style.fontSize = '10px';
+        scrollToBottomButton.style.padding = '4px 8px';
+        scrollToBottomButton.style.borderRadius = '4px';
+        scrollToBottomButton.style.border = '1px solid rgba(255,255,255,0.3)';
+        scrollToBottomButton.style.background = 'rgba(255,255,255,0.2)';
+        scrollToBottomButton.style.color = '#ffffff';
+        scrollToBottomButton.style.cursor = 'pointer';
+        scrollToBottomButton.style.fontWeight = '500';
+
+        newLogIndicator.appendChild(newLogText);
+        newLogIndicator.appendChild(scrollToBottomButton);
+        body.appendChild(newLogIndicator);
 
         const toggleButton = document.createElement('button');
         toggleButton.id = 'wf-dev-log-toggle';
@@ -257,7 +301,10 @@ const plugin = {
             searchInput,
             body,
             toggleButton,
-            resizeHandle
+            resizeHandle,
+            newLogIndicator,
+            newLogText,
+            scrollToBottomButton
         };
     },
 
@@ -340,6 +387,12 @@ const plugin = {
                 if (document.body) {
                     document.body.style.userSelect = 'none';
                 }
+            },
+            onScroll: () => {
+                this._checkScrollPosition(state);
+            },
+            onScrollToBottom: () => {
+                this._scrollToBottom(state);
             }
         };
 
@@ -358,6 +411,9 @@ const plugin = {
         ui.minimizeButton.addEventListener('click', state.handlers.onMinimize);
         ui.searchInput.addEventListener('input', state.handlers.onSearch);
         ui.resizeHandle.addEventListener('mousedown', state.handlers.onResizeStart);
+        ui.body.addEventListener('scroll', state.handlers.onScroll);
+        ui.scrollToBottomButton.addEventListener('click', state.handlers.onScrollToBottom);
+        ui.newLogIndicator.addEventListener('click', state.handlers.onScrollToBottom);
     },
 
     _teardownUI(state) {
@@ -392,15 +448,70 @@ const plugin = {
     _renderLogs(state) {
         const ui = state.ui;
         if (!ui) return;
+        const wasAtBottom = this._isAtBottom(state);
         ui.body.innerHTML = '';
+        
+        // Recreate new log indicator
+        const newLogIndicator = document.createElement('div');
+        newLogIndicator.id = 'wf-dev-log-new-indicator';
+        newLogIndicator.style.position = 'absolute';
+        newLogIndicator.style.bottom = '8px';
+        newLogIndicator.style.left = '8px';
+        newLogIndicator.style.right = '8px';
+        newLogIndicator.style.background = 'rgba(59, 130, 246, 0.9)';
+        newLogIndicator.style.color = '#ffffff';
+        newLogIndicator.style.padding = '6px 10px';
+        newLogIndicator.style.borderRadius = '6px';
+        newLogIndicator.style.fontSize = '11px';
+        newLogIndicator.style.fontWeight = '500';
+        newLogIndicator.style.cursor = 'pointer';
+        newLogIndicator.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
+        newLogIndicator.style.zIndex = '10';
+        newLogIndicator.style.display = 'flex';
+        newLogIndicator.style.alignItems = 'center';
+        newLogIndicator.style.justifyContent = 'space-between';
+        newLogIndicator.style.gap = '8px';
+        newLogIndicator.style.display = 'none';
+
+        const newLogText = document.createElement('span');
+        newLogText.id = 'wf-dev-log-new-text';
+        newLogText.textContent = '0 new';
+
+        const scrollToBottomButton = document.createElement('button');
+        scrollToBottomButton.type = 'button';
+        scrollToBottomButton.textContent = '↓ Scroll to bottom';
+        scrollToBottomButton.style.fontSize = '10px';
+        scrollToBottomButton.style.padding = '4px 8px';
+        scrollToBottomButton.style.borderRadius = '4px';
+        scrollToBottomButton.style.border = '1px solid rgba(255,255,255,0.3)';
+        scrollToBottomButton.style.background = 'rgba(255,255,255,0.2)';
+        scrollToBottomButton.style.color = '#ffffff';
+        scrollToBottomButton.style.cursor = 'pointer';
+        scrollToBottomButton.style.fontWeight = '500';
+
+        newLogIndicator.appendChild(newLogText);
+        newLogIndicator.appendChild(scrollToBottomButton);
+        ui.newLogIndicator = newLogIndicator;
+        ui.newLogText = newLogText;
+        ui.scrollToBottomButton = scrollToBottomButton;
+
         state.logs.forEach((log) => {
             const level = log.level || 'log';
             const entry = this._createLogNode(level, log.text);
             log.node = entry;
             ui.body.appendChild(entry);
         });
+        ui.body.appendChild(newLogIndicator);
         this._applySearchFilter(state);
-        ui.body.scrollTop = ui.body.scrollHeight;
+        
+        // Only auto-scroll if we were at bottom before render
+        if (wasAtBottom) {
+            ui.body.scrollTop = ui.body.scrollHeight;
+            state.isAtBottom = true;
+        } else {
+            state.isAtBottom = false;
+        }
+        this._updateNewLogIndicator(state);
     },
 
     _createLogNode(level, message) {
@@ -447,11 +558,61 @@ const plugin = {
         const entry = this._createLogNode(level, message);
         logRecord.node = entry;
         ui.body.appendChild(entry);
-        ui.body.scrollTop = ui.body.scrollHeight;
 
         if (state.searchQuery) {
             const matches = logRecord.text.toLowerCase().includes(state.searchQuery);
             entry.style.display = matches ? 'block' : 'none';
+        }
+
+        // Only auto-scroll if already at bottom
+        if (this._isAtBottom(state)) {
+            ui.body.scrollTop = ui.body.scrollHeight;
+            state.isAtBottom = true;
+            state.newLogCount = 0;
+        } else {
+            state.newLogCount++;
+            state.isAtBottom = false;
+        }
+        this._updateNewLogIndicator(state);
+    },
+
+    _isAtBottom(state) {
+        const ui = state.ui;
+        if (!ui || !ui.body) return true;
+        const body = ui.body;
+        const threshold = 5; // pixels threshold for "at bottom"
+        return body.scrollHeight - body.scrollTop - body.clientHeight <= threshold;
+    },
+
+    _checkScrollPosition(state) {
+        const wasAtBottom = state.isAtBottom;
+        state.isAtBottom = this._isAtBottom(state);
+        
+        // If user scrolled to bottom, clear new log count
+        if (state.isAtBottom && !wasAtBottom) {
+            state.newLogCount = 0;
+            this._updateNewLogIndicator(state);
+        }
+    },
+
+    _scrollToBottom(state) {
+        const ui = state.ui;
+        if (!ui || !ui.body) return;
+        ui.body.scrollTop = ui.body.scrollHeight;
+        state.isAtBottom = true;
+        state.newLogCount = 0;
+        this._updateNewLogIndicator(state);
+    },
+
+    _updateNewLogIndicator(state) {
+        const ui = state.ui;
+        if (!ui || !ui.newLogIndicator || !ui.newLogText) return;
+        
+        if (state.newLogCount > 0 && !state.isAtBottom) {
+            ui.newLogText.textContent = `${state.newLogCount} new`;
+            ui.newLogIndicator.style.display = 'flex';
+        } else {
+            ui.newLogIndicator.style.display = 'none';
         }
     },
 
@@ -462,6 +623,8 @@ const plugin = {
             }
         });
         state.logs = [];
+        state.newLogCount = 0;
+        this._updateNewLogIndicator(state);
     },
 
     _copyAll(state) {
@@ -560,6 +723,16 @@ const plugin = {
             state.guardInterval = null;
         }
         if (state.handlers) {
+            const ui = state.ui;
+            if (ui && ui.body) {
+                ui.body.removeEventListener('scroll', state.handlers.onScroll);
+            }
+            if (ui && ui.scrollToBottomButton) {
+                ui.scrollToBottomButton.removeEventListener('click', state.handlers.onScrollToBottom);
+            }
+            if (ui && ui.newLogIndicator) {
+                ui.newLogIndicator.removeEventListener('click', state.handlers.onScrollToBottom);
+            }
             document.removeEventListener('mousemove', state.handlers.onMouseMove);
             document.removeEventListener('mousemove', state.handlers.onResizeMove);
             document.removeEventListener('mouseup', state.handlers.onMouseUp);

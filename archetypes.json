@@ -3,13 +3,13 @@
   "corePlugins": [
     {
       "name": "settings-ui.js",
-      "version": "5.4"
+      "version": "6.0"
     }
   ],
   "devPlugins": [
     {
       "name": "logger-panel.js",
-      "version": "1.4"
+      "version": "2.0"
     }
   ],
   "archetypes": [
