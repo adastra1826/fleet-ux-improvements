@@ -1,6 +1,6 @@
 
 // ==UserScript==
-// @name         Fleet Workflow Builder UX Enhancer
+// @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
 // @version      3.7.2
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
@@ -14,8 +14,8 @@
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
 // @run-at       document-start
-// @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
-// @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/main/fleet.user.js
+// @downloadURL  https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/dev/fleet.user.js
+// @updateURL    https://raw.githubusercontent.com/adastra1826/fleet-ux-improvements/dev/fleet.user.js
 // ==/UserScript==
 
 (function() {
@@ -39,7 +39,7 @@
     const GITHUB_CONFIG = {
         owner: 'adastra1826',
         repo: 'fleet-ux-improvements',
-        branch: 'main',
+        branch: 'dev',
         pluginsPath: 'plugins',
         corePath: 'core',
         devPath: 'dev',
@@ -1108,11 +1108,12 @@
             Logger.debug(`Cached plugin ${filename} v${version}`);
             
             // Register in cache registry for archetype plugins (not core/dev)
-            // sourcePath format: "archetypeId/filename" or "core/filename" or "dev/filename"
-            if (sourcePath && !sourcePath.startsWith('core/') && !sourcePath.startsWith('dev/')) {
+            // sourcePath format: "archetypes/archetypeId/main/filename" or "archetypes/archetypeId/dev/filename" or "core/main/filename" or "core/dev/filename"
+            if (sourcePath && sourcePath.startsWith('archetypes/')) {
                 const pathParts = sourcePath.split('/');
-                if (pathParts.length === 2) {
-                    const archetypeId = pathParts[0];
+                // Format: archetypes/archetypeId/main/filename or archetypes/archetypeId/dev/filename
+                if (pathParts.length >= 3) {
+                    const archetypeId = pathParts[1];
                     Storage.registerCachedPlugin(archetypeId, filename);
                 }
             }
@@ -1134,10 +1135,11 @@
             if (cached && cached.version === version) {
                 Logger.debug(`Using cached plugin ${filename} v${version}`);
                 // Register in cache registry for archetype plugins (not core/dev)
-                if (sourcePath && !sourcePath.startsWith('core/') && !sourcePath.startsWith('dev/')) {
+                if (sourcePath && sourcePath.startsWith('archetypes/')) {
                     const pathParts = sourcePath.split('/');
-                    if (pathParts.length === 2) {
-                        const archetypeId = pathParts[0];
+                    // Format: archetypes/archetypeId/main/filename or archetypes/archetypeId/dev/filename
+                    if (pathParts.length >= 3) {
+                        const archetypeId = pathParts[1];
                         Storage.registerCachedPlugin(archetypeId, filename);
                     }
                 }
@@ -1286,8 +1288,8 @@
          * @returns {Promise<Object>} - Plugin object
          */
         async loadCorePlugin(filename, version) {
-            const sourcePath = `core/${filename}`;
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/${filename}`;
+            const sourcePath = `core/main/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/main/${filename}`;
             
             // Load plugin code with versioning
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
@@ -1304,8 +1306,8 @@
          * @returns {Promise<Object>} - Plugin object
          */
         async loadDevPlugin(filename, version) {
-            const sourcePath = `dev/${filename}`;
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.devPath}/${filename}`;
+            const sourcePath = `core/dev/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/dev/${filename}`;
 
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
             const plugin = this.parsePluginCode(code, filename, { useModuleLogger: false });
@@ -1322,14 +1324,14 @@
          * @returns {Promise} - Resolves with the plugin object
          */
         async loadArchetypePlugin(filename, version, archetypeId) {
-            // Archetype plugins must always live under: plugins/<archetypeId>/<filename>
+            // Archetype plugins must always live under: plugins/archetypes/<archetypeId>/main/<filename>
             if (filename.includes('/')) {
                 throw new Error(
                     `Invalid archetype plugin name "${filename}". Plugin names must be filenames only (no folder paths).`
                 );
             }
 
-            const sourcePath = `${archetypeId}/${filename}`;
+            const sourcePath = `archetypes/${archetypeId}/main/${filename}`;
             const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
 
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
@@ -1341,22 +1343,22 @@
         
         /**
          * Load a dev archetype plugin with versioning support
-         * Dev archetype plugins live under: dev/<archetypeId>/<filename>
+         * Dev archetype plugins live under: plugins/archetypes/<archetypeId>/dev/<filename>
          * @param {string} filename - The plugin filename (e.g., "source-data-explorer.js")
          * @param {string} version - Required version (e.g., "1.0")
          * @param {string} archetypeId - The archetype ID (e.g., "qa-tool-use")
          * @returns {Promise} - Resolves with the plugin object
          */
         async loadDevArchetypePlugin(filename, version, archetypeId) {
-            // Dev archetype plugins must always live under: dev/<archetypeId>/<filename>
+            // Dev archetype plugins must always live under: plugins/archetypes/<archetypeId>/dev/<filename>
             if (filename.includes('/')) {
                 throw new Error(
                     `Invalid dev archetype plugin name "${filename}". Plugin names must be filenames only (no folder paths).`
                 );
             }
 
-            const sourcePath = `dev/${archetypeId}/${filename}`;
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.devPath}/${archetypeId}/${filename}`;
+            const sourcePath = `archetypes/${archetypeId}/dev/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
 
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
             const plugin = this.parsePluginCode(code, filename, { useModuleLogger: true });
@@ -1454,7 +1456,7 @@
                 const existingPlugins = PluginManager.getAll();
                 const alreadyLoadedByFile = existingPlugins.some(p => p._sourceFile === filename);
                 
-                const sourcePath = `${archetypeId}/${filename}`;
+                const sourcePath = `archetypes/${archetypeId}/main/${filename}`;
                 const alreadyLoadedByPath = this._loadedPluginFiles.has(sourcePath);
                 
                 if (alreadyLoadedByFile || alreadyLoadedByPath) {
@@ -1541,7 +1543,7 @@
                 const existingPlugins = PluginManager.getAll();
                 const alreadyLoadedByFile = existingPlugins.some(p => p._sourceFile === filename && p._isDev);
                 
-                const sourcePath = `dev/${archetypeId}/${filename}`;
+                const sourcePath = `archetypes/${archetypeId}/dev/${filename}`;
                 const alreadyLoadedByPath = this._loadedPluginFiles.has(sourcePath);
                 
                 if (alreadyLoadedByFile || alreadyLoadedByPath) {
@@ -1631,31 +1633,55 @@
             }
             
             // Delete deprecated cache entries
+            // Try both old format (archetypeId/filename) and new format (archetypes/archetypeId/main/filename and archetypes/archetypeId/dev/filename)
             let deletedCount = 0;
             deprecatedPlugins.forEach(filename => {
-                const pluginKey = `${archetypeId}/${filename}`;
-                const cacheKey = `plugin-cache-${pluginKey}`;
+                // Try old format first (for backward compatibility)
+                const oldPluginKey = `${archetypeId}/${filename}`;
+                const oldCacheKey = `plugin-cache-${oldPluginKey}`;
                 
-                // Check if cache entry actually exists before trying to delete
-                const cacheExists = Storage.get(cacheKey, null) !== null;
+                // Try new format for main plugins
+                const newMainPluginKey = `archetypes/${archetypeId}/main/${filename}`;
+                const newMainCacheKey = `plugin-cache-${newMainPluginKey}`;
                 
-                if (cacheExists) {
-                    try {
-                        Storage.delete(cacheKey);
-                        Storage.unregisterCachedPlugin(archetypeId, filename);
-                        deletedCount++;
-                        Logger.log(`Deleted deprecated cached plugin: ${filename} (archetype: ${archetypeId})`);
-                    } catch (e) {
-                        Logger.error(`Failed to delete deprecated cache entry for ${filename} (archetype: ${archetypeId}):`, e);
+                // Try new format for dev plugins
+                const newDevPluginKey = `archetypes/${archetypeId}/dev/${filename}`;
+                const newDevCacheKey = `plugin-cache-${newDevPluginKey}`;
+                
+                // Check all possible cache key formats
+                const cacheKeys = [
+                    { key: oldCacheKey, format: 'old' },
+                    { key: newMainCacheKey, format: 'new-main' },
+                    { key: newDevCacheKey, format: 'new-dev' }
+                ];
+                
+                let deleted = false;
+                for (const { key, format } of cacheKeys) {
+                    const cacheExists = Storage.get(key, null) !== null;
+                    if (cacheExists) {
+                        try {
+                            Storage.delete(key);
+                            deleted = true;
+                            Logger.log(`Deleted deprecated cached plugin: ${filename} (archetype: ${archetypeId}, format: ${format})`);
+                            break; // Only delete once
+                        } catch (e) {
+                            Logger.error(`Failed to delete deprecated cache entry for ${filename} (archetype: ${archetypeId}, format: ${format}):`, e);
+                        }
                     }
-                } else {
-                    // Cache entry doesn't exist, just clean up the registry entry
-                    try {
-                        Storage.unregisterCachedPlugin(archetypeId, filename);
+                }
+                
+                if (deleted) {
+                    deletedCount++;
+                }
+                
+                // Always clean up the registry entry
+                try {
+                    Storage.unregisterCachedPlugin(archetypeId, filename);
+                    if (!deleted) {
                         Logger.debug(`Cleaned up orphaned registry entry for ${filename} (archetype: ${archetypeId})`);
-                    } catch (e) {
-                        Logger.error(`Failed to unregister orphaned cache entry for ${filename} (archetype: ${archetypeId}):`, e);
                     }
+                } catch (e) {
+                    Logger.error(`Failed to unregister cache entry for ${filename} (archetype: ${archetypeId}):`, e);
                 }
             });
             
