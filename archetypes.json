@@ -14,6 +14,14 @@
   ],
   "archetypes": [
     {
+      "id": "dashboard",
+      "name": "Main Dashboard",
+      "description": "Main dashboard page",
+      "urlPattern": "work/create",
+      "disambiguationSelectors": [],
+      "plugins": []
+    },
+    {
       "id": "tool-use-task-creation",
       "name": "Tool Use Task Creation Page",
       "description": "Page for creating K-type workflow tasks",
@@ -47,6 +55,23 @@
       ]
     },
     {
+      "id": "tool-use-task-revision",
+      "name": "Tool Use Task Revision Page",
+      "description": "Page for reviewing and fixing previously submitted tool use tasks",
+      "urlPattern": "work/problems/respond-feedback/edit-tool-use*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "bug-report-expand.js",
+          "version": "1.2"
+        },
+        {
+          "name": "prompt-scratchpad.js",
+          "version": "1.0"
+        }
+      ]
+    },
+    {
       "id": "comp-use-task-creation",
       "name": "Computer Use Task Creation Page",
       "description": "Page for creating M-type workflow tasks",
@@ -58,14 +83,6 @@
           "version": "1.3"
         }
       ]
-    },
-    {
-      "id": "dashboard",
-      "name": "Main Dashboard",
-      "description": "Main dashboard page",
-      "urlPattern": "work/create",
-      "disambiguationSelectors": [],
-      "plugins": []
     },
     {
       "id": "qa-tool-use",
