@@ -5,7 +5,7 @@ const plugin = {
     id: 'dev-logger-panel',
     name: 'Dev Logger Panel',
     description: 'Floating panel to view Fleet UX Enhancer logs without prefix',
-    _version: '2.2',
+    _version: '2.3',
     enabledByDefault: true,
     phase: 'core',
 
@@ -457,9 +457,6 @@ const plugin = {
     _renderLogs(state) {
         const ui = state.ui;
         if (!ui) return;
-        
-        // Detect if this is the initial render (body is empty before clearing)
-        const isInitialRender = ui.body.children.length === 0;
         const wasAtBottom = this._isAtBottom(state);
         ui.body.innerHTML = '';
 
@@ -471,9 +468,8 @@ const plugin = {
         });
         this._applySearchFilter(state);
 
-        // Always scroll to bottom on initial render to start in auto-scroll mode
-        // For subsequent renders, only keep auto-scroll if already at bottom
-        if (isInitialRender || wasAtBottom) {
+        // Only auto-scroll if already at bottom
+        if (wasAtBottom) {
             ui.body.scrollTop = ui.body.scrollHeight;
             state.isAtBottom = true;
         } else {
@@ -532,8 +528,8 @@ const plugin = {
             entry.style.display = matches ? 'block' : 'none';
         }
 
-        // Only auto-scroll if already at bottom
-        if (this._isAtBottom(state)) {
+        // Only auto-scroll if we are in auto-scroll mode (set true initially; flipped by user scroll)
+        if (state.isAtBottom) {
             ui.body.scrollTop = ui.body.scrollHeight;
             state.isAtBottom = true;
             state.newLogCount = 0;
