@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.8',
+    _version: '5.9',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -432,10 +432,10 @@ const plugin = {
                 </div>
         ` : '';
         return `
-            <div data-plugin-id="${plugin.id}" style="position: relative; display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 10px; background: var(--card, #fafafa); will-change: transform;">
+            <div class="wf-plugin-item" data-plugin-id="${plugin.id}" style="position: relative; display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 10px; background: var(--card, #fafafa); will-change: transform;">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                        <div class="wf-drag-handle" data-plugin-id="${plugin.id}" title="Drag to reorder" style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--muted-foreground, #888); user-select: none;">
+                        <div class="wf-drag-handle" title="Drag to reorder" style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--muted-foreground, #888); user-select: none;">
                             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                                 <line x1="4" y1="5" x2="16" y2="5"></line>
                                 <line x1="4" y1="10" x2="16" y2="10"></line>
@@ -910,7 +910,7 @@ const plugin = {
         };
         const dragState = this[dragStateKey];
 
-        const getAllItems = () => Array.from(list.querySelectorAll('[data-plugin-id]'));
+        const getAllItems = () => Array.from(list.querySelectorAll('.wf-plugin-item[data-plugin-id]'));
         const getIdleItems = () => getAllItems().filter(item => item !== dragState.draggedItem);
         const getPointer = (e) => {
             const t = e.touches && e.touches[0] ? e.touches[0] : null;
@@ -1020,7 +1020,7 @@ const plugin = {
             reordered.forEach((item) => list.appendChild(item));
 
             // Persist order to storage from DOM order
-            const order = Array.from(list.querySelectorAll('[data-plugin-id]'))
+            const order = Array.from(list.querySelectorAll('.wf-plugin-item[data-plugin-id]'))
                 .map(el => el.getAttribute('data-plugin-id'))
                 .filter(Boolean);
             this._setStoredPluginOrder(this._settingsArchetypeId, order, listType);
@@ -1094,7 +1094,7 @@ const plugin = {
             });
             if (!handle || !list.contains(handle)) return;
 
-            const item = Context.dom.closest(handle, '[data-plugin-id]', {
+            const item = Context.dom.closest(handle, '.wf-plugin-item[data-plugin-id]', {
                 root: list,
                 context: `${this.id}.pluginPointerDragItem`
             });
