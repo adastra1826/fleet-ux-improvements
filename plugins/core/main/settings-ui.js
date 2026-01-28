@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.6',
+    _version: '5.7',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -435,7 +435,7 @@ const plugin = {
             <div data-plugin-id="${plugin.id}" style="display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 10px; background: var(--card, #fafafa);">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                        <div class="wf-drag-handle" draggable="true" data-plugin-id="${plugin.id}" title="Drag to reorder" style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--muted-foreground, #888);">
+                        <div class="wf-drag-handle" data-plugin-id="${plugin.id}" title="Drag to reorder" style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--muted-foreground, #888); user-select: none;">
                             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                                 <line x1="4" y1="5" x2="16" y2="5"></line>
                                 <line x1="4" y1="10" x2="16" y2="10"></line>
@@ -897,391 +897,224 @@ const plugin = {
         if (!list || list.dataset[boundKey] === 'true') return;
         list.dataset[boundKey] = 'true';
 
-        // Initialize drag state for this list - always reset to avoid stale references
-        const dragStateKey = listType === 'dev' ? '_devDragState' : '_dragState';
-        // Always reset drag state to ensure clean state after re-renders
+        const dragStateKey = listType === 'dev' ? '_wfDevPointerDragState' : '_wfPointerDragState';
         this[dragStateKey] = {
+            list,
+            listType,
+            plugins,
             draggedItem: null,
-            draggedId: null,
-            draggedClone: null,
-            placeholder: null,
-            currentInsertIndex: -1,
-            originalPositions: null,
-            originalStyles: null
+            pointerStartX: 0,
+            pointerStartY: 0,
+            itemsGap: 0,
+            rafPending: false
         };
         const dragState = this[dragStateKey];
 
-        list.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            if (e.dataTransfer) {
-                e.dataTransfer.dropEffect = 'move';
-            }
-            
-            if (!dragState.draggedItem || !dragState.draggedClone) return;
-            
-            // Update clone position to follow mouse
-            dragState.draggedClone.style.left = `${e.clientX - dragState.cloneOffsetX}px`;
-            dragState.draggedClone.style.top = `${e.clientY - dragState.cloneOffsetY}px`;
-            
-            // Find the insertion point based on mouse position
-            const items = Array.from(list.querySelectorAll('[data-plugin-id]'));
-            
-            let insertIndex = -1;
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                if (item === dragState.draggedItem) continue; // Skip the dragged item
-                
-                const rect = item.getBoundingClientRect();
-                const itemCenterY = rect.top + rect.height / 2;
-                
-                if (e.clientY < itemCenterY) {
-                    insertIndex = i;
-                    break;
-                }
-            }
-            
-            // If we didn't find an insertion point, insert at the end
-            if (insertIndex === -1) {
-                insertIndex = items.length;
-            }
-            
-            // Adjust insertIndex if dragging down (account for removed dragged item)
-            const draggedIndex = items.indexOf(dragState.draggedItem);
-            if (draggedIndex !== -1 && insertIndex > draggedIndex) {
-                insertIndex--;
-            }
-            
-            // Only update if the insertion point changed
-            if (insertIndex !== dragState.currentInsertIndex) {
-                dragState.currentInsertIndex = insertIndex;
-                this._updateDragPreview(list, dragState, items, insertIndex);
-            }
-        });
+        const getAllItems = () => Array.from(list.querySelectorAll('[data-plugin-id]'));
+        const getIdleItems = () => getAllItems().filter(item => item !== dragState.draggedItem);
+        const getPointer = (e) => {
+            const t = e.touches && e.touches[0] ? e.touches[0] : null;
+            return {
+                x: (typeof e.clientX === 'number' ? e.clientX : (t ? t.clientX : 0)),
+                y: (typeof e.clientY === 'number' ? e.clientY : (t ? t.clientY : 0))
+            };
+        };
+        const isItemAbove = (item) => item.hasAttribute('data-wf-is-above');
+        const isItemToggled = (item) => item.hasAttribute('data-wf-is-toggled');
 
-        list.addEventListener('drop', (e) => {
-            e.preventDefault();
-            
-            if (!dragState.draggedItem || dragState.currentInsertIndex === -1) {
-                this._cleanupDragState(list, dragState);
+        const setItemsGap = () => {
+            const idle = getIdleItems();
+            if (idle.length <= 1) {
+                dragState.itemsGap = 0;
                 return;
             }
-            
-            if (!dragState.draggedId) {
-                this._cleanupDragState(list, dragState);
-                return;
-            }
+            const r1 = idle[0].getBoundingClientRect();
+            const r2 = idle[1].getBoundingClientRect();
+            dragState.itemsGap = Math.abs(r1.bottom - r2.top);
+        };
 
-            const order = this._getStoredPluginOrder(this._settingsArchetypeId, plugins, listType);
-            const fromIndex = order.indexOf(dragState.draggedId);
-            const toIndex = dragState.currentInsertIndex;
-            
-            if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
-                this._cleanupDragState(list, dragState);
-                return;
-            }
-            
-            // Update order
-            order.splice(fromIndex, 1);
-            order.splice(toIndex, 0, dragState.draggedId);
-            this._setStoredPluginOrder(this._settingsArchetypeId, order, listType);
-            
-            // Clean up drag state before re-rendering
-            this._cleanupDragState(list, dragState);
-            
-            // Re-render the list
-            if (listType === 'dev') {
-                this._renderDevPluginList(modal, plugins);
-                this._attachPluginToggleListeners(modal, plugins, 'dev');
-                this._attachPluginReorderListeners(modal, plugins, 'dev');
-            } else {
-                this._renderPluginList(modal, plugins);
-                this._attachPluginToggleListeners(modal, plugins);
-                this._attachPluginReorderListeners(modal, plugins);
-            }
-            // Get all plugins (regular + dev) for settings message
-            const allArchetypePlugins = PluginManager.getAll().filter(p => p.phase !== 'core' && !p._isDev);
-            this._updateSettingsMessage(modal, allArchetypePlugins);
-        });
+        const disablePageScroll = () => {
+            document.body.style.overflow = 'hidden';
+            document.body.style.touchAction = 'none';
+            document.body.style.userSelect = 'none';
+        };
 
-        list.addEventListener('dragstart', (e) => {
-            const handle = Context.dom.closest(e.target, '.wf-drag-handle', {
-                root: list,
-                context: `${this.id}.pluginDragHandle`
-            });
-            if (!handle || !list.contains(handle)) return;
-            const id = handle.getAttribute('data-plugin-id');
-            if (!id) return;
-            
-            const draggedItem = Context.dom.closest(handle, '[data-plugin-id]', {
-                root: list,
-                context: `${this.id}.pluginDragItem`
-            });
-            if (!draggedItem) return;
-            
-            // Store drag state
-            dragState.draggedItem = draggedItem;
-            dragState.draggedId = id;
-            dragState.currentInsertIndex = -1;
-            
-            // Store original positions and styles of all items before any modifications
-            const allItems = Array.from(list.querySelectorAll('[data-plugin-id]'));
-            dragState.originalPositions = new Map();
-            dragState.originalStyles = new Map();
-            allItems.forEach(item => {
-                const rect = item.getBoundingClientRect();
-                dragState.originalPositions.set(item, {
-                    top: rect.top,
-                    height: rect.height,
-                    index: allItems.indexOf(item)
-                });
-                // Store original styles to restore later
-                dragState.originalStyles.set(item, {
-                    position: item.style.position || '',
-                    top: item.style.top || '',
-                    left: item.style.left || '',
-                    opacity: item.style.opacity || '',
-                    transform: item.style.transform || '',
-                    transition: item.style.transition || ''
-                });
-            });
-            
-            // Create a clone that follows the mouse
-            const clone = draggedItem.cloneNode(true);
-            const rect = draggedItem.getBoundingClientRect();
-            clone.style.cssText = `
-                position: fixed;
-                left: ${rect.left}px;
-                top: ${rect.top}px;
-                width: ${rect.width}px;
-                opacity: 0.8;
-                pointer-events: none;
-                z-index: 10001;
-                transform: rotate(2deg);
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-                background: var(--card, #fafafa);
-                border: 1px solid var(--border, #e5e5e5);
-                border-radius: 8px;
-            `;
-            document.body.appendChild(clone);
-            dragState.draggedClone = clone;
-            
-            // Calculate offset from mouse to clone top-left
-            dragState.cloneOffsetX = e.clientX - rect.left;
-            dragState.cloneOffsetY = e.clientY - rect.top;
-            
-            // Create placeholder to show where item was
-            const placeholder = document.createElement('div');
-            placeholder.style.cssText = `
-                height: ${rect.height}px;
-                margin-bottom: 10px;
-                border: 2px dashed var(--border, #e5e5e5);
-                border-radius: 8px;
-                background: transparent;
-                transition: all 0.2s ease;
-            `;
-            dragState.placeholder = placeholder;
-            draggedItem.parentNode.insertBefore(placeholder, draggedItem);
-            
-            // Remove dragged item from layout flow completely using position absolute
-            // This prevents layout recalculations that interfere with transforms
-            const draggedRect = draggedItem.getBoundingClientRect();
-            draggedItem.style.position = 'absolute';
-            draggedItem.style.top = `${draggedRect.top}px`;
-            draggedItem.style.left = `${draggedRect.left}px`;
-            draggedItem.style.width = `${draggedRect.width}px`;
-            draggedItem.style.opacity = '0.3';
-            draggedItem.style.pointerEvents = 'none';
-            draggedItem.style.zIndex = '10000';
-            
-            // Set up data transfer
-            if (e.dataTransfer) {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', id);
-            }
-            
-            handle.style.cursor = 'grabbing';
-            this._draggingPluginId = id;
-            
-            Logger.debug(`Started dragging plugin: ${id}`);
-        });
+        const enablePageScroll = () => {
+            document.body.style.overflow = '';
+            document.body.style.touchAction = '';
+            document.body.style.userSelect = '';
+        };
 
-        list.addEventListener('dragend', (e) => {
-            const handle = Context.dom.closest(e.target, '.wf-drag-handle', {
-                root: list,
-                context: `${this.id}.pluginDragHandleEnd`
-            });
-            if (handle) {
-                handle.style.cursor = 'grab';
-            }
-            
-            // Clean up drag state
-            this._cleanupDragState(list, dragState);
-            this._draggingPluginId = null;
-            
-            Logger.debug('Drag ended');
-        });
-    },
-    
-    _updateDragPreview(list, dragState, items, insertIndex) {
-        if (!dragState.originalPositions || !dragState.placeholder) return;
-        
-        // Find the target item for insertion (only move placeholder if position changed)
-        const validItems = items.filter(item => item !== dragState.draggedItem);
-        let targetItem = null;
-        let insertAfter = false;
-        
-        if (insertIndex < validItems.length) {
-            targetItem = validItems[insertIndex];
-            insertAfter = false; // Insert before targetItem
-        } else if (validItems.length > 0) {
-            targetItem = validItems[validItems.length - 1];
-            insertAfter = true; // Insert after last item
-        }
-        
-        // Check if placeholder needs to move
-        let needsPlaceholderMove = false;
-        if (!targetItem && validItems.length === 0) {
-            // No items - placeholder should be only child of list
-            needsPlaceholderMove = dragState.placeholder.parentNode !== list || 
-                                   dragState.placeholder.nextSibling !== null;
-        } else if (targetItem) {
-            const currentPlaceholderParent = dragState.placeholder.parentNode;
-            if (insertAfter) {
-                // Should be after targetItem
-                needsPlaceholderMove = currentPlaceholderParent !== targetItem.parentNode ||
-                                       dragState.placeholder.previousSibling !== targetItem;
-            } else {
-                // Should be before targetItem
-                needsPlaceholderMove = currentPlaceholderParent !== targetItem.parentNode ||
-                                       dragState.placeholder.nextSibling !== targetItem;
-            }
-        }
-        
-        if (needsPlaceholderMove) {
-            // Remove placeholder from current position
-            if (dragState.placeholder.parentNode) {
-                dragState.placeholder.remove();
-            }
-            
-            // Insert placeholder at the new position
-            if (!targetItem && validItems.length === 0) {
-                // If no items, append to list
-                list.appendChild(dragState.placeholder);
-            } else if (targetItem) {
-                if (insertAfter) {
-                    // Insert after targetItem
-                    if (targetItem.nextSibling) {
-                        targetItem.parentNode.insertBefore(dragState.placeholder, targetItem.nextSibling);
-                    } else {
-                        targetItem.parentNode.appendChild(dragState.placeholder);
-                    }
+        const initItemsState = () => {
+            const all = getAllItems();
+            const draggedIndex = all.indexOf(dragState.draggedItem);
+            getIdleItems().forEach((item, i) => {
+                // mark as above if its original index is above dragged item
+                const idx = all.indexOf(item);
+                if (idx !== -1 && idx < draggedIndex) {
+                    item.setAttribute('data-wf-is-above', '');
                 } else {
-                    // Insert before targetItem
-                    targetItem.parentNode.insertBefore(dragState.placeholder, targetItem);
+                    item.removeAttribute('data-wf-is-above');
                 }
-            }
-        }
-        
-        // Calculate transforms based on original positions
-        const draggedIndex = dragState.originalPositions.get(dragState.draggedItem)?.index ?? items.indexOf(dragState.draggedItem);
-        const draggedHeight = dragState.originalPositions.get(dragState.draggedItem)?.height ?? dragState.draggedItem.getBoundingClientRect().height;
-        const itemSpacing = 10; // margin-bottom from CSS
-        
-        // Apply transforms to all valid items based on original positions
-        validItems.forEach((item) => {
-            const originalPos = dragState.originalPositions.get(item);
-            if (!originalPos) return;
-            
-            const originalIndex = originalPos.index;
-            const adjustedIdx = originalIndex > draggedIndex ? originalIndex - 1 : originalIndex;
-            
-            // Calculate if this item should shift based on original positions
-            let shouldShift = false;
-            if (draggedIndex < insertIndex) {
-                // Dragging down - items between dragged and insert should shift down
-                shouldShift = adjustedIdx >= draggedIndex && adjustedIdx < insertIndex;
-            } else if (draggedIndex > insertIndex) {
-                // Dragging up - items between insert and dragged should shift up
-                shouldShift = adjustedIdx >= insertIndex && adjustedIdx < draggedIndex;
-            }
-            
-            if (shouldShift) {
-                const shiftDirection = draggedIndex < insertIndex ? 1 : -1;
-                const shiftAmount = (draggedHeight + itemSpacing) * shiftDirection;
-                item.style.transform = `translateY(${shiftAmount}px)`;
-                item.style.transition = 'transform 0.2s ease';
-            } else {
-                // Reset to original position
-                item.style.transform = '';
-                item.style.transition = 'transform 0.2s ease';
-            }
-        });
-    },
-    
-    _cleanupDragState(list, dragState) {
-        // Remove clone
-        if (dragState.draggedClone) {
-            dragState.draggedClone.remove();
-            dragState.draggedClone = null;
-        }
-        
-        // Remove placeholder
-        if (dragState.placeholder) {
-            dragState.placeholder.remove();
-            dragState.placeholder = null;
-        }
-        
-        // Restore original item styles
-        if (dragState.draggedItem && dragState.originalStyles) {
-            const originalStyles = dragState.originalStyles.get(dragState.draggedItem);
-            if (originalStyles) {
-                dragState.draggedItem.style.position = originalStyles.position;
-                dragState.draggedItem.style.top = originalStyles.top;
-                dragState.draggedItem.style.left = originalStyles.left;
-                dragState.draggedItem.style.width = '';
-                dragState.draggedItem.style.opacity = originalStyles.opacity;
-                dragState.draggedItem.style.pointerEvents = '';
-                dragState.draggedItem.style.zIndex = '';
-            } else {
-                // Fallback if styles weren't stored
-                dragState.draggedItem.style.position = '';
-                dragState.draggedItem.style.top = '';
-                dragState.draggedItem.style.left = '';
-                dragState.draggedItem.style.width = '';
-                dragState.draggedItem.style.opacity = '';
-                dragState.draggedItem.style.pointerEvents = '';
-                dragState.draggedItem.style.zIndex = '';
-            }
-            dragState.draggedItem = null;
-        }
-        
-        // Reset transforms on all items using stored original styles
-        if (list && dragState.originalStyles) {
-            const items = list.querySelectorAll('[data-plugin-id]');
-            items.forEach(item => {
-                const originalStyles = dragState.originalStyles.get(item);
-                if (originalStyles) {
-                    item.style.transform = originalStyles.transform;
-                    item.style.transition = originalStyles.transition;
+                item.removeAttribute('data-wf-is-toggled');
+                item.style.willChange = 'transform';
+            });
+        };
+
+        const updateIdleItemsStateAndPosition = () => {
+            if (!dragState.draggedItem) return;
+            const draggedRect = dragState.draggedItem.getBoundingClientRect();
+            const draggedY = draggedRect.top + draggedRect.height / 2;
+
+            // Update toggled state
+            getIdleItems().forEach((item) => {
+                const rect = item.getBoundingClientRect();
+                const itemY = rect.top + rect.height / 2;
+                if (isItemAbove(item)) {
+                    if (draggedY <= itemY) item.setAttribute('data-wf-is-toggled', '');
+                    else item.removeAttribute('data-wf-is-toggled');
+                } else {
+                    if (draggedY >= itemY) item.setAttribute('data-wf-is-toggled', '');
+                    else item.removeAttribute('data-wf-is-toggled');
+                }
+            });
+
+            // Update positions
+            getIdleItems().forEach((item) => {
+                if (isItemToggled(item)) {
+                    const direction = isItemAbove(item) ? 1 : -1;
+                    item.style.transform = `translateY(${direction * (draggedRect.height + dragState.itemsGap)}px)`;
+                    item.style.transition = 'transform 0.2s ease';
                 } else {
                     item.style.transform = '';
-                    item.style.transition = '';
+                    item.style.transition = 'transform 0.2s ease';
                 }
             });
-        } else if (list) {
-            // Fallback if styles weren't stored
-            const items = list.querySelectorAll('[data-plugin-id]');
-            items.forEach(item => {
+        };
+
+        const applyNewItemsOrder = () => {
+            const all = getAllItems();
+            const reordered = [];
+
+            all.forEach((item, index) => {
+                if (item === dragState.draggedItem) return;
+                if (!isItemToggled(item)) {
+                    reordered[index] = item;
+                    return;
+                }
+                const newIndex = isItemAbove(item) ? index + 1 : index - 1;
+                reordered[newIndex] = item;
+            });
+
+            for (let i = 0; i < all.length; i++) {
+                if (typeof reordered[i] === 'undefined') reordered[i] = dragState.draggedItem;
+            }
+
+            reordered.forEach((item) => list.appendChild(item));
+
+            // Persist order to storage from DOM order
+            const order = Array.from(list.querySelectorAll('[data-plugin-id]'))
+                .map(el => el.getAttribute('data-plugin-id'))
+                .filter(Boolean);
+            this._setStoredPluginOrder(this._settingsArchetypeId, order, listType);
+
+            // Update settings changed banner
+            const allArchetypePlugins = PluginManager.getAll().filter(p => p.phase !== 'core' && !p._isDev);
+            this._updateSettingsMessage(modal, allArchetypePlugins);
+        };
+
+        const cleanup = () => {
+            if (!dragState.draggedItem) return;
+
+            dragState.draggedItem.style.transform = '';
+            dragState.draggedItem.style.transition = '';
+            dragState.draggedItem.style.zIndex = '';
+            dragState.draggedItem.style.willChange = '';
+            dragState.draggedItem = null;
+
+            getAllItems().forEach((item) => {
+                item.removeAttribute('data-wf-is-above');
+                item.removeAttribute('data-wf-is-toggled');
                 item.style.transform = '';
                 item.style.transition = '';
+                item.style.willChange = '';
             });
-        }
-        
-        // Clear all drag state
-        dragState.currentInsertIndex = -1;
-        dragState.draggedId = null;
-        dragState.originalPositions = null;
-        dragState.originalStyles = null;
+
+            enablePageScroll();
+
+            document.removeEventListener('mousemove', onPointerMove, true);
+            document.removeEventListener('mouseup', onPointerUp, true);
+            document.removeEventListener('touchmove', onPointerMove, { capture: true });
+            document.removeEventListener('touchend', onPointerUp, true);
+        };
+
+        const onPointerMove = (e) => {
+            if (!dragState.draggedItem) return;
+            // prevent scrolling while dragging
+            if (e.cancelable) e.preventDefault();
+
+            const { x, y } = getPointer(e);
+            const dx = x - dragState.pointerStartX;
+            const dy = y - dragState.pointerStartY;
+
+            dragState.draggedItem.style.transform = `translate(${dx}px, ${dy}px)`;
+            dragState.draggedItem.style.zIndex = '10';
+            dragState.draggedItem.style.willChange = 'transform';
+
+            // Throttle expensive layout reads to rAF
+            if (!dragState.rafPending) {
+                dragState.rafPending = true;
+                requestAnimationFrame(() => {
+                    dragState.rafPending = false;
+                    updateIdleItemsStateAndPosition();
+                });
+            }
+        };
+
+        const onPointerUp = () => {
+            if (!dragState.draggedItem) return;
+            applyNewItemsOrder();
+            cleanup();
+        };
+
+        const onPointerDown = (e) => {
+            // Only left click
+            if (e.type === 'mousedown' && e.button !== 0) return;
+
+            const handle = Context.dom.closest(e.target, '.wf-drag-handle', {
+                root: list,
+                context: `${this.id}.pluginPointerDragHandle`
+            });
+            if (!handle || !list.contains(handle)) return;
+
+            const item = Context.dom.closest(handle, '[data-plugin-id]', {
+                root: list,
+                context: `${this.id}.pluginPointerDragItem`
+            });
+            if (!item) return;
+
+            dragState.draggedItem = item;
+            const { x, y } = getPointer(e);
+            dragState.pointerStartX = x;
+            dragState.pointerStartY = y;
+
+            setItemsGap();
+            disablePageScroll();
+            initItemsState();
+
+            // Make dragged item feel draggable
+            item.style.transition = 'none';
+
+            document.addEventListener('mousemove', onPointerMove, true);
+            document.addEventListener('mouseup', onPointerUp, true);
+            document.addEventListener('touchmove', onPointerMove, { passive: false, capture: true });
+            document.addEventListener('touchend', onPointerUp, true);
+
+            Logger.debug(`Started pointer drag reorder (${listType})`);
+        };
+
+        list.addEventListener('mousedown', onPointerDown);
+        list.addEventListener('touchstart', onPointerDown, { passive: true });
     },
 
     _getOrderedPlugins(plugins, archetypeId, listType = 'regular') {
