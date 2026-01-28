@@ -5,7 +5,7 @@ const plugin = {
     id: 'promptScratchpad',
     name: 'Prompt Scratchpad',
     description: 'Adds an adjustable height scratchpad for notes after the prompt section',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -125,7 +125,7 @@ const plugin = {
         
         const label = document.createElement('span');
         label.className = 'text-sm text-muted-foreground font-medium';
-        label.textContent = 'Prompt Scratchpad';
+        label.textContent = 'Scratchpad';
         
         header.appendChild(label);
         
@@ -140,7 +140,7 @@ const plugin = {
         
         const textarea = document.createElement('textarea');
         textarea.className = 'flex-1 w-full border-0 bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none';
-        textarea.placeholder = 'Use this space for notes, observations, or any other QA-related content...';
+        textarea.placeholder = 'Use this space for notes, item IDs, JSON, etc. This is for your own use and not submitted with the task.';
         textarea.dataset.promptScratchpadTextarea = 'true';
         
         // Resize handle
