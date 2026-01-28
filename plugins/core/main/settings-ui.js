@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.7',
+    _version: '5.8',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -432,7 +432,7 @@ const plugin = {
                 </div>
         ` : '';
         return `
-            <div data-plugin-id="${plugin.id}" style="display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 10px; background: var(--card, #fafafa);">
+            <div data-plugin-id="${plugin.id}" style="position: relative; display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; margin-bottom: 10px; background: var(--card, #fafafa); will-change: transform;">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                         <div class="wf-drag-handle" data-plugin-id="${plugin.id}" title="Drag to reorder" style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: grab; color: var(--muted-foreground, #888); user-select: none;">
@@ -1009,6 +1009,13 @@ const plugin = {
             for (let i = 0; i < all.length; i++) {
                 if (typeof reordered[i] === 'undefined') reordered[i] = dragState.draggedItem;
             }
+
+            // Clear all transforms BEFORE DOM reorder to prevent visual artifacts
+            all.forEach((item) => {
+                item.style.transform = '';
+                item.style.transition = '';
+                item.style.zIndex = '';
+            });
 
             reordered.forEach((item) => list.appendChild(item));
 
