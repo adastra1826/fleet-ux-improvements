@@ -55,7 +55,7 @@
       ]
     },
     {
-      "id": "tool-use-task-revision",
+      "id": "tool-use-revision",
       "name": "Tool Use Task Revision Page",
       "description": "Page for reviewing and fixing previously submitted tool use tasks",
       "urlPattern": "work/problems/respond-feedback/edit-tool-use*",
