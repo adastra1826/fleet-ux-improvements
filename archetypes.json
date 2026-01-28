@@ -68,6 +68,10 @@
         {
           "name": "prompt-scratchpad.js",
           "version": "1.0"
+        },
+        {
+          "name": "execute-to-current-tool.js",
+          "version": "1.0"
         }
       ]
     },
