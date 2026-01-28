@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.7.0
+// @version      3.7.1
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -28,7 +28,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.7.0';
+    const VERSION = '3.7.1';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
@@ -427,7 +427,21 @@
             commonArchetypeIds.forEach(archetypeId => {
                 this.delete(`plugin-order-${archetypeId}`);
                 clearedCount++;
+                
+                // Also clear dev plugin order
+                this.delete(`dev-plugin-order-${archetypeId}`);
+                clearedCount++;
+                
+                // Clear plugin cache registry for this archetype
+                this.delete(`plugin-cache-registry-${archetypeId}`);
+                clearedCount++;
             });
+            
+            // Also clear global and dev registries (in case they exist)
+            this.delete('plugin-cache-registry-global');
+            clearedCount++;
+            this.delete('plugin-cache-registry-dev');
+            clearedCount++;
             
             // Clear dev logger panel storage if it exists
             const devLoggerKeys = [
@@ -1622,13 +1636,26 @@
                 const pluginKey = `${archetypeId}/${filename}`;
                 const cacheKey = `plugin-cache-${pluginKey}`;
                 
-                try {
-                    Storage.delete(cacheKey);
-                    Storage.unregisterCachedPlugin(archetypeId, filename);
-                    deletedCount++;
-                    Logger.log(`Deleted deprecated cached plugin: ${filename} (archetype: ${archetypeId})`);
-                } catch (e) {
-                    Logger.error(`Failed to delete deprecated cache entry for ${filename} (archetype: ${archetypeId}):`, e);
+                // Check if cache entry actually exists before trying to delete
+                const cacheExists = Storage.get(cacheKey, null) !== null;
+                
+                if (cacheExists) {
+                    try {
+                        Storage.delete(cacheKey);
+                        Storage.unregisterCachedPlugin(archetypeId, filename);
+                        deletedCount++;
+                        Logger.log(`Deleted deprecated cached plugin: ${filename} (archetype: ${archetypeId})`);
+                    } catch (e) {
+                        Logger.error(`Failed to delete deprecated cache entry for ${filename} (archetype: ${archetypeId}):`, e);
+                    }
+                } else {
+                    // Cache entry doesn't exist, just clean up the registry entry
+                    try {
+                        Storage.unregisterCachedPlugin(archetypeId, filename);
+                        Logger.debug(`Cleaned up orphaned registry entry for ${filename} (archetype: ${archetypeId})`);
+                    } catch (e) {
+                        Logger.error(`Failed to unregister orphaned cache entry for ${filename} (archetype: ${archetypeId}):`, e);
+                    }
                 }
             });
             
