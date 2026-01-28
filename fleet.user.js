@@ -1289,7 +1289,7 @@
          */
         async loadCorePlugin(filename, version) {
             const sourcePath = `core/main/${filename}`;
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/main/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
             
             // Load plugin code with versioning
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
@@ -1307,7 +1307,7 @@
          */
         async loadDevPlugin(filename, version) {
             const sourcePath = `core/dev/${filename}`;
-            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.corePath}/dev/${filename}`;
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${GITHUB_CONFIG.pluginsPath}/${sourcePath}`;
 
             const code = await this.loadPluginCode(filename, sourcePath, version, url);
             const plugin = this.parsePluginCode(code, filename, { useModuleLogger: false });
