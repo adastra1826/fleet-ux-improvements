@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.9',
+    _version: '5.10',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -1020,9 +1020,16 @@ const plugin = {
             reordered.forEach((item) => list.appendChild(item));
 
             // Persist order to storage from DOM order
-            const order = Array.from(list.querySelectorAll('.wf-plugin-item[data-plugin-id]'))
+            const orderRaw = Array.from(list.querySelectorAll('.wf-plugin-item[data-plugin-id]'))
                 .map(el => el.getAttribute('data-plugin-id'))
                 .filter(Boolean);
+            const seen = new Set();
+            const order = [];
+            for (const id of orderRaw) {
+                if (seen.has(id)) continue;
+                seen.add(id);
+                order.push(id);
+            }
             this._setStoredPluginOrder(this._settingsArchetypeId, order, listType);
 
             // Update settings changed banner
@@ -1159,8 +1166,19 @@ const plugin = {
         }
         const valid = new Set(ids);
         const filtered = stored.filter(id => valid.has(id));
-        const missing = ids.filter(id => !filtered.includes(id));
-        const normalized = filtered.concat(missing);
+
+        // De-dupe while preserving first occurrence (fixes historical corrupted order)
+        const seen = new Set();
+        const deduped = [];
+        for (const id of filtered) {
+            if (seen.has(id)) continue;
+            seen.add(id);
+            deduped.push(id);
+        }
+
+        const missing = ids.filter(id => !seen.has(id));
+        const normalized = deduped.concat(missing);
+
         if (JSON.stringify(stored) !== JSON.stringify(normalized)) {
             this._setStoredPluginOrder(archetypeId, normalized, listType);
         }
