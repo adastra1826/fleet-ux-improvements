@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '6.0',
+    _version: '5.6',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -897,17 +897,18 @@ const plugin = {
         if (!list || list.dataset[boundKey] === 'true') return;
         list.dataset[boundKey] = 'true';
 
-        // Initialize drag state for this list
+        // Initialize drag state for this list - always reset to avoid stale references
         const dragStateKey = listType === 'dev' ? '_devDragState' : '_dragState';
-        if (!this[dragStateKey]) {
-            this[dragStateKey] = {
-                draggedItem: null,
-                draggedId: null,
-                draggedClone: null,
-                placeholder: null,
-                currentInsertIndex: -1
-            };
-        }
+        // Always reset drag state to ensure clean state after re-renders
+        this[dragStateKey] = {
+            draggedItem: null,
+            draggedId: null,
+            draggedClone: null,
+            placeholder: null,
+            currentInsertIndex: -1,
+            originalPositions: null,
+            originalStyles: null
+        };
         const dragState = this[dragStateKey];
 
         list.addEventListener('dragover', (e) => {
@@ -1022,6 +1023,28 @@ const plugin = {
             dragState.draggedId = id;
             dragState.currentInsertIndex = -1;
             
+            // Store original positions and styles of all items before any modifications
+            const allItems = Array.from(list.querySelectorAll('[data-plugin-id]'));
+            dragState.originalPositions = new Map();
+            dragState.originalStyles = new Map();
+            allItems.forEach(item => {
+                const rect = item.getBoundingClientRect();
+                dragState.originalPositions.set(item, {
+                    top: rect.top,
+                    height: rect.height,
+                    index: allItems.indexOf(item)
+                });
+                // Store original styles to restore later
+                dragState.originalStyles.set(item, {
+                    position: item.style.position || '',
+                    top: item.style.top || '',
+                    left: item.style.left || '',
+                    opacity: item.style.opacity || '',
+                    transform: item.style.transform || '',
+                    transition: item.style.transition || ''
+                });
+            });
+            
             // Create a clone that follows the mouse
             const clone = draggedItem.cloneNode(true);
             const rect = draggedItem.getBoundingClientRect();
@@ -1059,8 +1082,16 @@ const plugin = {
             dragState.placeholder = placeholder;
             draggedItem.parentNode.insertBefore(placeholder, draggedItem);
             
-            // Hide original item but keep its space initially
+            // Remove dragged item from layout flow completely using position absolute
+            // This prevents layout recalculations that interfere with transforms
+            const draggedRect = draggedItem.getBoundingClientRect();
+            draggedItem.style.position = 'absolute';
+            draggedItem.style.top = `${draggedRect.top}px`;
+            draggedItem.style.left = `${draggedRect.left}px`;
+            draggedItem.style.width = `${draggedRect.width}px`;
             draggedItem.style.opacity = '0.3';
+            draggedItem.style.pointerEvents = 'none';
+            draggedItem.style.zIndex = '10000';
             
             // Set up data transfer
             if (e.dataTransfer) {
@@ -1092,51 +1123,95 @@ const plugin = {
     },
     
     _updateDragPreview(list, dragState, items, insertIndex) {
-        // Remove placeholder from current position
-        if (dragState.placeholder && dragState.placeholder.parentNode) {
-            dragState.placeholder.remove();
-        }
+        if (!dragState.originalPositions || !dragState.placeholder) return;
         
-        // Find the target item for insertion
+        // Find the target item for insertion (only move placeholder if position changed)
         const validItems = items.filter(item => item !== dragState.draggedItem);
         let targetItem = null;
+        let insertAfter = false;
         
         if (insertIndex < validItems.length) {
             targetItem = validItems[insertIndex];
+            insertAfter = false; // Insert before targetItem
         } else if (validItems.length > 0) {
             targetItem = validItems[validItems.length - 1];
+            insertAfter = true; // Insert after last item
         }
         
-        // Insert placeholder at the new position
-        if (targetItem && dragState.placeholder) {
-            targetItem.parentNode.insertBefore(dragState.placeholder, targetItem);
-        } else if (list && dragState.placeholder && validItems.length === 0) {
-            // If no items, append to list
-            list.appendChild(dragState.placeholder);
+        // Check if placeholder needs to move
+        let needsPlaceholderMove = false;
+        if (!targetItem && validItems.length === 0) {
+            // No items - placeholder should be only child of list
+            needsPlaceholderMove = dragState.placeholder.parentNode !== list || 
+                                   dragState.placeholder.nextSibling !== null;
+        } else if (targetItem) {
+            const currentPlaceholderParent = dragState.placeholder.parentNode;
+            if (insertAfter) {
+                // Should be after targetItem
+                needsPlaceholderMove = currentPlaceholderParent !== targetItem.parentNode ||
+                                       dragState.placeholder.previousSibling !== targetItem;
+            } else {
+                // Should be before targetItem
+                needsPlaceholderMove = currentPlaceholderParent !== targetItem.parentNode ||
+                                       dragState.placeholder.nextSibling !== targetItem;
+            }
         }
         
-        // Animate other items to show the new position
-        const draggedIndex = items.indexOf(dragState.draggedItem);
-        validItems.forEach((item, idx) => {
-            const originalIndex = items.indexOf(item);
+        if (needsPlaceholderMove) {
+            // Remove placeholder from current position
+            if (dragState.placeholder.parentNode) {
+                dragState.placeholder.remove();
+            }
+            
+            // Insert placeholder at the new position
+            if (!targetItem && validItems.length === 0) {
+                // If no items, append to list
+                list.appendChild(dragState.placeholder);
+            } else if (targetItem) {
+                if (insertAfter) {
+                    // Insert after targetItem
+                    if (targetItem.nextSibling) {
+                        targetItem.parentNode.insertBefore(dragState.placeholder, targetItem.nextSibling);
+                    } else {
+                        targetItem.parentNode.appendChild(dragState.placeholder);
+                    }
+                } else {
+                    // Insert before targetItem
+                    targetItem.parentNode.insertBefore(dragState.placeholder, targetItem);
+                }
+            }
+        }
+        
+        // Calculate transforms based on original positions
+        const draggedIndex = dragState.originalPositions.get(dragState.draggedItem)?.index ?? items.indexOf(dragState.draggedItem);
+        const draggedHeight = dragState.originalPositions.get(dragState.draggedItem)?.height ?? dragState.draggedItem.getBoundingClientRect().height;
+        const itemSpacing = 10; // margin-bottom from CSS
+        
+        // Apply transforms to all valid items based on original positions
+        validItems.forEach((item) => {
+            const originalPos = dragState.originalPositions.get(item);
+            if (!originalPos) return;
+            
+            const originalIndex = originalPos.index;
             const adjustedIdx = originalIndex > draggedIndex ? originalIndex - 1 : originalIndex;
             
-            // Calculate if this item should shift
+            // Calculate if this item should shift based on original positions
             let shouldShift = false;
             if (draggedIndex < insertIndex) {
-                // Dragging down
+                // Dragging down - items between dragged and insert should shift down
                 shouldShift = adjustedIdx >= draggedIndex && adjustedIdx < insertIndex;
-            } else {
-                // Dragging up
+            } else if (draggedIndex > insertIndex) {
+                // Dragging up - items between insert and dragged should shift up
                 shouldShift = adjustedIdx >= insertIndex && adjustedIdx < draggedIndex;
             }
             
             if (shouldShift) {
                 const shiftDirection = draggedIndex < insertIndex ? 1 : -1;
-                const shiftAmount = (dragState.draggedItem.getBoundingClientRect().height + 10) * shiftDirection;
+                const shiftAmount = (draggedHeight + itemSpacing) * shiftDirection;
                 item.style.transform = `translateY(${shiftAmount}px)`;
                 item.style.transition = 'transform 0.2s ease';
             } else {
+                // Reset to original position
                 item.style.transform = '';
                 item.style.transition = 'transform 0.2s ease';
             }
@@ -1156,14 +1231,45 @@ const plugin = {
             dragState.placeholder = null;
         }
         
-        // Restore original item
-        if (dragState.draggedItem) {
-            dragState.draggedItem.style.opacity = '';
+        // Restore original item styles
+        if (dragState.draggedItem && dragState.originalStyles) {
+            const originalStyles = dragState.originalStyles.get(dragState.draggedItem);
+            if (originalStyles) {
+                dragState.draggedItem.style.position = originalStyles.position;
+                dragState.draggedItem.style.top = originalStyles.top;
+                dragState.draggedItem.style.left = originalStyles.left;
+                dragState.draggedItem.style.width = '';
+                dragState.draggedItem.style.opacity = originalStyles.opacity;
+                dragState.draggedItem.style.pointerEvents = '';
+                dragState.draggedItem.style.zIndex = '';
+            } else {
+                // Fallback if styles weren't stored
+                dragState.draggedItem.style.position = '';
+                dragState.draggedItem.style.top = '';
+                dragState.draggedItem.style.left = '';
+                dragState.draggedItem.style.width = '';
+                dragState.draggedItem.style.opacity = '';
+                dragState.draggedItem.style.pointerEvents = '';
+                dragState.draggedItem.style.zIndex = '';
+            }
             dragState.draggedItem = null;
         }
         
-        // Reset transforms on all items
-        if (list) {
+        // Reset transforms on all items using stored original styles
+        if (list && dragState.originalStyles) {
+            const items = list.querySelectorAll('[data-plugin-id]');
+            items.forEach(item => {
+                const originalStyles = dragState.originalStyles.get(item);
+                if (originalStyles) {
+                    item.style.transform = originalStyles.transform;
+                    item.style.transition = originalStyles.transition;
+                } else {
+                    item.style.transform = '';
+                    item.style.transition = '';
+                }
+            });
+        } else if (list) {
+            // Fallback if styles weren't stored
             const items = list.querySelectorAll('[data-plugin-id]');
             items.forEach(item => {
                 item.style.transform = '';
@@ -1171,8 +1277,11 @@ const plugin = {
             });
         }
         
+        // Clear all drag state
         dragState.currentInsertIndex = -1;
         dragState.draggedId = null;
+        dragState.originalPositions = null;
+        dragState.originalStyles = null;
     },
 
     _getOrderedPlugins(plugins, archetypeId, listType = 'regular') {
