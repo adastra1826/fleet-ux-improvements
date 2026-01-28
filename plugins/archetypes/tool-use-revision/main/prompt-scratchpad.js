@@ -31,7 +31,7 @@ const plugin = {
             if (!state.searchAttempted) {
                 state.searchAttempted = true;
                 // Log detailed diagnostic information only once
-                const candidates = Context.dom.queryAll('div.flex.flex-col.gap-2', {
+                const candidates = Context.dom.queryAll('div', {
                     context: `${this.id}.diagnostic`
                 });
                 const foundLabels = [];
@@ -41,7 +41,9 @@ const plugin = {
                         foundLabels.push(label.textContent.trim());
                     }
                 });
-                Logger.warn(`Prompt Scratchpad: Prompt section not found. Found ${candidates.length} candidate divs with labels/spans: ${foundLabels.join(', ') || 'none'}`);
+                Logger.warn(
+                    `Prompt Scratchpad: Prompt section not found. Found ${candidates.length} candidate divs with labels/spans: ${foundLabels.join(', ') || 'none'}`
+                );
             }
             return;
         }
@@ -77,26 +79,38 @@ const plugin = {
     },
     
     findPromptSection() {
-        // Find all divs with "flex flex-col gap-2"
-        const candidates = Context.dom.queryAll('div.flex.flex-col.gap-2', {
-            context: `${this.id}.findPromptSection`
-        });
-        
-        for (const candidate of candidates) {
-            // Look for both label and span elements
-            const label = candidate.querySelector('label');
-            const span = candidate.querySelector('span.text-sm.text-muted-foreground.font-medium');
-            
-            // Check if either contains "Prompt" text
-            if (label && label.textContent.trim() === 'Prompt') {
-                return candidate;
+        // Primary (most stable): the prompt textarea on this page has a fixed id.
+        const promptTextarea = document.querySelector('textarea#prompt-editor');
+        if (promptTextarea) {
+            // The DOM is nested like:
+            // (space-y-2) -> (space-y-2 relative) -> ... -> textarea#prompt-editor
+            // We want the outer section wrapper so the scratchpad lands after the whole Prompt block.
+            const inner = promptTextarea.closest('div.space-y-2.relative');
+            const outer = inner?.parentElement;
+            if (outer && outer.classList && outer.classList.contains('space-y-2')) {
+                return outer;
             }
-            
-            if (span && span.textContent.trim() === 'Prompt') {
-                return candidate;
+            return inner || promptTextarea.closest('div.space-y-2') || promptTextarea.parentElement;
+        }
+
+        // Fallback: find the "Prompt" label and climb to an appropriate section wrapper.
+        const labelCandidates = Context.dom.queryAll('div.text-sm.text-muted-foreground.font-medium', {
+            context: `${this.id}.findPromptSection.labelCandidates`
+        });
+
+        for (const labelEl of labelCandidates) {
+            const text = (labelEl.textContent || '').trim();
+            if (!text.startsWith('Prompt')) continue;
+
+            const section = labelEl.closest('div.space-y-2');
+            if (!section) continue;
+
+            // Prefer the wrapper that actually contains the prompt textarea.
+            if (section.querySelector('textarea#prompt-editor')) {
+                return section;
             }
         }
-        
+
         return null;
     },
     
