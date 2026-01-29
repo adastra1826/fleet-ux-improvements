@@ -92,7 +92,7 @@
       "id": "comp-use-revision",
       "name": "Computer Use Task Revision Page",
       "description": "Page for reviewing and fixing previously submitted computer use tasks",
-      "urlPattern": "work/problems/respond-feedback/edit?taskId*",
+      "urlPattern": "work/problems/respond-feedback/edit*",
       "disambiguationSelectors": [],
       "plugins": [
         {
