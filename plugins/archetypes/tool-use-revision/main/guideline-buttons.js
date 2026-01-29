@@ -10,7 +10,7 @@ const plugin = {
     id: 'guidelineButtons',
     name: 'Guideline Buttons',
     description: 'Add guideline link buttons to the header bar. Each button can be shown or hidden in Settings.',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
 

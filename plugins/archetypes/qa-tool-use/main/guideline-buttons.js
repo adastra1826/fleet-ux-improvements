@@ -11,7 +11,7 @@ const plugin = {
     id: 'guidelineButtons',
     name: 'Guideline Buttons',
     description: 'Add guideline link buttons below the QA scratchpad. Each button can be shown or hidden in Settings. Buttons wrap when the panel is narrow.',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
 
