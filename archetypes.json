@@ -30,7 +30,7 @@
       "plugins": [
         {
           "name": "clear-search.js",
-          "version": "1.0"
+          "version": "1.1"
         },
         {
           "name": "json-editor-online.js",
@@ -67,7 +67,7 @@
       "plugins": [
         {
           "name": "clear-search.js",
-          "version": "1.0"
+          "version": "1.1"
         },
         {
           "name": "bug-report-expand.js",
@@ -134,7 +134,7 @@
       "plugins": [
         {
           "name": "clear-search.js",
-          "version": "1.0"
+          "version": "1.1"
         },
         {
           "name": "bug-report-expand.js",

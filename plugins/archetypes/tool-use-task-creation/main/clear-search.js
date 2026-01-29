@@ -6,7 +6,7 @@ const plugin = {
     id: 'clearSearch',
     name: 'Clear Tool Search',
     description: 'Adds a clear (X) button to the tool search box when it has text',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -63,7 +63,15 @@ const plugin = {
         clearBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            searchInput.value = '';
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype,
+                'value'
+            )?.set;
+            if (nativeInputValueSetter) {
+                nativeInputValueSetter.call(searchInput, '');
+            } else {
+                searchInput.value = '';
+            }
             searchInput.dispatchEvent(new Event('input', { bubbles: true }));
             searchInput.dispatchEvent(new Event('change', { bubbles: true }));
             searchInput.focus();
@@ -78,7 +86,7 @@ const plugin = {
         rightDiv.style.display = 'flex';
         rightDiv.style.alignItems = 'center';
         rightDiv.style.gap = '4px';
-        rightDiv.appendChild(clearBtn);
+        rightDiv.insertBefore(clearBtn, rightDiv.firstChild);
         searchInput.setAttribute('data-wf-clear-search-added', 'true');
 
         Logger.log('✓ Clear search button added to tool search');
