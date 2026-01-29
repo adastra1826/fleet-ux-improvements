@@ -107,6 +107,10 @@
           "version": "1.0"
         },
         {
+          "name": "guideline-buttons.js",
+          "version": "1.0"
+        },
+        {
           "name": "prompt-scratchpad.js",
           "version": "1.0"
         }
@@ -122,6 +126,10 @@
         {
           "name": "remove-textarea-gradient.js",
           "version": "1.3"
+        },
+        {
+          "name": "guideline-buttons.js",
+          "version": "1.0"
         },
         {
           "name": "bug-report-expand.js",
@@ -184,6 +192,10 @@
         {
           "name": "bug-report-expand.js",
           "version": "1.2"
+        },
+        {
+          "name": "guideline-buttons.js",
+          "version": "1.0"
         },
         {
           "name": "request-revisions.js",
