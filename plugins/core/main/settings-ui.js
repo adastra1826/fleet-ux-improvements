@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.10',
+    _version: '5.11',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -1404,7 +1404,7 @@ const plugin = {
                             Extension Update Available
                         </h3>
                         <p style="font-size: 13px; color: #991b1b; margin: 0 0 10px 0; line-height: 1.5;">
-                            Your current version of this extension (<strong>${currentVersion}</strong>) is outdated. Please update to the <a href="https://raw.githubusercontent.com/${Context.githubOwner || 'adastra1826'}/${Context.githubRepo || 'fleet-ux-improvements'}/${Context.githubBranch || 'dev'}/fleet.user.js" target="_blank" rel="noopener noreferrer" style="color: #991b1b; text-decoration: underline; font-weight: 600;">newest version</a> (<strong>${latestVersion}</strong>).
+                            Your current version of this extension (<strong>${currentVersion}</strong>) is outdated. Please update to the <a href="https://raw.githubusercontent.com/${Context.githubOwner || 'adastra1826'}/${Context.githubRepo || 'fleet-ux-improvements'}/${Context.githubBranch || 'main'}/fleet.user.js" target="_blank" rel="noopener noreferrer" style="color: #991b1b; text-decoration: underline; font-weight: 600;">newest version</a> (<strong>${latestVersion}</strong>).
                         </p>
                     </div>
                 </div>
