@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.8.1
+// @version      3.8.2
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -28,7 +28,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.8.1';
+    const VERSION = '3.8.2';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const SHARED_STORAGE_KEYS = {
         favoriteTools: 'favorite-tools'
@@ -759,6 +759,9 @@
                                     Context.isOutdated = false;
                                     Context.latestVersion = VERSION;
                                 }
+                                
+                                // Always log archetypes version (cannot be disabled)
+                                console.log(`${LOG_PREFIX} archetypes v${config.archetypesVersion || 'unknown'}`);
                                 
                                 Logger.log(`✓ Loaded ${this.archetypes.length} archetypes from branch: ${GITHUB_CONFIG.branch}`);
                                 resolve(config);
@@ -1998,7 +2001,9 @@
     
     // ============= STARTUP =============
     async function startup() {
-        Logger.log(`${LOG_PREFIX} v${VERSION} starting...`);
+        // Always log script version (cannot be disabled)
+        console.log(`${LOG_PREFIX} v${VERSION}`);
+        Logger.log('Starting...');
         
         // Initialize navigation monitoring FIRST
         NavigationManager.init();
