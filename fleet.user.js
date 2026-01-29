@@ -1824,6 +1824,7 @@
 
     // ============= MAIN INITIALIZATION =============
     let mainObserver = null;
+    let mutationRafId = null;
     let corePluginsLoaded = false;
     
     async function initializeCorePlugins() {
@@ -1881,11 +1882,15 @@
             // Run early plugins
             PluginManager.runEarlyPlugins();
             
-            // Set up DOM observer
+            // Set up DOM observer with rAF coalescing so rapid mutations (e.g. partial load)
+            // trigger one plugin run per frame instead of one per batch
             mainObserver = new MutationObserver(() => {
-                if (Context.initialized) {
+                if (!Context.initialized) return;
+                if (mutationRafId !== null) return;
+                mutationRafId = requestAnimationFrame(() => {
+                    mutationRafId = null;
                     PluginManager.runMutationPlugins();
-                }
+                });
             });
             CleanupRegistry.registerObserver(mainObserver);
             
@@ -1969,6 +1974,10 @@
         // Clean up archetype plugins and resources
         Context.initialized = false;
         Context.outdatedPlugins = []; // Clear outdated plugins list on navigation
+        if (mutationRafId !== null) {
+            cancelAnimationFrame(mutationRafId);
+            mutationRafId = null;
+        }
         PluginManager.cleanupArchetypePlugins();
         CleanupRegistry.cleanup();
         

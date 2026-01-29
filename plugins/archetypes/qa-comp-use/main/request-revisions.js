@@ -5,7 +5,7 @@ const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.8',
+    _version: '2.9',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -41,7 +41,8 @@ const plugin = {
         verifierObserver: null,
         verifierElement: null,
         verifierChangeObserver: null,
-        gradingObservers: new Map() // Map of modalId -> { observer, gradingButton }
+        gradingObservers: new Map(), // Map of modalId -> { observer, gradingButton }
+        verifierWatchEligibleAt: undefined // defer body observer until this time (or once modal seen)
     },
     
     onMutation(state, context) {
@@ -66,10 +67,9 @@ const plugin = {
             this.savePromptText(state);
         }
         
-        // Watch for verifier output if feature is enabled
-        const autoPasteVerifierEnabled = Storage.getSubOptionEnabled(this.id, 'auto-paste-verifier-to-grading', true);
-        if (autoPasteVerifierEnabled) {
-            this.watchVerifierOutput(state);
+        // Defer starting verifier watch until after initial load (avoids second body observer during mutation storm)
+        if (state.verifierWatchEligibleAt === undefined) {
+            state.verifierWatchEligibleAt = Date.now() + 1500;
         }
         
         // Look for the Request Revisions modal
@@ -106,11 +106,23 @@ const plugin = {
                 Logger.debug('Request Revisions modal not found');
                 state.missingLogged = true;
             }
+            // Only run verifier watch when eligible (after delay or once modal has been seen)
+            const autoPasteVerifierEnabled = Storage.getSubOptionEnabled(this.id, 'auto-paste-verifier-to-grading', true);
+            if (autoPasteVerifierEnabled && state.verifierWatchEligibleAt !== undefined && Date.now() >= state.verifierWatchEligibleAt) {
+                this.watchVerifierOutput(state);
+            }
             return;
         }
         
-        // Reset missing log once modal is found
+        // Reset missing log once modal is found; allow verifier watch immediately when modal is open
         state.missingLogged = false;
+        state.verifierWatchEligibleAt = Math.min(state.verifierWatchEligibleAt ?? Infinity, Date.now());
+        
+        // Watch for verifier output if feature is enabled (now eligible: modal seen or delay passed)
+        const autoPasteVerifierEnabled = Storage.getSubOptionEnabled(this.id, 'auto-paste-verifier-to-grading', true);
+        if (autoPasteVerifierEnabled && Date.now() >= state.verifierWatchEligibleAt) {
+            this.watchVerifierOutput(state);
+        }
         
         // Get modal ID to track if we've already processed it
         const modalId = requestRevisionsModal.id;
