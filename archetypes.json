@@ -89,6 +89,23 @@
       ]
     },
     {
+      "id": "comp-use-revision",
+      "name": "Computer Use Task Revision Page",
+      "description": "Page for reviewing and fixing previously submitted computer use tasks",
+      "urlPattern": "work/problems/respond-feedback/edit?taskId*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "remove-textarea-gradient.js",
+          "version": "1.3"
+        },
+        {
+          "name": "bug-report-expand.js",
+          "version": "1.2"
+        }
+      ]
+    },
+    {
       "id": "qa-tool-use",
       "name": "Task Review Page",
       "description": "Page for reviewing and approving tasks",
