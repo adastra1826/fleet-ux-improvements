@@ -89,6 +89,10 @@
         {
           "name": "hide-testing-environment-banner.js",
           "version": "1.0"
+        },
+        {
+          "name": "prompt-scratchpad.js",
+          "version": "1.0"
         }
       ]
     },
