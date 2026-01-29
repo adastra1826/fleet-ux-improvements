@@ -1,6 +1,6 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.7",
+  "archetypesVersion": "3.8",
   "corePlugins": [
     {
       "name": "settings-ui.js",
@@ -20,7 +20,12 @@
       "description": "Main dashboard page",
       "urlPattern": "work/create",
       "disambiguationSelectors": [],
-      "plugins": []
+      "plugins": [
+        {
+          "name": "progress-prompt-expand.js",
+          "version": "1.0"
+        }
+      ]
     },
     {
       "id": "tool-use-task-creation",
