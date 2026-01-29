@@ -1,6 +1,6 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.1",
+  "archetypesVersion": "3.2",
   "corePlugins": [
     {
       "name": "settings-ui.js",
@@ -205,10 +205,6 @@
         {
           "name": "guideline-buttons.js",
           "version": "1.1"
-        },
-        {
-          "name": "request-revisions.js",
-          "version": "2.8"
         }
       ]
     }
@@ -232,6 +228,19 @@
       ]
     },
     {
+      "id:": "tool-use-revision",
+      "name": "Tool Use Task Revision Page",
+      "description": "Page for reviewing and fixing previously submitted tool use tasks",
+      "urlPattern": "work/problems/respond-feedback/edit-tool-use*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "source-data-explorer.js",
+          "version": "1.2"
+        }
+      ]
+    },
+    {
       "id": "qa-tool-use",
       "name": "Task Review Page",
       "urlPattern": "work/problems/qa-tool-use/*",
@@ -244,6 +253,49 @@
         {
           "name": "workflow-integrity-check.js",
           "version": "1.0"
+        }
+      ]
+    },
+    {
+      "id": "comp-use-task-creation",
+      "name": "Computer Use Task Creation Page",
+      "description": "Page for creating computer use tasks",
+      "urlPattern": "work/problems/create*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "source-data-explorer.js",
+          "version": "1.2"
+        }
+      ]
+    },
+    {
+      "id": "comp-use-revision",
+      "name": "Computer Use Task Revision Page",
+      "description": "Page for reviewing and fixing previously submitted computer use tasks",
+      "urlPattern": "work/problems/respond-feedback/edit*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "source-data-explorer.js",
+          "version": "1.2"
+        }
+      ]
+    },
+    {
+      "id": "qa-comp-use",
+      "name": "Computer Use Task Creation Page",
+      "description": "Page for  reviewing and approving tasks",
+      "urlPattern": "work/problems/qa/*",
+      "disambiguationSelectors": [],
+      "plugins": [
+        {
+          "name": "source-data-explorer.js",
+          "version": "1.2"
+        },
+        {
+          "name": "request-revisions.js",
+          "version": "2.8"
         }
       ]
     }
