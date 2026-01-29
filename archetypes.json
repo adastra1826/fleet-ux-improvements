@@ -78,13 +78,17 @@
     {
       "id": "comp-use-task-creation",
       "name": "Computer Use Task Creation Page",
-      "description": "Page for creating M-type workflow tasks",
-      "urlPattern": "workflows/m-type/create",
+      "description": "Page for creating computer use tasks",
+      "urlPattern": "work/problems/create*",
       "disambiguationSelectors": [],
       "plugins": [
         {
           "name": "remove-textarea-gradient.js",
           "version": "1.3"
+        },
+        {
+          "name": "hide-testing-environment-banner.js",
+          "version": "1.0"
         }
       ]
     },
