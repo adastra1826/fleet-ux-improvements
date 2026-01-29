@@ -3,7 +3,7 @@ const plugin = {
     id: 'progressPromptExpand',
     name: 'Progress Prompt Expand',
     description: 'Hover over My Progress task items to expand truncated prompts with a smooth animation',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -56,7 +56,7 @@ const plugin = {
             const fragment = document.createDocumentFragment();
             const wrapper = document.createElement('div');
             wrapper.className = 'fleet-progress-prompt-inner';
-            wrapper.style.cssText = 'max-height: 1.5em; overflow: hidden; transition: max-height 0.25s ease-out; white-space: normal;';
+            wrapper.style.cssText = 'max-height: 1.5em; overflow: hidden; transition: max-height 0.25s ease-out, font-weight 0.15s ease; white-space: normal;';
             while (cell.firstChild) wrapper.appendChild(cell.firstChild);
             cell.appendChild(wrapper);
             cell.classList.remove('truncate');
@@ -67,6 +67,8 @@ const plugin = {
                 wrapper.setAttribute('role', 'button');
                 wrapper.setAttribute('title', 'Click to copy');
                 wrapper.style.cursor = 'pointer';
+                wrapper.addEventListener('mouseenter', () => { wrapper.style.fontWeight = 'bold'; });
+                wrapper.addEventListener('mouseleave', () => { wrapper.style.fontWeight = ''; });
                 wrapper.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
