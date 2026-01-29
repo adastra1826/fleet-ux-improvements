@@ -3,10 +3,18 @@ const plugin = {
     id: 'progressPromptExpand',
     name: 'Progress Prompt Expand',
     description: 'Hover over My Progress task items to expand truncated prompts with a smooth animation',
-    _version: '1.0',
+    _version: '1.1',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
+    subOptions: [
+        {
+            id: 'copyOnClick',
+            name: 'Click to copy prompt',
+            description: 'When expanded, click the prompt text to copy it to the clipboard',
+            enabledByDefault: true
+        }
+    ],
 
     onMutation(state, context) {
         const main = Context.dom.query('main', { context: `${this.id}.main` });
@@ -52,6 +60,26 @@ const plugin = {
             while (cell.firstChild) wrapper.appendChild(cell.firstChild);
             cell.appendChild(wrapper);
             cell.classList.remove('truncate');
+
+            const pluginId = this.id;
+            const copyEnabled = Storage.getSubOptionEnabled(pluginId, 'copyOnClick', true);
+            if (copyEnabled) {
+                wrapper.setAttribute('role', 'button');
+                wrapper.setAttribute('title', 'Click to copy');
+                wrapper.style.cursor = 'pointer';
+                wrapper.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!Storage.getSubOptionEnabled(pluginId, 'copyOnClick', true)) return;
+                    const text = wrapper.textContent.trim();
+                    if (!text) return;
+                    navigator.clipboard.writeText(text).then(() => {
+                        Logger.log('Prompt copied to clipboard');
+                    }).catch((err) => {
+                        Logger.error('Failed to copy prompt:', err);
+                    });
+                });
+            }
 
             cell.setAttribute('data-wf-progress-expand', 'true');
 
