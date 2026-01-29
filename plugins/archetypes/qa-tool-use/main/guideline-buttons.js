@@ -2,7 +2,7 @@
 // Modular guideline link buttons below the QA scratchpad. Wraps when panel is narrow.
 
 const BUTTONS = [
-    { id: 'qa-guidelines', title: 'QA Guidelines', link: 'https://fleetai.notion.site/QA-Tool-Use-Guidelines-2e9fe5dd3fba806ea00cef3bbb5f32eb' },
+    { id: 'qa-guidelines', title: 'QA Guidelines', link: 'https://fleetai.notion.site/QA-Guidelines-2f5fe5dd3fba80daa9b8f63a6ba85c56' },
     { id: 'kinesis-guidelines', title: 'Kinesis Guidelines', link: 'https://fleetai.notion.site/Project-Kinesis-Guidelines-2d6fe5dd3fba8023aa78e345939dac3d' },
     { id: 'problem-creation-guidelines', title: 'Problem Creation Guidelines', link: 'https://fleetai.notion.site/Fleet-Problem-Creation-Guidelines-215fe5dd3fba802683d1c461b6a35c8a' }
 ];
@@ -11,7 +11,7 @@ const plugin = {
     id: 'guidelineButtons',
     name: 'Guideline Buttons',
     description: 'Add guideline link buttons below the QA scratchpad. Each button can be shown or hidden in Settings. Buttons wrap when the panel is narrow.',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
 
