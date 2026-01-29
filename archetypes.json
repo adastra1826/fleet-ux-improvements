@@ -1,6 +1,6 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.2",
+  "archetypesVersion": "3.3",
   "corePlugins": [
     {
       "name": "settings-ui.js",
@@ -170,6 +170,10 @@
           "version": "1.2"
         },
         {
+          "name": "copy-prompt.js",
+          "version": "1.0"
+        },
+        {
           "name": "json-editor-online.js",
           "version": "1.7"
         },
@@ -209,6 +213,10 @@
         {
           "name": "bug-report-expand.js",
           "version": "1.2"
+        },
+        {
+          "name": "copy-prompt.js",
+          "version": "1.0"
         },
         {
           "name": "guideline-buttons.js",
