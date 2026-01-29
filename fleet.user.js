@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.8.0
+// @version      3.8.1
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -28,8 +28,11 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.8.0';
+    const VERSION = '3.8.1';
     const STORAGE_PREFIX = 'wf-enhancer-';
+    const SHARED_STORAGE_KEYS = {
+        favoriteTools: 'favorite-tools'
+    };
     const LOG_PREFIX = '[Fleet UX Enhancer]';
     
     // Base URL that matches the @match pattern (without trailing wildcard)
@@ -63,6 +66,7 @@
         githubRepo: GITHUB_CONFIG.repo,
         logPrefix: LOG_PREFIX,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
+        storageKeys: SHARED_STORAGE_KEYS,
     };
 
     // ============= CLEANUP REGISTRY =============
@@ -417,6 +421,12 @@
                 'submodule-logging'
             ];
             globalKeys.forEach(key => {
+                this.delete(key);
+                clearedCount++;
+            });
+            
+            // Clear shared cross-archetype storage keys
+            Object.values(SHARED_STORAGE_KEYS).forEach(key => {
                 this.delete(key);
                 clearedCount++;
             });

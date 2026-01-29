@@ -5,7 +5,7 @@ const plugin = {
     id: 'favorites',
     name: 'Tool Favorites',
     description: 'Add favorite stars to tools list',
-    _version: '3.8',
+    _version: '3.9',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false, containerSelector: null },
@@ -18,11 +18,6 @@ const plugin = {
         toolButton: 'button.group\\/tool',
         // Tool name span within button
         toolTitleSpan: 'span.text-xs.font-medium.text-foreground'
-    },
-    
-    // Plugin-specific storage keys
-    storageKeys: {
-        favoriteTools: 'favorite-tools'
     },
     
     init(state, context) {
@@ -92,7 +87,7 @@ const plugin = {
             return;
         }
         
-        const favoriteTools = new Set(Storage.get(this.storageKeys.favoriteTools, []));
+        const favoriteTools = new Set(Storage.get(Context.storageKeys.favoriteTools, []));
         
         // Find all tool buttons using semantic selector (stable class)
         const toolButtons = Context.dom.queryAll(this.selectors.toolButton, {
@@ -278,7 +273,7 @@ const plugin = {
             favoriteTools.add(toolName);
             Logger.log(`Added favorite: ${toolName}`);
         }
-        Storage.set(this.storageKeys.favoriteTools, Array.from(favoriteTools));
+        Storage.set(Context.storageKeys.favoriteTools, Array.from(favoriteTools));
         this.syncToolListStars(toolsContainer, favoriteTools);
     },
 
