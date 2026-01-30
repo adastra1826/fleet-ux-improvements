@@ -1,6 +1,6 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.14",
+  "archetypesVersion": "3.15",
   "corePlugins": [
     {
       "name": "settings-ui.js",
@@ -257,7 +257,7 @@
       ]
     },
     {
-      "id:": "tool-use-revision",
+      "id": "tool-use-revision",
       "name": "Tool Use Task Revision Page",
       "description": "Page for reviewing and fixing previously submitted tool use tasks",
       "urlPattern": "work/problems/respond-feedback/edit-tool-use*",
@@ -282,6 +282,10 @@
         {
           "name": "workflow-integrity-check.js",
           "version": "1.0"
+        },
+        {
+          "name": "request-revisions.js",
+          "version": "3.0"
         }
       ]
     },
