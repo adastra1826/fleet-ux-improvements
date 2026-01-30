@@ -5,7 +5,7 @@ const plugin = {
     id: 'qaScratchpad',
     name: 'QA Scratchpad',
     description: 'Adds an adjustable height scratchpad for notes between prompt and environment variables',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -15,7 +15,7 @@ const plugin = {
             id: 'remember-contents',
             name: 'Remember Scratchpad Contents',
             description: 'Saves and restores scratchpad text across page loads',
-            enabledByDefault: true
+            enabledByDefault: false
         }
     ],
     
