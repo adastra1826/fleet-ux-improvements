@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.9.0
+// @version      3.9.1
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -28,7 +28,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.9.0';
+    const VERSION = '3.9.1';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const SHARED_STORAGE_KEYS = {
         favoriteTools: 'favorite-tools'
@@ -67,6 +67,7 @@
         logPrefix: LOG_PREFIX,
         getPageWindow: () => typeof unsafeWindow !== 'undefined' ? unsafeWindow : window,
         storageKeys: SHARED_STORAGE_KEYS,
+        settingsModalDocs: {},
     };
 
     // ============= CLEANUP REGISTRY =============
@@ -1915,14 +1916,13 @@
         if (settingsDocs.length > 0) {
             await PluginLoader.loadSettingsModalDocs(settingsDocs);
         }
-        const corePlugins = ArchetypeManager.getCorePlugins();
-        await PluginLoader.loadPluginsFromConfig(corePlugins, 'core');
-
-        // Load all dev folder scripts on non-main branches.
+        // Load dev plugins first (e.g. logger-panel) so they are available before core plugins.
         if (DEV_SCRIPTS_ENABLED) {
             const devPlugins = ArchetypeManager.getDevPlugins();
             await PluginLoader.loadPluginsFromConfig(devPlugins, 'dev');
         }
+        const corePlugins = ArchetypeManager.getCorePlugins();
+        await PluginLoader.loadPluginsFromConfig(corePlugins, 'core');
         corePluginsLoaded = true;
         
         await waitForBody();

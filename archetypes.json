@@ -1,5 +1,5 @@
 {
-  "version": "3.9.0",
+  "version": "3.9.1",
   "archetypesVersion": "3.22",
   "corePlugins": [
     {
@@ -14,8 +14,14 @@
     }
   ],
   "settingsModalDocs": [
-    { "name": "information-tab.md", "version": "1.0" },
-    { "name": "features-tab.md", "version": "1.0" }
+    {
+      "name": "information-tab.md",
+      "version": "1.0"
+    },
+    {
+      "name": "features-tab.md",
+      "version": "1.0"
+    }
   ],
   "archetypes": [
     {
