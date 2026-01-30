@@ -1189,7 +1189,25 @@
             try {
                 const result = await this.loadPluginFromUrl(url, filename, sourcePath, version);
                 const fetchedCode = result.code;
-                
+                const trimmed = fetchedCode.trim();
+
+                // If response looks like HTML (error page), don't attempt to parse as JS
+                if (trimmed.startsWith('<')) {
+                    Logger.warn(`Fetched content for ${filename} does not look like JavaScript (may be HTML error page). First 150 chars: ${trimmed.slice(0, 150).replace(/\s+/g, ' ')}`);
+                    if (cached) {
+                        Logger.warn(`Using cached v${cached.version} due to non-JS response`);
+                        Context.outdatedPlugins.push({
+                            filename: filename,
+                            sourcePath: sourcePath,
+                            cachedVersion: cached.version,
+                            requiredVersion: version,
+                            nonJsResponse: true
+                        });
+                        return cached.code;
+                    }
+                    throw new Error(`Server returned non-JS content for ${filename} (possible CDN/network issue). Try again later.`);
+                }
+
                 // Verify the fetched version by parsing the plugin
                 // This protects against GitHub CDN cache delays
                 try {
@@ -1244,7 +1262,7 @@
                     return fetchedCode;
                     
                 } catch (parseError) {
-                    // Failed to parse - this shouldn't happen, but if it does, use old cache
+                    // Failed to parse - use old cache and surface the actual error for debugging
                     Logger.error(`Failed to parse fetched plugin ${filename} for version verification:`, parseError);
                     if (cached) {
                         Logger.warn(`Using cached v${cached.version} due to parse error`);
@@ -1253,7 +1271,8 @@
                             sourcePath: sourcePath,
                             cachedVersion: cached.version,
                             requiredVersion: version,
-                            parseError: true
+                            parseError: true,
+                            parseErrorMessage: parseError && parseError.message ? parseError.message : String(parseError)
                         });
                         return cached.code;
                     }

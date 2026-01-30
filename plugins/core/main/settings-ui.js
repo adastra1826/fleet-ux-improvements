@@ -1471,8 +1471,11 @@ const plugin = {
             let versionInfo = '';
             if (p.fetchedVersion) {
                 versionInfo = `cached v${p.cachedVersion || 'none'}, fetched v${p.fetchedVersion}, required v${p.requiredVersion}`;
+            } else if (p.nonJsResponse) {
+                versionInfo = `cached v${p.cachedVersion}, server returned non-JS (CDN/network?), required v${p.requiredVersion}`;
             } else if (p.parseError) {
-                versionInfo = `cached v${p.cachedVersion}, parse error during verification, required v${p.requiredVersion}`;
+                const errHint = p.parseErrorMessage ? ` (${p.parseErrorMessage})` : '';
+                versionInfo = `cached v${p.cachedVersion}, parse error during verification${errHint}, required v${p.requiredVersion}`;
             } else {
                 versionInfo = `cached v${p.cachedVersion || 'none'}, required v${p.requiredVersion}`;
             }
