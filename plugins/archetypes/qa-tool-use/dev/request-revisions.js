@@ -1,22 +1,23 @@
 // ============= request-revisions.js =============
 // Improvements to the Request Revisions Workflow
 
+const GUIDELINE_LINKS = {
+    kinesis: 'https://fleetai.notion.site/Project-Kinesis-Guidelines-2d6fe5dd3fba8023aa78e345939dac3d',
+    problemCreation: 'https://fleetai.notion.site/Fleet-Problem-Creation-Guidelines-215fe5dd3fba802683d1c461b6a35c8a'
+};
+
+const GUIDELINE_COPY_WRAPPER_MARKER = 'data-fleet-guideline-copy-links';
+
 const plugin = {
     id: 'requestRevisions',
     name: 'Request Revisions Improvements',
     description: 'Improvements to the Request Revisions Workflow',
-    _version: '2.9',
+    _version: '3.0',
     enabledByDefault: true,
     phase: 'mutation',
     
     // ========== SUB-OPTIONS ==========
     subOptions: [
-        {
-            id: 'auto-copy-workflow',
-            name: 'Auto-copy workflow to "What did you try?"',
-            description: 'Automatically copies workflow steps to the "What did you try?" field when the modal opens',
-            enabledByDefault: true
-        },
         {
             id: 'auto-paste-prompt-to-task',
             name: 'Auto-paste prompt to Task issue',
@@ -28,11 +29,22 @@ const plugin = {
             name: 'Auto-paste verifier output to Grading issue',
             description: 'Saves the verifier output when grading completes and automatically pastes it into the Grading issue box when Grading is selected',
             enabledByDefault: true
+        },
+        {
+            id: 'copy-link-kinesis-guidelines',
+            name: 'Copy Link to Kinesis Guidelines',
+            description: 'Show a button under "Where are the issues?" that copies the Kinesis Guidelines link to the clipboard',
+            enabledByDefault: true
+        },
+        {
+            id: 'copy-link-problem-creation-guidelines',
+            name: 'Copy Link to Problem Creation Guidelines',
+            description: 'Show a button under "Where are the issues?" that copies the Problem Creation Guidelines link to the clipboard',
+            enabledByDefault: true
         }
     ],
     
     initialState: {
-        processedModals: new Set(),
         missingLogged: false,
         promptText: null,
         promptSaved: false,
@@ -46,11 +58,6 @@ const plugin = {
     },
     
     onMutation(state, context) {
-        // Ensure processedModals Set exists
-        if (!state.processedModals || !(state.processedModals instanceof Set)) {
-            state.processedModals = new Set();
-        }
-        
         // Ensure taskObservers Map exists
         if (!state.taskObservers || !(state.taskObservers instanceof Map)) {
             state.taskObservers = new Map();
@@ -81,10 +88,6 @@ const plugin = {
             // Clean up observers when no dialogs are open
             this.cleanupTaskObservers(state);
             this.cleanupGradingObservers(state);
-            // Reset processed set when no dialogs are open
-            if (state.processedModals.size > 0) {
-                state.processedModals.clear();
-            }
             return;
         }
         
@@ -124,31 +127,11 @@ const plugin = {
             this.watchVerifierOutput(state);
         }
         
-        // Get modal ID to track if we've already processed it
+        // Get modal ID to track observers
         const modalId = requestRevisionsModal.id;
         
-        // Handle workflow copy (only once per modal)
-        if (!state.processedModals.has(modalId)) {
-            const autoCopyEnabled = Storage.getSubOptionEnabled(this.id, 'auto-copy-workflow', true);
-            if (autoCopyEnabled) {
-                // Find the "Copy Workflow" button
-                const copyWorkflowButton = this.findCopyWorkflowButton(requestRevisionsModal);
-                if (copyWorkflowButton) {
-                    // Find the "What did you try?" textarea
-                    const attemptedActionsTextarea = this.findAttemptedActionsTextarea(requestRevisionsModal);
-                    if (attemptedActionsTextarea) {
-                        // Mark this modal as processed for workflow copy
-                        state.processedModals.add(modalId);
-                        
-                        // Click the button and paste into textarea
-                        this.handleAutoCopy(state, copyWorkflowButton, attemptedActionsTextarea);
-                    }
-                }
-            } else {
-                // Mark as processed even if feature is disabled, to avoid repeated checks
-                state.processedModals.add(modalId);
-            }
-        }
+        // Inject guideline copy-link buttons if enabled
+        this.injectGuidelineCopyButtons(state, requestRevisionsModal);
         
         // Set up Task button observer if not already set up and feature is enabled
         if (autoPastePromptEnabled && state.promptText && !state.taskObservers.has(modalId)) {
@@ -158,75 +141,6 @@ const plugin = {
         // Set up Grading button observer if not already set up and feature is enabled
         if (autoPasteVerifierEnabled && state.verifierOutput && !state.gradingObservers.has(modalId)) {
             this.setupGradingButtonObserver(state, requestRevisionsModal, modalId);
-        }
-    },
-    
-    findCopyWorkflowButton(modal) {
-        // Find button that contains "Copy Workflow" text
-        const buttons = Context.dom.queryAll('button', {
-            root: modal,
-            context: `${this.id}.buttons`
-        });
-        
-        for (const button of buttons) {
-            const buttonText = button.textContent.trim();
-            if (buttonText.includes('Copy Workflow')) {
-                return button;
-            }
-        }
-        return null;
-    },
-    
-    findAttemptedActionsTextarea(modal) {
-        // Find textarea with id starting with "attempted-actions-"
-        const textareas = Context.dom.queryAll('textarea', {
-            root: modal,
-            context: `${this.id}.textareas`
-        });
-        
-        for (const textarea of textareas) {
-            if (textarea.id && textarea.id.startsWith('attempted-actions-')) {
-                return textarea;
-            }
-        }
-        return null;
-    },
-    
-    async handleAutoCopy(state, copyButton, textarea) {
-        try {
-            Logger.log('Auto-copying workflow to "What did you try?" field');
-            
-            // Click the copy button
-            copyButton.click();
-            
-            // Wait a bit for clipboard to be populated
-            await new Promise(resolve => setTimeout(resolve, 200));
-            
-            // Read from clipboard
-            let clipboardText = '';
-            try {
-                if (navigator.clipboard && navigator.clipboard.readText) {
-                    clipboardText = await navigator.clipboard.readText();
-                } else {
-                    Logger.warn('Clipboard API not available, cannot auto-paste');
-                    return;
-                }
-            } catch (clipboardError) {
-                Logger.warn('Failed to read from clipboard:', clipboardError);
-                return;
-            }
-            
-            if (!clipboardText) {
-                Logger.warn('Clipboard is empty after clicking Copy Workflow');
-                return;
-            }
-            
-            // Apply the value using React-compatible method
-            this.applyTextareaValue(textarea, clipboardText);
-            
-            Logger.log('✓ Workflow copied to "What did you try?" field');
-        } catch (error) {
-            Logger.error('Error during auto-copy:', error);
         }
     },
     
@@ -307,11 +221,11 @@ const plugin = {
     },
     
     savePromptText(state) {
-        // Find the prompt text element
-        const promptElement = Context.dom.query('[id="\\:re\\:"] > div > div.flex-1.flex.flex-col.min-h-0.w-full.h-full.p-3 > div > div > div:nth-child(2) > div.text-sm.whitespace-pre-wrap', {
-            context: `${this.id}.promptElement`
-        });
+        // Find the task prompt panel by stable root (id or data-panel-id), then relative navigation
+        const panel = document.querySelector('[id=":re:"]') || document.querySelector('[data-panel-id=":re:"]');
+        if (!panel) return;
         
+        const promptElement = panel.querySelector('.text-sm.whitespace-pre-wrap');
         if (promptElement) {
             state.promptText = promptElement.textContent.trim();
             state.promptSaved = true;
@@ -445,81 +359,134 @@ const plugin = {
         }
         state.taskObservers.clear();
     },
-    
+
+    findWhereAreTheIssuesButtonRow(modal) {
+        const labels = modal.querySelectorAll('div.text-sm.text-muted-foreground.font-medium.mb-3');
+        for (const label of labels) {
+            if (label.textContent && label.textContent.includes('Where are the issues')) {
+                const buttonRow = label.nextElementSibling;
+                if (buttonRow && buttonRow.classList.contains('flex') && buttonRow.classList.contains('gap-3')) {
+                    return buttonRow;
+                }
+                return null;
+            }
+        }
+        return null;
+    },
+
+    injectGuidelineCopyButtons(state, modal) {
+        const buttonRow = this.findWhereAreTheIssuesButtonRow(modal);
+        if (!buttonRow) return;
+
+        let wrapper = modal.querySelector(`[${GUIDELINE_COPY_WRAPPER_MARKER}="true"]`);
+        const kinesisEnabled = Storage.getSubOptionEnabled(this.id, 'copy-link-kinesis-guidelines', true);
+        const problemCreationEnabled = Storage.getSubOptionEnabled(this.id, 'copy-link-problem-creation-guidelines', true);
+
+        if (wrapper) {
+            this.syncGuidelineCopyButtons(wrapper, kinesisEnabled, problemCreationEnabled);
+            return;
+        }
+
+        wrapper = document.createElement('div');
+        wrapper.setAttribute('data-fleet-plugin', this.id);
+        wrapper.setAttribute(GUIDELINE_COPY_WRAPPER_MARKER, 'true');
+        wrapper.className = 'flex flex-wrap gap-2 mt-2';
+
+        const buttonClass = 'inline-flex items-center justify-center whitespace-nowrap font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-sm pl-3 pr-3 text-xs';
+
+        const kinesisBtn = document.createElement('button');
+        kinesisBtn.type = 'button';
+        kinesisBtn.className = buttonClass;
+        kinesisBtn.setAttribute('data-fleet-plugin', this.id);
+        kinesisBtn.setAttribute('data-guideline-copy', 'kinesis');
+        kinesisBtn.textContent = 'Copy Link to Kinesis Guidelines';
+        kinesisBtn.addEventListener('click', () => this.copyGuidelineLink(kinesisBtn, 'Copy Link to Kinesis Guidelines', GUIDELINE_LINKS.kinesis));
+        wrapper.appendChild(kinesisBtn);
+
+        const problemBtn = document.createElement('button');
+        problemBtn.type = 'button';
+        problemBtn.className = buttonClass;
+        problemBtn.setAttribute('data-fleet-plugin', this.id);
+        problemBtn.setAttribute('data-guideline-copy', 'problem-creation');
+        problemBtn.textContent = 'Copy Link to Problem Creation Guidelines';
+        problemBtn.addEventListener('click', () => this.copyGuidelineLink(problemBtn, 'Copy Link to Problem Creation Guidelines', GUIDELINE_LINKS.problemCreation));
+        wrapper.appendChild(problemBtn);
+
+        this.syncGuidelineCopyButtons(wrapper, kinesisEnabled, problemCreationEnabled);
+        buttonRow.insertAdjacentElement('afterend', wrapper);
+        Logger.log('Request Revisions: guideline copy-link buttons added');
+    },
+
+    syncGuidelineCopyButtons(wrapper, kinesisEnabled, problemCreationEnabled) {
+        const kinesisBtn = wrapper.querySelector('[data-guideline-copy="kinesis"]');
+        const problemBtn = wrapper.querySelector('[data-guideline-copy="problem-creation"]');
+        if (kinesisBtn) kinesisBtn.style.display = kinesisEnabled ? '' : 'none';
+        if (problemBtn) problemBtn.style.display = problemCreationEnabled ? '' : 'none';
+    },
+
+    copyGuidelineLink(button, originalText, url) {
+        navigator.clipboard.writeText(url).then(() => {
+            button.textContent = 'Copied!';
+            Logger.log(`Request Revisions: copied ${originalText} to clipboard`);
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 2500);
+        }).catch((err) => {
+            Logger.error('Request Revisions: failed to copy guideline link', err);
+        });
+    },
+
+    // Same search logic as copy-verifier-output.js
+    findStdoutRow() {
+        const candidates = document.querySelectorAll('div.text-sm.text-muted-foreground.font-medium.mb-1');
+        for (const el of candidates) {
+            if (el.textContent.trim() === 'Stdout') {
+                return el;
+            }
+        }
+        return null;
+    },
+
+    getVerifierPreFromContainer(container) {
+        const pre = container.querySelector('div.overflow-x-auto.bg-background.border.rounded pre');
+        return pre && pre.textContent.trim().length > 0 ? pre : null;
+    },
+
     watchVerifierOutput(state) {
-        // If we already have observers set up, don't set up another one
         if (state.verifierObserver) {
             return;
         }
-        
-        // First, check if container already exists
-        const verifierContainer = Context.dom.query('[id="\\:r2l\\:"]', {
-            context: `${this.id}.verifierContainer`
-        });
-        
-        if (verifierContainer) {
-            // Container exists, check for pre element
+
+        const tryCaptureVerifier = () => {
+            const stdoutRow = this.findStdoutRow();
+            if (!stdoutRow) return null;
+            const container = stdoutRow.closest('div.text-xs.w-full');
+            if (!container) return null;
+            return this.getVerifierPreFromContainer(container);
+        };
+
+        const pre = tryCaptureVerifier();
+        if (pre) {
             Logger.log('✓ Verifier container detected');
-            this.watchVerifierPreElement(state, verifierContainer);
-        } else {
-            // Container doesn't exist yet, watch for it to appear
-            const containerObserver = new MutationObserver((mutations) => {
-                const verifierContainer = Context.dom.query('[id="\\:r2l\\:"]', {
-                    context: `${this.id}.verifierContainer`
-                });
-                
-                if (verifierContainer) {
-                    // Container appeared, now watch for pre element
-                    Logger.log('✓ Verifier container detected');
-                    containerObserver.disconnect();
-                    this.watchVerifierPreElement(state, verifierContainer);
-                }
-            });
-            
-            // Observe document body for new elements
-            containerObserver.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-            
-            state.verifierObserver = containerObserver;
+            this.saveVerifierOutput(state, pre);
+            return;
         }
-    },
-    
-    watchVerifierPreElement(state, container) {
-        // Find the pre element inside the container
-        const verifierPre = Context.dom.query('div.flex-1.flex.flex-col.min-h-0.w-full.h-full.p-0 > div > div > div > div > div:nth-child(2) > div > div.overflow-x-auto.bg-background.border.rounded > pre', {
-            root: container,
-            context: `${this.id}.verifierPre`
+
+        const containerObserver = new MutationObserver(() => {
+            const pre = tryCaptureVerifier();
+            if (pre) {
+                Logger.log('✓ Verifier container detected');
+                containerObserver.disconnect();
+                state.verifierObserver = null;
+                this.saveVerifierOutput(state, pre);
+            }
         });
-        
-        if (verifierPre && verifierPre.textContent.trim().length > 0) {
-            // Pre element exists and has content, save it
-            this.saveVerifierOutput(state, verifierPre);
-        } else {
-            // Pre element doesn't exist or is empty, watch for it
-            const preObserver = new MutationObserver((mutations) => {
-                const verifierPre = Context.dom.query('div.flex-1.flex.flex-col.min-h-0.w-full.h-full.p-0 > div > div > div > div > div:nth-child(2) > div > div.overflow-x-auto.bg-background.border.rounded > pre', {
-                    root: container,
-                    context: `${this.id}.verifierPre`
-                });
-                
-                if (verifierPre && verifierPre.textContent.trim().length > 0) {
-                    // Pre element appeared with content
-                    preObserver.disconnect();
-                    this.saveVerifierOutput(state, verifierPre);
-                }
-            });
-            
-            // Observe the container for new elements
-            preObserver.observe(container, {
-                childList: true,
-                subtree: true,
-                characterData: true
-            });
-            
-            state.verifierObserver = preObserver;
-        }
+
+        containerObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        state.verifierObserver = containerObserver;
     },
     
     saveVerifierOutput(state, verifierPre) {

@@ -205,10 +205,6 @@
         {
           "name": "execute-to-current-tool.js",
           "version": "1.14"
-        },
-        {
-          "name": "request-revisions.js",
-          "version": "3.0"
         }
       ]
     },
@@ -286,6 +282,10 @@
         {
           "name": "workflow-integrity-check.js",
           "version": "1.0"
+        },
+        {
+          "name": "request-revisions.js",
+          "version": "3.0"
         }
       ]
     },
@@ -328,7 +328,7 @@
         },
         {
           "name": "request-revisions.js",
-          "version": "2.9"
+          "version": "3.0"
         }
       ]
     }
