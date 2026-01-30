@@ -1,6 +1,6 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.12",
+  "archetypesVersion": "3.13",
   "corePlugins": [
     {
       "name": "settings-ui.js",
@@ -23,7 +23,7 @@
       "plugins": [
         {
           "name": "progress-prompt-expand.js",
-          "version": "1.3"
+          "version": "1.4"
         }
       ]
     },
