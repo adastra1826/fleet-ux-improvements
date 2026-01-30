@@ -3,7 +3,7 @@ const plugin = {
     id: 'progressPromptExpand',
     name: 'Progress Prompt Expand',
     description: 'Hover over My Progress task items to expand truncated prompts',
-    _version: '1.4',
+    _version: '1.5',
     enabledByDefault: true,
     phase: 'mutation',
     initialState: { missingLogged: false },
@@ -56,14 +56,13 @@ const plugin = {
             const fragment = document.createDocumentFragment();
             const wrapper = document.createElement('div');
             wrapper.className = 'fleet-progress-prompt-inner';
-            wrapper.style.cssText = 'max-height: 1.5em; overflow: hidden; transition: max-height 0.25s ease-out; white-space: normal;';
+            wrapper.style.cssText = 'max-height: 1.5em; overflow: hidden; transition: max-height 0.25s ease-out, background-color 0.15s ease; white-space: normal;';
             const inner = document.createElement('div');
             inner.style.cssText = 'transition: background-color 0.15s ease;';
             while (cell.firstChild) inner.appendChild(cell.firstChild);
             wrapper.appendChild(inner);
             cell.appendChild(wrapper);
             cell.classList.remove('truncate');
-            cell.style.transition = 'background-color 0.15s ease';
 
             const pluginId = this.id;
             const copyEnabled = Storage.getSubOptionEnabled(pluginId, 'copyOnClick', true);
@@ -72,11 +71,11 @@ const plugin = {
                 wrapper.setAttribute('title', 'Click to copy');
                 wrapper.style.cursor = 'pointer';
                 wrapper.addEventListener('mouseenter', () => {
-                    cell.style.backgroundColor = '#1a1a1a';
+                    wrapper.style.backgroundColor = '#1a1a1a';
                     inner.style.backgroundColor = 'var(--background, #fafafa)';
                 });
                 wrapper.addEventListener('mouseleave', () => {
-                    cell.style.backgroundColor = '';
+                    wrapper.style.backgroundColor = '';
                     inner.style.backgroundColor = '';
                 });
                 wrapper.addEventListener('click', (e) => {
