@@ -1,6 +1,6 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.16",
+  "archetypesVersion": "3.17",
   "corePlugins": [
     {
       "name": "settings-ui.js",
@@ -234,6 +234,10 @@
         {
           "name": "guideline-buttons.js",
           "version": "1.1"
+        },
+        {
+          "name": "request-revisions.js",
+          "version": "3.0"
         }
       ]
     }
@@ -322,14 +326,6 @@
       "urlPattern": "work/problems/qa/*",
       "disambiguationSelectors": [],
       "plugins": [
-        {
-          "name": "source-data-explorer.js",
-          "version": "1.2"
-        },
-        {
-          "name": "request-revisions.js",
-          "version": "3.0"
-        }
       ]
     }
   ]
