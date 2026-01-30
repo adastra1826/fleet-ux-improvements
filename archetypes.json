@@ -1,6 +1,6 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.15",
+  "archetypesVersion": "3.16",
   "corePlugins": [
     {
       "name": "settings-ui.js",
@@ -205,6 +205,10 @@
         {
           "name": "execute-to-current-tool.js",
           "version": "1.14"
+        },
+        {
+          "name": "request-revisions.js",
+          "version": "3.0"
         }
       ]
     },
@@ -282,10 +286,6 @@
         {
           "name": "workflow-integrity-check.js",
           "version": "1.0"
-        },
-        {
-          "name": "request-revisions.js",
-          "version": "3.0"
         }
       ]
     },
