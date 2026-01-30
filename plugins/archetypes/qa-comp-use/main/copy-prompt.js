@@ -7,7 +7,7 @@ const plugin = {
     id: 'copyPrompt',
     name: 'Copy Prompt',
     description: 'Add a copy button next to the Prompt label. Click copies the prompt text to the clipboard.',
-    _version: '1.1',
+    _version: '1.2',
     enabledByDefault: true,
     phase: 'mutation',
 
@@ -28,22 +28,25 @@ const plugin = {
         }
         state.sectionMissingLogged = false;
 
-        const labelRow = this.findPromptLabelRow(promptSection);
-        if (!labelRow) {
+        const labelEl = this.findPromptLabelEl(promptSection);
+        if (!labelEl) {
             if (!state.labelRowMissingLogged) {
-                Logger.debug('Copy Prompt: Prompt label row not found');
+                Logger.debug('Copy Prompt: Prompt label element not found');
                 state.labelRowMissingLogged = true;
             }
             return;
         }
         state.labelRowMissingLogged = false;
 
-        if (labelRow.querySelector(`[${COPY_BUTTON_MARKER}="true"]`)) {
+        if (labelEl.querySelector(`[${COPY_BUTTON_MARKER}="true"]`)) {
             return;
         }
 
         const button = this.createCopyButton(promptSection);
-        labelRow.appendChild(button);
+        labelEl.appendChild(button);
+        if (!labelEl.classList.contains('flex')) {
+            labelEl.classList.add('inline-flex', 'items-center', 'gap-2');
+        }
         state.buttonAdded = true;
         Logger.log('✓ Copy Prompt: Copy button added');
     },
@@ -63,12 +66,11 @@ const plugin = {
         return null;
     },
 
-    findPromptLabelRow(promptSection) {
+    findPromptLabelEl(promptSection) {
         const label = promptSection.querySelector('label');
         const span = promptSection.querySelector('span.text-sm.text-muted-foreground.font-medium');
         const labelEl = label && label.textContent.trim() === 'Prompt' ? label : (span && span.textContent.trim() === 'Prompt' ? span : null);
-        if (!labelEl) return null;
-        return labelEl.parentElement;
+        return labelEl || null;
     },
 
     getPromptText(promptSection) {
