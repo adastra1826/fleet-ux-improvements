@@ -1451,41 +1451,19 @@ const plugin = {
             pane.dataset.wfDocLoaded = 'true';
             return;
         }
-        const owner = Context.githubOwner || 'adastra1826';
-        const repo = Context.githubRepo || 'fleet-ux-improvements';
-        const branch = Context.githubBranch || 'main';
-        const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/docs/settings-modal/${docFilename}`;
-        pane.innerHTML = '<p style="font-size: 13px; color: var(--muted-foreground, #666);">Loading…</p>';
-        if (typeof GM_xmlhttpRequest === 'undefined') {
+        if (!Context.settingsModalDocs || !Context.settingsModalDocs[docFilename]) {
             pane.innerHTML = '<p style="font-size: 13px; color: var(--muted-foreground, #666);">Could not load content.</p>';
             pane.dataset.wfDocLoaded = 'true';
-            Logger.warn('Settings doc fetch not available (GM_xmlhttpRequest missing)');
             return;
         }
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url,
-            onload: (response) => {
-                if (response.status !== 200) {
-                    pane.innerHTML = '<p style="font-size: 13px; color: var(--muted-foreground, #666);">Could not load content.</p>';
-                    Logger.warn(`Settings doc ${docFilename} failed: HTTP ${response.status}`);
-                } else {
-                    const raw = response.responseText || '';
-                    const firstNewline = raw.indexOf('\n');
-                    const body = firstNewline >= 0 ? raw.slice(firstNewline + 1).trim() : raw.trim();
-                    const html = this._markdownToHtml(body);
-                    const wrapped = `<div class="wf-settings-doc-content" style="font-size: 13px; color: var(--foreground, #333); padding: 4px 0;">${html}</div>`;
-                    this._docPaneCache[cacheKey] = wrapped;
-                    pane.innerHTML = wrapped;
-                }
-                pane.dataset.wfDocLoaded = 'true';
-            },
-            onerror: () => {
-                pane.innerHTML = '<p style="font-size: 13px; color: var(--muted-foreground, #666);">Could not load content.</p>';
-                pane.dataset.wfDocLoaded = 'true';
-                Logger.warn(`Settings doc ${docFilename} network error`);
-            }
-        });
+        const raw = Context.settingsModalDocs[docFilename].raw;
+        const firstNewline = raw.indexOf('\n');
+        const body = firstNewline >= 0 ? raw.slice(firstNewline + 1).trim() : raw.trim();
+        const html = this._markdownToHtml(body);
+        const wrapped = `<div class="wf-settings-doc-content" style="font-size: 13px; color: var(--foreground, #333); padding: 4px 0;">${html}</div>`;
+        this._docPaneCache[cacheKey] = wrapped;
+        pane.innerHTML = wrapped;
+        pane.dataset.wfDocLoaded = 'true';
     },
 
     _createOutdatedPluginsHTML(outdatedPlugins) {

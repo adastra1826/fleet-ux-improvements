@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         [dev] Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
-// @version      3.8.2
+// @version      3.9.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
 // @author       Nicholas Doherty
 // @match        https://www.fleetai.com/*
@@ -28,7 +28,7 @@
     }
 
     // ============= CORE CONFIGURATION =============
-    const VERSION = '3.8.2';
+    const VERSION = '3.9.0';
     const STORAGE_PREFIX = 'wf-enhancer-';
     const SHARED_STORAGE_KEYS = {
         favoriteTools: 'favorite-tools'
@@ -351,6 +351,24 @@
         getPluginKey(filename, sourcePath) {
             // Create a unique key for the plugin based on its path
             return sourcePath || filename;
+        },
+        // Settings modal doc cache (versioned, same pattern as plugin cache)
+        getCachedSettingsDoc(name) {
+            const cached = this.get(`settings-doc-cache-${name}`, null);
+            if (cached) {
+                try {
+                    const parsed = JSON.parse(cached);
+                    return { raw: parsed.raw, version: parsed.version };
+                } catch (e) {
+                    Logger.error(`Failed to parse cached settings doc ${name}:`, e);
+                    return null;
+                }
+            }
+            return null;
+        },
+        setCachedSettingsDoc(name, raw, version) {
+            const cacheData = { raw, version, cachedAt: Date.now() };
+            this.set(`settings-doc-cache-${name}`, JSON.stringify(cacheData));
         },
         getSubmoduleLoggingEnabled() {
             return this.get('submodule-logging', false);
@@ -743,6 +761,7 @@
                                 this.devArchetypes = config.devArchetypes || [];
                                 this.corePlugins = config.corePlugins || [];
                                 this.devPlugins = config.devPlugins || [];
+                                this.settingsModalDocs = config.settingsModalDocs || [];
                                 
                                 // Check if script version is outdated
                                 if (config.version) {
@@ -788,6 +807,10 @@
 
         getDevPlugins() {
             return this.devPlugins || [];
+        },
+
+        getSettingsModalDocs() {
+            return this.settingsModalDocs || [];
         },
         
         /**
@@ -1379,6 +1402,60 @@
             Logger.debug(`Loaded dev archetype plugin ${filename} v${version} from ${sourcePath}`);
             return plugin;
         },
+
+        /**
+         * Load a single settings modal doc (markdown) from cache or URL
+         * @param {string} filename - Doc filename (e.g. "information-tab.md")
+         * @param {string} version - Required version from archetypes.json
+         * @returns {Promise<void>}
+         */
+        async loadSettingsModalDoc(filename, version) {
+            Context.settingsModalDocs = Context.settingsModalDocs || {};
+            const cached = Storage.getCachedSettingsDoc(filename);
+            if (cached && cached.version === version) {
+                Logger.debug(`Using cached settings doc ${filename} v${version}`);
+                Context.settingsModalDocs[filename] = { raw: cached.raw, version };
+                return;
+            }
+            const url = `https://raw.githubusercontent.com/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/docs/settings-modal/${filename}`;
+            Logger.log(`Fetching settings doc ${filename} v${version}${cached ? ` (cached: v${cached.version})` : ''}`);
+            return new Promise((resolve) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url,
+                    onload: (response) => {
+                        if (response.status === 200) {
+                            const raw = response.responseText || '';
+                            Storage.setCachedSettingsDoc(filename, raw, version);
+                            Context.settingsModalDocs[filename] = { raw, version };
+                            Logger.debug(`Loaded settings doc ${filename} v${version}`);
+                        } else {
+                            Logger.warn(`Settings doc ${filename} failed: HTTP ${response.status}`);
+                        }
+                        resolve();
+                    },
+                    onerror: (err) => {
+                        Logger.warn(`Settings doc ${filename} network error:`, err);
+                        resolve();
+                    }
+                });
+            });
+        },
+
+        /**
+         * Load all settings modal docs from archetypes config (on page load)
+         * @param {Array<{name: string, version: string}>} docsList - From ArchetypeManager.getSettingsModalDocs()
+         */
+        async loadSettingsModalDocs(docsList) {
+            if (!docsList || docsList.length === 0) return;
+            Context.settingsModalDocs = Context.settingsModalDocs || {};
+            for (const doc of docsList) {
+                const name = doc.name;
+                const version = doc.version;
+                if (!name || !version) continue;
+                await this.loadSettingsModalDoc(name, version);
+            }
+        },
         
         async loadPluginsFromConfig(pluginList, type) {
             if (!pluginList || pluginList.length === 0) {
@@ -1834,6 +1911,10 @@
         }
 
         await ArchetypeManager.loadArchetypes();
+        const settingsDocs = ArchetypeManager.getSettingsModalDocs();
+        if (settingsDocs.length > 0) {
+            await PluginLoader.loadSettingsModalDocs(settingsDocs);
+        }
         const corePlugins = ArchetypeManager.getCorePlugins();
         await PluginLoader.loadPluginsFromConfig(corePlugins, 'core');
 
