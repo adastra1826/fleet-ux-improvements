@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.12',
+    _version: '5.13',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
