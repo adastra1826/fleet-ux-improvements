@@ -1,10 +1,10 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.20",
+  "archetypesVersion": "3.22",
   "corePlugins": [
     {
       "name": "settings-ui.js",
-      "version": "5.11"
+      "version": "5.12"
     }
   ],
   "devPlugins": [
@@ -12,6 +12,10 @@
       "name": "logger-panel.js",
       "version": "2.3"
     }
+  ],
+  "settingsModalDocs": [
+    { "name": "information-tab.md", "version": "1.0" },
+    { "name": "features-tab.md", "version": "1.0" }
   ],
   "archetypes": [
     {

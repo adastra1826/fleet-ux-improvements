@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.11',
+    _version: '5.12',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -15,6 +15,7 @@ const plugin = {
     _modalOpen: false,
     _presenceInterval: null,
     _pulseInterval: null,
+    _docPaneCache: {},
     
     init(state, context) {
         this._ensureSettingsButton();
@@ -272,6 +273,9 @@ const plugin = {
             ? this._createUpdateNotificationHTML()
             : '';
         
+        const tabs = this._getSettingsTabs();
+        const tabRowHTML = this._createTabRowHTML(tabs);
+        
         modal.innerHTML = `
             <!-- Sticky Header -->
             <div style="position: sticky; top: -24px; margin: -24px -24px 20px -24px; padding: 24px 24px 16px 24px; background: var(--background, white); border-bottom: 1px solid var(--border, #e5e5e5); z-index: 1;">
@@ -301,8 +305,11 @@ const plugin = {
                     </button>
                 </div>
                 ${updateNotificationHTML}
+                ${tabRowHTML}
             </div>
             
+            <div id="wf-settings-tab-panes">
+            <div id="wf-settings-pane-settings" data-tab="settings" class="wf-settings-pane" style="display: block;">
             <!-- Global Toggle -->
             <div style="margin-bottom: 20px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border, #e5e5e5); border-radius: 8px; background: var(--card, #fafafa);">
@@ -402,6 +409,10 @@ const plugin = {
                     cursor: pointer;
                     transition: all 0.2s;
                 ">Clear Cache</button>
+            </div>
+            </div>
+            <div id="wf-settings-pane-information" data-tab="information" class="wf-settings-pane" style="display: none; overflow-y: auto; min-height: 200px;"></div>
+            <div id="wf-settings-pane-features" data-tab="features" class="wf-settings-pane" style="display: none; overflow-y: auto; min-height: 200px;"></div>
             </div>
         `;
         
@@ -551,7 +562,10 @@ const plugin = {
                 self._closeModal();
             });
         }
-        
+
+        // Tab buttons
+        this._attachTabListeners(modal);
+
         // Close on Escape key
         const handleEscape = (e) => {
             if (e.key === 'Escape' && self._modalOpen) {
@@ -1320,6 +1334,160 @@ const plugin = {
         }
     },
     
+    _getSettingsTabs() {
+        return [
+            { id: 'settings', label: 'Settings' },
+            { id: 'information', label: 'Information', doc: 'information-tab.md' },
+            { id: 'features', label: 'Features', doc: 'features-tab.md' }
+        ];
+    },
+
+    _createTabRowHTML(tabs) {
+        const activeTab = 'settings';
+        const buttons = tabs.map(t => {
+            const isActive = t.id === activeTab;
+            return `<button type="button" class="wf-settings-tab" data-tab="${t.id}" style="
+                padding: 6px 14px;
+                font-size: 13px;
+                font-weight: 500;
+                color: ${isActive ? 'var(--foreground, #333)' : 'var(--muted-foreground, #666)'};
+                background: ${isActive ? 'var(--card, #fafafa)' : 'transparent'};
+                border: 1px solid ${isActive ? 'var(--border, #e5e5e5)' : 'transparent'};
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.2s;
+            ">${t.label}</button>`;
+        }).join('');
+        return `<div id="wf-settings-tab-row" style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">${buttons}</div>`;
+    },
+
+    _attachTabListeners(modal) {
+        const tabRow = Context.dom.query('#wf-settings-tab-row', {
+            root: modal,
+            context: `${this.id}.tabRow`
+        });
+        if (!tabRow) return;
+        const tabs = this._getSettingsTabs();
+        tabRow.querySelectorAll('.wf-settings-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabId = btn.getAttribute('data-tab');
+                this._switchSettingsTab(modal, tabId);
+            });
+        });
+    },
+
+    _switchSettingsTab(modal, tabId) {
+        const tabs = this._getSettingsTabs();
+        const tabRow = Context.dom.query('#wf-settings-tab-row', { root: modal, context: `${this.id}.tabRowSwitch` });
+        if (tabRow) {
+            tabRow.querySelectorAll('.wf-settings-tab').forEach(btn => {
+                const id = btn.getAttribute('data-tab');
+                const isActive = id === tabId;
+                btn.style.color = isActive ? 'var(--foreground, #333)' : 'var(--muted-foreground, #666)';
+                btn.style.background = isActive ? 'var(--card, #fafafa)' : 'transparent';
+                btn.style.border = isActive ? '1px solid var(--border, #e5e5e5)' : '1px solid transparent';
+            });
+        }
+        modal.querySelectorAll('.wf-settings-pane').forEach(pane => {
+            const id = pane.getAttribute('data-tab');
+            pane.style.display = id === tabId ? 'block' : 'none';
+        });
+        const tabDef = tabs.find(t => t.id === tabId);
+        if (tabDef && tabDef.doc) {
+            const pane = Context.dom.query(`#wf-settings-pane-${tabId}`, { root: modal, context: `${this.id}.pane${tabId}` });
+            if (pane && !pane.dataset.wfDocLoaded) {
+                this._loadAndRenderDocTab(modal, tabId, tabDef.doc, pane);
+            }
+        }
+    },
+
+    _markdownToHtml(md) {
+        if (!md || typeof md !== 'string') return '';
+        const lines = md.trim().split(/\r?\n/);
+        const out = [];
+        let inList = false;
+        const escape = (s) => String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        const linkRe = /\[([^\]]+)\]\(([^)]+)\)/g;
+        const replaceLinks = (s) => escape(s).replace(linkRe, (_, text, href) => `<a href="${escape(href)}" target="_blank" rel="noopener noreferrer" style="color: var(--brand, #4f46e5); text-decoration: none;">${escape(text)}</a>`);
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+            if (inList && trimmed !== '' && !/^\s*-\s+/.test(line) && !/^#+\s/.test(trimmed)) {
+                inList = false;
+                out.push('</ul>');
+            }
+            if (trimmed === '') {
+                out.push('<br>');
+                continue;
+            }
+            const h4 = /^####\s+(.+)$/.exec(trimmed);
+            const h3 = /^###\s+(.+)$/.exec(trimmed);
+            const h2 = /^##\s+(.+)$/.exec(trimmed);
+            const h1 = /^#\s+(.+)$/.exec(trimmed);
+            const ul = /^-\s+(.+)$/.exec(trimmed);
+            if (h4) { out.push(`<h5 style="font-size: 13px; font-weight: 600; margin: 8px 0 4px 0; color: var(--foreground, #333);">${replaceLinks(h4[1])}</h5>`); continue; }
+            if (h3) { out.push(`<h4 style="font-size: 14px; font-weight: 600; margin: 8px 0 4px 0; color: var(--foreground, #333);">${replaceLinks(h3[1])}</h4>`); continue; }
+            if (h2) { out.push(`<h3 style="font-size: 15px; font-weight: 600; margin: 10px 0 6px 0; color: var(--foreground, #333);">${replaceLinks(h2[1])}</h3>`); continue; }
+            if (h1) { out.push(`<h2 style="font-size: 16px; font-weight: 600; margin: 12px 0 6px 0; color: var(--foreground, #333);">${replaceLinks(h1[1])}</h2>`); continue; }
+            if (ul) {
+                if (!inList) { inList = true; out.push('<ul style="margin: 6px 0; padding-left: 20px; color: var(--foreground, #333);">'); }
+                out.push(`<li style="margin: 2px 0;">${replaceLinks(ul[1])}</li>`);
+                continue;
+            }
+            out.push(`<p style="margin: 6px 0; font-size: 13px; line-height: 1.5; color: var(--foreground, #333);">${replaceLinks(trimmed)}</p>`);
+        }
+        if (inList) out.push('</ul>');
+        return out.join('');
+    },
+
+    _loadAndRenderDocTab(modal, tabId, docFilename, pane) {
+        const cacheKey = tabId;
+        if (this._docPaneCache[cacheKey]) {
+            pane.innerHTML = this._docPaneCache[cacheKey];
+            pane.dataset.wfDocLoaded = 'true';
+            return;
+        }
+        const owner = Context.githubOwner || 'adastra1826';
+        const repo = Context.githubRepo || 'fleet-ux-improvements';
+        const branch = Context.githubBranch || 'main';
+        const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/docs/settings-modal/${docFilename}`;
+        pane.innerHTML = '<p style="font-size: 13px; color: var(--muted-foreground, #666);">Loading…</p>';
+        if (typeof GM_xmlhttpRequest === 'undefined') {
+            pane.innerHTML = '<p style="font-size: 13px; color: var(--muted-foreground, #666);">Could not load content.</p>';
+            pane.dataset.wfDocLoaded = 'true';
+            Logger.warn('Settings doc fetch not available (GM_xmlhttpRequest missing)');
+            return;
+        }
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            onload: (response) => {
+                if (response.status !== 200) {
+                    pane.innerHTML = '<p style="font-size: 13px; color: var(--muted-foreground, #666);">Could not load content.</p>';
+                    Logger.warn(`Settings doc ${docFilename} failed: HTTP ${response.status}`);
+                } else {
+                    const raw = response.responseText || '';
+                    const firstNewline = raw.indexOf('\n');
+                    const body = firstNewline >= 0 ? raw.slice(firstNewline + 1).trim() : raw.trim();
+                    const html = this._markdownToHtml(body);
+                    const wrapped = `<div class="wf-settings-doc-content" style="font-size: 13px; color: var(--foreground, #333); padding: 4px 0;">${html}</div>`;
+                    this._docPaneCache[cacheKey] = wrapped;
+                    pane.innerHTML = wrapped;
+                }
+                pane.dataset.wfDocLoaded = 'true';
+            },
+            onerror: () => {
+                pane.innerHTML = '<p style="font-size: 13px; color: var(--muted-foreground, #666);">Could not load content.</p>';
+                pane.dataset.wfDocLoaded = 'true';
+                Logger.warn(`Settings doc ${docFilename} network error`);
+            }
+        });
+    },
+
     _createOutdatedPluginsHTML(outdatedPlugins) {
         const pluginsList = outdatedPlugins.map(p => {
             let versionInfo = '';
