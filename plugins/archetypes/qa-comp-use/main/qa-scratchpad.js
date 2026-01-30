@@ -5,7 +5,7 @@ const plugin = {
     id: 'qaScratchpad',
     name: 'QA Scratchpad',
     description: 'Adds an adjustable height scratchpad for notes between prompt and environment variables',
-    _version: '1.2',
+    _version: '1.3',
     enabledByDefault: true,
     phase: 'mutation',
     
@@ -15,7 +15,7 @@ const plugin = {
             id: 'remember-contents',
             name: 'Remember Scratchpad Contents',
             description: 'Saves and restores scratchpad text across page loads',
-            enabledByDefault: true
+            enabledByDefault: false
         }
     ],
     
@@ -38,6 +38,17 @@ const plugin = {
     },
     
     onMutation(state, context) {
+        // Only one scratchpad per page: if one already exists anywhere, do not insert again
+        const existingScratchpad = document.querySelector('[data-qa-scratchpad="true"]');
+        if (existingScratchpad) {
+            if (!state.resizeHandlerAttached) {
+                this.attachResizeHandler(state, existingScratchpad);
+                state.resizeHandlerAttached = true;
+                Logger.log('✓ QA Scratchpad: Resize handler attached');
+            }
+            return;
+        }
+        
         // Find the prompt section
         const promptSection = this.findPromptSection();
         if (!promptSection) {
@@ -59,34 +70,16 @@ const plugin = {
             return;
         }
         
-        // Check if scratchpad already exists
-        let scratchpadContainer = promptSection.nextElementSibling;
-        if (scratchpadContainer && scratchpadContainer.dataset.qaScratchpad === 'true') {
-            // Scratchpad already exists, just attach resize handler if needed
-            if (!state.resizeHandlerAttached) {
-                this.attachResizeHandler(state, scratchpadContainer);
-                state.resizeHandlerAttached = true;
-                Logger.log('✓ QA Scratchpad: Resize handler attached');
-            }
-            return;
-        }
-        
-        // Insert scratchpad right after the prompt section
+        // Insert scratchpad right after the prompt section (only one; existing check above)
         const scratchpad = this.createScratchpad(state);
         promptSection.insertAdjacentElement('afterend', scratchpad);
         state.scratchpadInserted = true;
         state.insertionFailedLogged = false; // Reset on success
         Logger.log('✓ QA Scratchpad: Successfully inserted after Prompt section');
         
-        // Attach resize handler
-        scratchpadContainer = promptSection.nextElementSibling;
-        if (scratchpadContainer && scratchpadContainer.dataset.qaScratchpad === 'true') {
-            this.attachResizeHandler(state, scratchpadContainer);
-            state.resizeHandlerAttached = true;
-            Logger.log('✓ QA Scratchpad: Resize handler attached');
-        } else {
-            Logger.warn('QA Scratchpad: Inserted but could not find container for resize handler');
-        }
+        this.attachResizeHandler(state, scratchpad);
+        state.resizeHandlerAttached = true;
+        Logger.log('✓ QA Scratchpad: Resize handler attached');
     },
     
     findPromptSection() {
@@ -136,7 +129,7 @@ const plugin = {
         const toggleCheckbox = document.createElement('input');
         toggleCheckbox.type = 'checkbox';
         toggleCheckbox.className = 'size-3.5 rounded border-gray-300';
-        toggleCheckbox.checked = Storage.getSubOptionEnabled(this.id, 'remember-contents', true);
+        toggleCheckbox.checked = Storage.getSubOptionEnabled(this.id, 'remember-contents', false);
         toggleCheckbox.addEventListener('change', (e) => {
             Storage.setSubOptionEnabled(this.id, 'remember-contents', e.target.checked);
             Logger.debug(`QA Scratchpad: Remember contents setting changed to ${e.target.checked}`);
@@ -167,7 +160,7 @@ const plugin = {
         textarea.dataset.qaScratchpadTextarea = 'true';
         
         // Restore saved text if option is enabled
-        const rememberContents = Storage.getSubOptionEnabled(this.id, 'remember-contents', true);
+        const rememberContents = Storage.getSubOptionEnabled(this.id, 'remember-contents', false);
         if (rememberContents) {
             const savedText = Storage.get(this.storageKeys.scratchpadText, '');
             if (savedText) {
@@ -273,7 +266,7 @@ const plugin = {
             }
             
             state.saveTimeoutId = setTimeout(() => {
-                const rememberContents = Storage.getSubOptionEnabled(this.id, 'remember-contents', true);
+                const rememberContents = Storage.getSubOptionEnabled(this.id, 'remember-contents', false);
                 if (rememberContents) {
                     const text = textarea.value || '';
                     Storage.set(this.storageKeys.scratchpadText, text);
@@ -285,7 +278,7 @@ const plugin = {
         
         // Watch for changes
         const observer = new MutationObserver(() => {
-            const rememberContents = Storage.getSubOptionEnabled(this.id, 'remember-contents', true);
+            const rememberContents = Storage.getSubOptionEnabled(this.id, 'remember-contents', false);
             if (rememberContents) {
                 saveText();
             }

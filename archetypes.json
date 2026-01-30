@@ -1,6 +1,6 @@
 {
   "version": "3.8.2",
-  "archetypesVersion": "3.18",
+  "archetypesVersion": "3.19",
   "corePlugins": [
     {
       "name": "settings-ui.js",
@@ -241,7 +241,7 @@
         },
         {
           "name": "qa-scratchpad.js",
-          "version": "1.2"
+          "version": "1.3"
         }
       ]
     }
