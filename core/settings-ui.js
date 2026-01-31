@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.15',
+    _version: '5.16',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -1418,7 +1418,7 @@ const plugin = {
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const trimmed = line.trim();
-            if (inList && trimmed !== '' && !/^\s*-\s+/.test(line) && !/^#+\s/.test(trimmed)) {
+            if (inList && trimmed !== '' && !/^\s*-\s+/.test(line)) {
                 inList = false;
                 out.push('</ul>');
             }
