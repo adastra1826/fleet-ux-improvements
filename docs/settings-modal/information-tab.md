@@ -10,3 +10,4 @@
 
 #### Community
 - [Fleet AI Official Slack](https://app.slack.com/client/T05EN36FWHY)
+- [Environment Gists](https://fleetai-env-gists.vercel.app)
