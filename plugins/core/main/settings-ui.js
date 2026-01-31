@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.13',
+    _version: '5.14',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -1413,6 +1413,8 @@ const plugin = {
             .replace(/"/g, '&quot;');
         const linkRe = /\[([^\]]+)\]\(([^)]+)\)/g;
         const replaceLinks = (s) => escape(s).replace(linkRe, (_, text, href) => `<a href="${escape(href)}" target="_blank" rel="noopener noreferrer" style="color: var(--brand, #4f46e5); text-decoration: none;">${escape(text)}</a>`);
+        const replaceBold = (s) => s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        const processInlines = (s) => replaceBold(replaceLinks(s));
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const trimmed = line.trim();
@@ -1429,16 +1431,16 @@ const plugin = {
             const h2 = /^##\s+(.+)$/.exec(trimmed);
             const h1 = /^#\s+(.+)$/.exec(trimmed);
             const ul = /^-\s+(.+)$/.exec(trimmed);
-            if (h4) { out.push(`<h5 style="font-size: 13px; font-weight: 600; margin: 8px 0 4px 0; color: var(--foreground, #333);">${replaceLinks(h4[1])}</h5>`); continue; }
-            if (h3) { out.push(`<h4 style="font-size: 14px; font-weight: 600; margin: 8px 0 4px 0; color: var(--foreground, #333);">${replaceLinks(h3[1])}</h4>`); continue; }
-            if (h2) { out.push(`<h3 style="font-size: 15px; font-weight: 600; margin: 10px 0 6px 0; color: var(--foreground, #333);">${replaceLinks(h2[1])}</h3>`); continue; }
-            if (h1) { out.push(`<h2 style="font-size: 16px; font-weight: 600; margin: 12px 0 6px 0; color: var(--foreground, #333);">${replaceLinks(h1[1])}</h2>`); continue; }
+            if (h4) { out.push(`<h5 style="font-size: 13px; font-weight: 600; margin: 8px 0 4px 0; color: var(--foreground, #333);">${processInlines(h4[1])}</h5>`); continue; }
+            if (h3) { out.push(`<h4 style="font-size: 14px; font-weight: 600; margin: 8px 0 4px 0; color: var(--foreground, #333);">${processInlines(h3[1])}</h4>`); continue; }
+            if (h2) { out.push(`<h3 style="font-size: 15px; font-weight: 600; margin: 10px 0 6px 0; color: var(--foreground, #333);">${processInlines(h2[1])}</h3>`); continue; }
+            if (h1) { out.push(`<h2 style="font-size: 16px; font-weight: 600; margin: 12px 0 6px 0; color: var(--foreground, #333);">${processInlines(h1[1])}</h2>`); continue; }
             if (ul) {
-                if (!inList) { inList = true; out.push('<ul style="margin: 6px 0; padding-left: 20px; color: var(--foreground, #333);">'); }
-                out.push(`<li style="margin: 2px 0;">${replaceLinks(ul[1])}</li>`);
+                if (!inList) { inList = true; out.push('<ul style="margin: 6px 0; padding-left: 20px; list-style-type: disc; color: var(--foreground, #333);">'); }
+                out.push(`<li style="margin: 2px 0; display: list-item;">${processInlines(ul[1])}</li>`);
                 continue;
             }
-            out.push(`<p style="margin: 6px 0; font-size: 13px; line-height: 1.5; color: var(--foreground, #333);">${replaceLinks(trimmed)}</p>`);
+            out.push(`<p style="margin: 6px 0; font-size: 13px; line-height: 1.5; color: var(--foreground, #333);">${processInlines(trimmed)}</p>`);
         }
         if (inList) out.push('</ul>');
         return out.join('');
@@ -1460,7 +1462,8 @@ const plugin = {
         const firstNewline = raw.indexOf('\n');
         const body = firstNewline >= 0 ? raw.slice(firstNewline + 1).trim() : raw.trim();
         const html = this._markdownToHtml(body);
-        const wrapped = `<div class="wf-settings-doc-content" style="font-size: 13px; color: var(--foreground, #333); padding: 4px 0;">${html}</div>`;
+        const docStyles = `<style>.wf-settings-doc-content h2{font-size:16px !important}.wf-settings-doc-content h3{font-size:15px !important}.wf-settings-doc-content h4{font-size:14px !important}.wf-settings-doc-content h5{font-size:13px !important}.wf-settings-doc-content ul{list-style-type:disc !important;padding-left:20px !important}.wf-settings-doc-content li{display:list-item !important}</style>`;
+        const wrapped = `${docStyles}<div class="wf-settings-doc-content" style="font-size: 13px; color: var(--foreground, #333); padding: 4px 0;">${html}</div>`;
         this._docPaneCache[cacheKey] = wrapped;
         pane.innerHTML = wrapped;
         pane.dataset.wfDocLoaded = 'true';
