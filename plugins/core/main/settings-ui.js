@@ -6,7 +6,7 @@ const plugin = {
     id: 'settings-ui',
     name: 'Settings UI',
     description: 'Provides the settings panel for managing plugins',
-    _version: '5.16',
+    _version: '5.17',
     phase: 'core', // Special phase - loaded once, never cleaned up
     enabledByDefault: true,
     
@@ -201,6 +201,14 @@ const plugin = {
             msg.style.display = 'none';
         }
         this._modalOpen = false;
+    },
+
+    _lockModalTop(modal) {
+        requestAnimationFrame(() => {
+            const rect = modal.getBoundingClientRect();
+            modal.style.top = `${rect.top}px`;
+            modal.style.transform = 'translateX(-50%)';
+        });
     },
 
     _startPresenceGuard() {
@@ -423,9 +431,10 @@ const plugin = {
         this._attachModalListeners(modal, orderedPlugins, orderedDevPlugins);
         this._updateSettingsMessage(modal, archetypePlugins);
         
+        this._lockModalTop(modal);
         return modal;
     },
-    
+
     _createPluginToggleHTML(plugin, submoduleLoggingEnabled, globalEnabled) {
         const isEnabled = PluginManager.isEnabled(plugin.id);
         const isDisabled = !globalEnabled;
