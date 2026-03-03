@@ -1,6 +1,6 @@
 
 // ==UserScript==
-// @name         [dev] Fleet Workflow Builder UX Enhancer
+// @name         Fleet Workflow Builder UX Enhancer
 // @namespace    http://tampermonkey.net/
 // @version      5.0.0
 // @description  UX improvements for workflow builder tool with archetype-based plugin loading
