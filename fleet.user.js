@@ -42,7 +42,7 @@
     const GITHUB_CONFIG = {
         owner: 'fleet-ai-operations',
         repo: 'fleet-ux-improvements',
-        branch: 'main',
+        branch: 'dev',
         pluginsPath: 'plugins',
         corePath: 'core',
         devPath: 'dev',
